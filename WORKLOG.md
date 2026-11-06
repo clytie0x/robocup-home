@@ -1,5 +1,17 @@
 # WORKLOG
 
+## M4 review test gap (2026-11-06)
+
+Independent review of `833737192b59da784d5e2a09d93419cdd00f64db`. No verified production merge blocker. Its full pinned checks, debug and release, were 48 library tests and 3 doctests, all passed. It checked the professor PDF hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. A scratch probe reported 161902 steps, 352 completions, 5322 timeouts, 0 panics, and 0 contract failures. That review was bounded, not exhaustive. M9.3 was not run and is still later. Acceptance rows stay `not-run`. The seven open scoring rows stay open. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+The gap is `every_rejection_leaves_the_previous_trip`. It asserts equality only when `apply` returns `Err`, so a mutant that accepts an invalid event still passes. Two scratch mutants survived the previous 28 library tests and 1 doctest. `Received` of the pointed bag by the operator is already `Reject::OutOfOrder` from the unmatched arm of `Following`. `Arrived` after `Dropped` is already `Reject::OutOfOrder` from the unmatched arm of `Dropped`. No new rejection code was added, and the production transitions were not rewritten.
+
+Red, with `Event::Received { bag, by } => self.receive(...)` inserted into `on_following` only. Debug: `receipt_while_following_before_arrival_is_rejected` panicked at `debug_assert!(next.consistent())` because completion still had `arrived == false`; 29 passed and 1 failed. Release: that test got `Ok(Outcome { effect: None })` instead of `Err(OutOfOrder)`; 29 passed and 1 failed. The doctest passed. The insertion was then removed.
+
+Red, with `Arrived` in `on_dropped` setting `arrived`, `main_complete`, and `Phase::Complete`. Debug and release both failed `arrival_after_a_drop_stays_dropped` with `Ok(Outcome { effect: None })` instead of `Err(OutOfOrder)`; 29 passed and 1 failed. The doctest passed. That arm was then removed. `git diff` of the trip file against `8337371` is only the two tests.
+
+Clean tree, debug and release: domain 6, `sim_runtime` 14, `task_3_1` 30, other crates 0. Doctests 3. Zero failures. `fmt`, build, `clippy -D warnings`, rustdoc `-D warnings`, the workspace check, and the spec checker (`ok rows=56 pdf=True` on the attached PDF) exited 0.
+
 ## M4 task state machine (2026-11-06)
 
 Scope. Issue 8. One writer. Branch `cursor/m4-task-state-machine-0c9f` from `1aead3bb8b49937e5fb89d2b0ce43711f9b4abaf`. Pure `task_3_1` orchestration only. No perception algorithm, grasp model, follower, end-to-end run, scorer, hardware, deploy, registration, contact, or spending. M5 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.

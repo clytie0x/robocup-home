@@ -905,6 +905,44 @@ mod tests {
     }
 
     #[test]
+    fn receipt_while_following_before_arrival_is_rejected() {
+        let ids = ids();
+        let mut trip = following();
+        assert_eq!(trip.phase(), Phase::Following);
+        assert!(!trip.arrived());
+        assert!(!trip.main_complete());
+        assert_eq!(trip.carried(), Some(ids.bag));
+        keep(
+            &mut trip,
+            Event::Received {
+                bag: ids.bag,
+                by: ids.operator,
+            },
+            Reject::OutOfOrder,
+        );
+        assert_eq!(trip.phase(), Phase::Following);
+        assert!(!trip.arrived());
+        assert!(!trip.main_complete());
+        assert_eq!(trip.carried(), Some(ids.bag));
+    }
+
+    #[test]
+    fn arrival_after_a_drop_stays_dropped() {
+        let ids = ids();
+        let mut trip = following();
+        trip.apply(45, Event::Dropped { bag: ids.bag }).unwrap();
+        assert_eq!(trip.phase(), Phase::Dropped);
+        assert_eq!(trip.carried(), None);
+        assert!(!trip.arrived());
+        assert!(!trip.main_complete());
+        keep(&mut trip, Event::Arrived, Reject::OutOfOrder);
+        assert_eq!(trip.phase(), Phase::Dropped);
+        assert_eq!(trip.carried(), None);
+        assert!(!trip.arrived());
+        assert!(!trip.main_complete());
+    }
+
+    #[test]
     fn stale_and_duplicate_confirmations_do_not_advance() {
         let ids = ids();
         let mut picking = picking();
