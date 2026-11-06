@@ -1,5 +1,199 @@
 # WORKLOG
 
+## M2 workspace and CI (2026-11-06)
+
+Scope. Issue 4, opened before this branch. One writer. Laptop skeleton only. No task behavior, world, clock, state machine, scoring choice, hardware, deploy, registration, contact, or spending. M3 was not started. M9.3 was not run. The specification file is unchanged from `77e801b5ae5645af07cf8bb3f19725711dd491b8`. The seven open rows stay open, and every acceptance result stays `not-run`. Public 2025.1 is not the baseline. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`, cover 2024 Rev-1, revision 2024-07-09.
+
+Branch `cursor/rust-workspace-ci-91af` from that merge. Commits before this note: `3b9c9addeeb22b17d7ade12e90d2de7215bec072` and `83c50e8b96d043cd164ed6239009a18f81b467a1`.
+
+### Toolchain
+
+Retrieved 2026-11-06. The machine default was rustc 1.83.0 (90b35a623 2024-11-26). That compiler was not used for the checks below. `rust-toolchain.toml` selected 1.99.1.
+
+- Official channel manifest `https://static.rust-lang.org/dist/channel-rust-stable.toml` had `date = "2026-10-15"` and `[pkg.rustc] version = "1.99.1 (58cf8f9c3 2026-10-13)"`. `rustup toolchain install 1.99.1` reported the same update date and version.
+- Announcement: `https://blog.rust-lang.org/2026/10/15/Rust-1.99.1/`, 15 October 2026. 1.99.1 is a stable point release. It fixes an x86_64 FFI `bool` miscompilation present in 1.99.0, so the pin is 1.99.1.
+- `https://releases.rs/docs/1.100.0/` said 1.100.0 was unreleased and would become stable on 12 November 2026. It is not the pin.
+- Edition 2024 is the current stable edition. `https://doc.rust-lang.org/stable/edition-guide/rust-2024/` lists release version 1.85.0. The announcement is `https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/`, 20 February 2025. `cargo +1.99.1 new --lib` wrote `edition = "2024"`. 1.99.1 is newer than 1.85.0, so the edition is compatible. No nightly edition is selected.
+- A virtual workspace has no package edition, so the resolver is set explicitly. `https://doc.rust-lang.org/edition-guide/rust-2024/cargo-resolver.html` says edition 2024 implies resolver 3 for a package, and a virtual workspace must set `resolver`. The workspace uses `resolver = "3"`, which the Cargo book says requires Rust 1.84 or newer.
+- `rust-version` is 1.99.1, the same value as the pin. `https://doc.rust-lang.org/cargo/reference/rust-version.html` describes that field. An older compiler was not verified, so none is claimed. `https://doc.rust-lang.org/stable/cargo/guide/continuous-integration.html` warns that a floating toolchain can change warnings. The sample matrix of stable, beta, and nightly is not used.
+- `https://rust-lang.github.io/rustup/overrides.html` documents `channel`, `components`, and `profile`. The file pins channel `1.99.1`, components `rustfmt` and `clippy`, and profile `minimal`.
+
+### Crates
+
+One crate, `domain`, is the shared contract. The milestone name `task_api` is that role. There is no second domain crate. Members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, and `sim_runtime`. `task_3_1` depends on `domain` and the four capability crates. `sim_runtime` depends on `domain`. No member depends on `sim_runtime`. The graph has no cycle. Libraries are empty apart from a one-line crate doc. No registry dependency was added. `Cargo.lock` is version 4 and lists those seven path packages, with no `source` and no `checksum` lines.
+
+The M1 checker used to fail when `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, or `.github` existed. That guard is removed. The Thai scan now includes `.rs`, `.toml`, `.yml`, and `.yaml`. The checker still requires `not-run` results, the seven open rows, and the professor excerpt match. Passing it is source integrity, not task compliance. `artifacts/check_workspace.py` checks membership and edges only.
+
+### Local checks
+
+Run on commit `83c50e8b96d043cd164ed6239009a18f81b467a1` before this note. `cargo test --all-targets` does not include doctests on cargo 1.99.1, so doctests were a separate command. Zero tests means the crates have no behavior tests. It is not a task pass.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+   Compiling domain v0.1.0 (/agent/repos/robocup-home/crates/domain)
+   Compiling navigation v0.1.0 (/agent/repos/robocup-home/crates/navigation)
+   Compiling manipulation v0.1.0 (/agent/repos/robocup-home/crates/manipulation)
+   Compiling perception v0.1.0 (/agent/repos/robocup-home/crates/perception)
+   Compiling hri v0.1.0 (/agent/repos/robocup-home/crates/hri)
+   Compiling task_3_1 v0.1.0 (/agent/repos/robocup-home/crates/task_3_1)
+   Compiling sim_runtime v0.1.0 (/agent/repos/robocup-home/crates/sim_runtime)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+    Checking domain v0.1.0 (/agent/repos/robocup-home/crates/domain)
+    Checking perception v0.1.0 (/agent/repos/robocup-home/crates/perception)
+    Checking navigation v0.1.0 (/agent/repos/robocup-home/crates/navigation)
+    Checking manipulation v0.1.0 (/agent/repos/robocup-home/crates/manipulation)
+    Checking hri v0.1.0 (/agent/repos/robocup-home/crates/hri)
+    Checking sim_runtime v0.1.0 (/agent/repos/robocup-home/crates/sim_runtime)
+    Checking task_3_1 v0.1.0 (/agent/repos/robocup-home/crates/task_3_1)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+     Running unittests src/lib.rs (target/debug/deps/domain-448ce7fff338a308)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/hri-ff596ed141144384)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/manipulation-f541569fa2d8584c)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/navigation-ded3b9b6ad1a8998)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/perception-0bc0c145d42af328)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/sim_runtime-0cf4ef297df5fdfb)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/task_3_1-fb66ac1bff22a062)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test_exit:0
+
+cargo test --workspace --doc --locked
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+   Doc-tests domain
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests hri
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests manipulation
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests navigation
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests perception
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests sim_runtime
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   Doc-tests task_3_1
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
+   Generated /agent/repos/robocup-home/target/doc/domain/index.html and 6 other files
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=7 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+spec_exit:0
+```
+
+`pdf=False` means the professor PDF was absent. This run did not hash that file. It is not a full PDF check.
+
+### Adversarial fixtures
+
+Uncommitted edits, then restored with `cp` from backups. No repository file was deleted. After restore, `cmp` matched the backups for `crates/domain/src/lib.rs`, `crates/task_3_1/Cargo.toml`, `Cargo.lock`, and `docs/tasks/3.1-carry-my-luggage.md`. `cargo fmt --all -- --check` then exited 0, `artifacts/check_workspace.py` printed `ok members=7 pin=1.99.1 edition=2024`, and `artifacts/check_m1_spec.py` printed `ok rows=56 pdf=False`.
+
+```text
+cargo fmt --all -- --check
+Diff in /agent/repos/robocup-home/crates/domain/src/lib.rs:1:
+ //! Shared contract between task logic and adapters. This crate is the task_api role.
+
+-fn badly_formatted( ){let value=1;}
++fn badly_formatted() {
++    let value = 1;
++}
+FMT_BAD:1
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+error: unused variable: `value`
+ --> crates/domain/src/lib.rs:4:9
+  |
+4 |     let value = 1;
+  |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+  |
+  = note: `-D unused-variables` implied by `-D warnings`
+error: could not compile `domain` (lib) due to 1 previous error
+CLIPPY_BAD:101
+
+cargo build --workspace --all-targets --locked
+error[E0308]: mismatched types
+ --> crates/domain/src/lib.rs:4:5
+  |
+3 | pub fn type_error() -> i32 {
+  |                        --- expected `i32` because of return type
+4 |     "no"
+  |     ^^^^ expected `i32`, found `&str`
+error: could not compile `domain` (lib) due to 1 previous error
+BUILD_BAD:101
+
+python3 artifacts/check_workspace.py
+task_3_1 deps domain hri manipulation navigation perception sim_runtime
+BOUNDARY_BAD:1
+
+python3 artifacts/check_m1_spec.py
+CML-TASK result pass
+SPEC_BAD:1
+```
+
+### CI and review
+
+Workflow `.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. Permissions are `contents: read`. Checkout uses `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` with `persist-credentials: false`. That commit is tag `v7.0.1` of `actions/checkout`, message `prep v7.0.1 release (#2531)`, committer date 2026-07-17. It is the actions repository, not a fork. `GET /repos/actions/checkout/attestations/sha/3d3c42e5aac5ba805825da76410c181273ba90b1` returned HTTP 404, so this pin is the release commit and not an artifact attestation. GitHub's secure-use page, retrieved 2026-11-06 from `https://docs.github.com/en/actions/reference/security/secure-use`, says a workflow dependency lockfile is the strongest measure and that a full commit SHA is the measure when a lockfile is not adopted. `gh extension list` showed no extension, and no lockfile tool was added. The runner label is `ubuntu-24.04` because `https://github.blog/changelog/2026-09-17-ubuntu-26-generally-available-and-latest-migration/` says `ubuntu-latest` moves from 24.04 to 26.04 between 19 October 2026 and 19 November 2026.
+
+The compiler install step reads `rust-toolchain.toml`. A later step refuses channel `stable`, `beta`, or `nightly`, and requires `rustc --version` to start with `rustc` plus that channel. Packages set `publish = false`. No crates.io dependency is declared.
+
+GitHub Actions had not been read at this commit. A green local command is not a green GitHub check. This note does not say the software is free of undiscovered defects.
+
+Privacy, read only:
+
+```text
+gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch}'
+{"default_branch":"main","private":true,"visibility":"private"}
+
+gh repo view --json nameWithOwner,isPrivate,visibility,url
+{"isPrivate":true,"nameWithOwner":"clytie0x/robocup-home","url":"https://github.com/clytie0x/robocup-home","visibility":"PRIVATE"}
+```
+
 ## M1 correction (2026-11-06)
 
 The owner chose the professor PDF already on the laptop. The task stays 3.1. This year's public task is not the baseline. Public 2025.1 is not the normative baseline. The earlier M1 section below used that public release and is superseded for the task text.
