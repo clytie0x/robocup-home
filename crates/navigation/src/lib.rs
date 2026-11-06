@@ -30,7 +30,10 @@ pub mod assume {
     pub const ROBOT_RADIUS_MM: i32 = 250;
     /// Preferred gap from the operator, on the side opposite their last step.
     pub const FOLLOW_MM: i32 = 800;
-    /// A take-bag cue inside this radius can justify arrival. It is not the car.
+    /// Proximity for a take-bag cue. Not a printed arrival distance and not the car.
+    ///
+    /// The cue is also refused at the pose where following started, and when an
+    /// observed disk meets the segment to the person.
     pub const ARRIVE_MM: i32 = 1200;
     /// Longest geometric step one plan may propose.
     pub const STEP_MM: i32 = 200;
@@ -86,6 +89,10 @@ pub struct Follower {
     cancelled: bool,
     /// Which way the last detour turned. Zero means the straight step was free.
     side: i8,
+    /// Base pose on the first sight of the person. Arrival requires leaving it.
+    home_robot: Option<Point>,
+    /// That person's pose on the same sight. Arrival requires a later pose.
+    home_person: Option<Point>,
 }
 
 impl Follower {
@@ -96,6 +103,8 @@ impl Follower {
             blocked_run: 0,
             cancelled: false,
             side: 0,
+            home_robot: None,
+            home_person: None,
         }
     }
 
@@ -110,6 +119,10 @@ impl Follower {
 
     pub const fn blocked_run(self) -> u8 {
         self.blocked_run
+    }
+
+    pub const fn cancelled(self) -> bool {
+        self.cancelled
     }
 
     /// Counts one blocked physical step. The pose is the caller's.
@@ -171,21 +184,28 @@ pub fn plan_follow(state: &Follower, sight: &Sight<'_>, cue: Cue) -> (Follower, 
         };
         return (next, intent);
     };
-    if cue == Cue::TakeBag && within_reach(sight.robot, target.at, assume::ARRIVE_MM) {
-        return (
-            Follower {
-                previous: Some(target.at),
-                blocked_run: 0,
-                ..*state
-            },
-            Intent::Arrived,
-        );
+    let mut next = *state;
+    if next.home_robot.is_none() {
+        next.home_robot = Some(sight.robot);
+    }
+    if next.home_person.is_none() {
+        next.home_person = Some(target.at);
+    }
+    let left_home = sight.robot != next.home_robot.unwrap_or(sight.robot);
+    let led_away = target.at != next.home_person.unwrap_or(target.at);
+    let clear_to_person = segment_clear(sight.robot, target.at, sight.bodies);
+    if cue == Cue::TakeBag
+        && left_home
+        && led_away
+        && clear_to_person
+        && within_reach(sight.robot, target.at, assume::ARRIVE_MM)
+    {
+        next.previous = Some(target.at);
+        next.blocked_run = 0;
+        return (next, Intent::Arrived);
     }
     let goal = behind_point(sight.robot, target.at, state.previous);
-    let mut next = Follower {
-        previous: Some(target.at),
-        ..*state
-    };
+    next.previous = Some(target.at);
     match choose_step(sight.robot, goal, sight.bodies, state.side) {
         Some((to, side)) if to == sight.robot => {
             next.blocked_run = 0;
@@ -215,8 +235,8 @@ pub fn plan_approach(robot: Point, bag: Point, bodies: &[SeenBody], reach_mm: i3
         return Intent::InReach;
     }
     let standoff = reach_mm.saturating_sub(assume::APPROACH_MARGIN_MM).max(0);
-    let dx = i64::from(robot.x().get()) - i64::from(bag.x().get());
-    let dy = i64::from(robot.y().get()) - i64::from(bag.y().get());
+    let dx = i128::from(robot.x().get()) - i128::from(bag.x().get());
+    let dy = i128::from(robot.y().get()) - i128::from(bag.y().get());
     let Some(goal) = scale_from(bag, dx, dy, standoff) else {
         return Intent::Blocked;
     };
@@ -269,13 +289,13 @@ pub fn look(
 fn behind_point(robot: Point, operator: Point, previous: Option<Point>) -> Point {
     let (dx, dy) = match previous {
         Some(prev) if prev != operator => {
-            let hx = i64::from(operator.x().get()) - i64::from(prev.x().get());
-            let hy = i64::from(operator.y().get()) - i64::from(prev.y().get());
+            let hx = i128::from(operator.x().get()) - i128::from(prev.x().get());
+            let hy = i128::from(operator.y().get()) - i128::from(prev.y().get());
             (-hx, -hy)
         }
         _ => {
-            let hx = i64::from(robot.x().get()) - i64::from(operator.x().get());
-            let hy = i64::from(robot.y().get()) - i64::from(operator.y().get());
+            let hx = i128::from(robot.x().get()) - i128::from(operator.x().get());
+            let hy = i128::from(robot.y().get()) - i128::from(operator.y().get());
             if hx == 0 && hy == 0 {
                 (0, -1)
             } else {
@@ -338,6 +358,10 @@ fn consider(
     if candidate == from || !segment_clear(from, candidate, bodies) {
         return;
     }
+    let cap = i128::from(assume::STEP_MM);
+    if dist_sq(from, candidate) > cap * cap {
+        return;
+    }
     let cross = cross_turn(from, goal, candidate);
     if side != 0 && cross != 0 && sign_of(cross) != Some(side) {
         return;
@@ -378,60 +402,81 @@ fn tangent_step(from: Point, center: Point, radius: i32, sign: i32) -> Option<Po
     let radius = i128::from(radius);
     let r2 = radius * radius;
     if l2 <= r2 {
-        return scale_from(
-            from,
-            i64::try_from(-dx).ok()?,
-            i64::try_from(-dy).ok()?,
-            assume::STEP_MM,
-        );
+        return step_along(from, -dx, -dy, assume::STEP_MM);
     }
     let h = i128::try_from(isqrt(u128::try_from(l2 - r2).ok()?)).ok()?;
     let s = i128::from(sign);
-    let vx = (l2 - r2) * dx - s * radius * h * dy;
-    let vy = (l2 - r2) * dy + s * radius * h * dx;
-    let v2 = vx.checked_mul(vx)?.checked_add(vy.checked_mul(vy)?)?;
-    let vlen = i128::try_from(isqrt(u128::try_from(v2).ok()?)).ok()?;
-    if vlen == 0 {
-        return None;
-    }
-    let travel = i128::from(assume::STEP_MM);
-    from.checked_offset(
-        Mm::new(i32::try_from(vx * travel / vlen).ok()?),
-        Mm::new(i32::try_from(vy * travel / vlen).ok()?),
-    )
-    .ok()
+    let tx = dx * h - s * radius * dy;
+    let ty = dy * h + s * radius * dx;
+    step_along(from, tx, ty, assume::STEP_MM)
 }
 
 fn headed_step(from: Point, goal: Point, cos: i32, sin: i32) -> Option<Point> {
-    let dx = i64::from(goal.x().get()) - i64::from(from.x().get());
-    let dy = i64::from(goal.y().get()) - i64::from(from.y().get());
+    let dx = i128::from(goal.x().get()) - i128::from(from.x().get());
+    let dy = i128::from(goal.y().get()) - i128::from(from.y().get());
     if dx == 0 && dy == 0 {
         return Some(from);
     }
-    let rx = dx * i64::from(cos) - dy * i64::from(sin);
-    let ry = dx * i64::from(sin) + dy * i64::from(cos);
-    let rlen2 = rx * rx + ry * ry;
-    if rlen2 <= 0 {
+    if cos == 1024 && sin == 0 {
+        let len = isqrt(square_len(dx, dy)?);
+        let travel = i32::try_from(len).unwrap_or(i32::MAX).min(assume::STEP_MM);
+        return step_along(from, dx, dy, travel);
+    }
+    let seed = step_along(from, dx, dy, 1024)?;
+    let sx = i128::from(seed.x().get()) - i128::from(from.x().get());
+    let sy = i128::from(seed.y().get()) - i128::from(from.y().get());
+    let rx = sx * i128::from(cos) - sy * i128::from(sin);
+    let ry = sx * i128::from(sin) + sy * i128::from(cos);
+    step_along(from, rx, ry, assume::STEP_MM)
+}
+
+/// A step of at most `travel` mm along `(dx, dy)`. The length is never longer than `travel`.
+fn step_along(from: Point, mut dx: i128, mut dy: i128, travel: i32) -> Option<Point> {
+    if travel == 0 {
+        return Some(from);
+    }
+    if travel < 0 {
         return None;
     }
-    let goal_len = isqrt(u128::try_from(dx * dx + dy * dy).ok()?);
-    let step = i64::from(assume::STEP_MM);
-    let travel = if cos == 1024 && sin == 0 {
-        step.min(i64::try_from(goal_len).unwrap_or(step))
+    if dx == 0 && dy == 0 {
+        return Some(from);
+    }
+    let bound = 1u128 << 62;
+    while dx.unsigned_abs() > bound || dy.unsigned_abs() > bound {
+        dx /= 2;
+        dy /= 2;
+        if dx == 0 && dy == 0 {
+            return None;
+        }
+    }
+    let len2 = square_len(dx, dy)?;
+    let len = isqrt(len2);
+    if len == 0 {
+        return None;
+    }
+    let ceil = if len.saturating_mul(len) == len2 {
+        len
     } else {
-        step
+        len.saturating_add(1)
     };
-    let rlen = i64::try_from(isqrt(u128::try_from(rlen2).ok()?)).ok()?;
-    if rlen == 0 {
-        return None;
-    }
-    let ox = rx * travel / rlen;
-    let oy = ry * travel / rlen;
-    from.checked_offset(
-        Mm::new(i32::try_from(ox).ok()?),
-        Mm::new(i32::try_from(oy).ok()?),
-    )
-    .ok()
+    let ceil = i128::try_from(ceil).ok()?;
+    let span = i128::from(travel);
+    let ox = dx.checked_mul(span)?.checked_div(ceil)?;
+    let oy = dy.checked_mul(span)?.checked_div(ceil)?;
+    let to = from
+        .checked_offset(
+            Mm::new(i32::try_from(ox).ok()?),
+            Mm::new(i32::try_from(oy).ok()?),
+        )
+        .ok()?;
+    let cap = span * span;
+    (dist_sq(from, to) <= cap).then_some(to)
+}
+
+fn square_len(dx: i128, dy: i128) -> Option<u128> {
+    let x = dx.unsigned_abs();
+    let y = dy.unsigned_abs();
+    x.checked_mul(x)?.checked_add(y.checked_mul(y)?)
 }
 
 fn segment_clear(from: Point, to: Point, bodies: &[SeenBody]) -> bool {
@@ -441,22 +486,8 @@ fn segment_clear(from: Point, to: Point, bodies: &[SeenBody]) -> bool {
     })
 }
 
-fn scale_from(origin: Point, dx: i64, dy: i64, dist: i32) -> Option<Point> {
-    let len2 = dx * dx + dy * dy;
-    if len2 == 0 {
-        return origin.checked_offset(Mm::new(0), Mm::new(-dist)).ok();
-    }
-    let len = i64::try_from(isqrt(u128::try_from(len2).ok()?)).ok()?;
-    if len == 0 {
-        return None;
-    }
-    let span = i64::from(dist);
-    origin
-        .checked_offset(
-            Mm::new(i32::try_from(dx * span / len).ok()?),
-            Mm::new(i32::try_from(dy * span / len).ok()?),
-        )
-        .ok()
+fn scale_from(origin: Point, dx: i128, dy: i128, dist: i32) -> Option<Point> {
+    step_along(origin, dx, dy, dist)
 }
 
 fn dist_sq(a: Point, b: Point) -> i128 {
@@ -590,8 +621,36 @@ mod tests {
             people: &near,
             bodies: &[],
         };
+        let (armed, intent) = plan_follow(&Follower::follow(id(2)), &sight, Cue::TakeBag);
+        assert_ne!(intent, Intent::Arrived);
+        let (still, intent) = plan_follow(&armed, &sight, Cue::TakeBag);
+        assert_ne!(intent, Intent::Arrived);
+        let walked_person = [person(2, 0, 1600)];
+        let walked = Sight {
+            robot: at(0, 400),
+            people: &walked_person,
+            bodies: &[],
+        };
         assert_eq!(
-            plan_follow(&Follower::follow(id(2)), &sight, Cue::TakeBag).1,
+            plan_follow(&still, &walked, Cue::TakeBag).1,
+            Intent::Arrived
+        );
+        let origin_person = [person(2, -400, 1000)];
+        let origin = Sight {
+            robot: at(-400, 0),
+            people: &origin_person,
+            bodies: &[],
+        };
+        let (moved_home, _) = plan_follow(&Follower::follow(id(2)), &origin, Cue::None);
+        let blocked = [body(0, 500, 40)];
+        let blocked_person = [person(2, 0, 1000)];
+        let walled = Sight {
+            robot: at(0, 0),
+            people: &blocked_person,
+            bodies: &blocked,
+        };
+        assert_ne!(
+            plan_follow(&moved_home, &walled, Cue::TakeBag).1,
             Intent::Arrived
         );
         let far = [person(2, 0, 5000)];
@@ -630,7 +689,7 @@ mod tests {
         match intent {
             Intent::Move(to) => {
                 assert!(clear(from, to, &bodies));
-                let cap = i128::from(assume::STEP_MM + 1);
+                let cap = i128::from(assume::STEP_MM);
                 assert!(dist_sq(from, to) <= cap * cap);
                 assert_ne!(to, people[0].at);
             }
@@ -696,7 +755,7 @@ mod tests {
             assert_ne!(intent, Intent::Stuck, "step {step}");
             if let Intent::Move(to) = intent {
                 assert!(clear(robot, to, bodies), "{robot:?} -> {to:?}");
-                let cap = i128::from(assume::STEP_MM + 1);
+                let cap = i128::from(assume::STEP_MM);
                 assert!(dist_sq(robot, to) <= cap * cap);
                 robot = to;
             }
@@ -778,7 +837,7 @@ mod tests {
                 Intent::Move(to) => {
                     assert!(to.y().get() > robot.y().get());
                     assert!(to.y().get() < bag.y().get());
-                    let cap = i128::from(assume::STEP_MM + 1);
+                    let cap = i128::from(assume::STEP_MM);
                     assert!(dist_sq(robot, to) <= cap * cap);
                     robot = to;
                 }
@@ -795,6 +854,96 @@ mod tests {
             Intent::Move(to) => assert!(clear(at(0, 0), to, &wall)),
             Intent::Blocked | Intent::Stuck => {}
             other => panic!("{other:?}"),
+        }
+    }
+
+    fn step_len_sq(from: Point, to: Point) -> i128 {
+        dist_sq(from, to)
+    }
+
+    fn assert_capped(from: Point, to: Point) {
+        let cap = i128::from(assume::STEP_MM);
+        assert!(
+            step_len_sq(from, to) <= cap * cap,
+            "{from:?} -> {to:?} exceeds {cap}"
+        );
+    }
+
+    #[test]
+    fn approach_toward_a_far_bag_stays_on_axis_and_inside_the_step() {
+        let cap = i128::from(assume::STEP_MM);
+        for x in [2_968_220, 2_968_221, 3_000_000, 5_000_000, i32::MAX] {
+            let intent = plan_approach(at(0, 0), at(x, 0), &[], 2500);
+            let Intent::Move(to) = intent else {
+                panic!("{x} {intent:?}");
+            };
+            assert!(to.x().get() > 0, "{x} {to:?}");
+            assert_eq!(to.y().get(), 0, "{x} {to:?}");
+            assert!(step_len_sq(at(0, 0), to) <= cap * cap, "{x} {to:?}");
+        }
+        let intent = plan_approach(at(0, 0), at(i32::MIN, 0), &[], 2500);
+        let Intent::Move(to) = intent else {
+            panic!("{intent:?}");
+        };
+        assert!(to.x().get() < 0, "{to:?}");
+        assert_eq!(to.y().get(), 0, "{to:?}");
+        assert_capped(at(0, 0), to);
+    }
+
+    #[test]
+    fn a_direct_follow_step_at_extreme_coordinates_stays_capped() {
+        let robot = at(-411_794_476, -373_727_457);
+        let people = [person(2, 239_722_261, 173_842_438)];
+        let bodies = [body(175_638_116, -246_822_830, 389)];
+        let sight = Sight {
+            robot,
+            people: &people,
+            bodies: &bodies,
+        };
+        let (_next, intent) = plan_follow(&Follower::follow(id(2)), &sight, Cue::None);
+        match intent {
+            Intent::Move(to) => {
+                assert_capped(robot, to);
+                assert!(clear(robot, to, &bodies), "{to:?}");
+            }
+            Intent::Blocked | Intent::Stuck | Intent::Stay => {}
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn random_clear_steps_match_an_independent_short_step() {
+        let mut state = 0x1234_5678_9abc_def0u64;
+        for _ in 0..200 {
+            state = state
+                .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                .wrapping_add(0x6a09_e667);
+            let x0 = state as i32;
+            state = state.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            let y0 = state as i32;
+            state = state.wrapping_mul(0x94d0_49bb_1331_11eb);
+            let x1 = state as i32;
+            state = state.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+            let y1 = state as i32;
+            let from = at(x0, y0);
+            let goal = at(x1, y1);
+            let intent = plan_approach(from, goal, &[], 0);
+            if let Intent::Move(to) = intent {
+                assert_capped(from, to);
+                let dx = i128::from(goal.x().get()) - i128::from(from.x().get());
+                let dy = i128::from(goal.y().get()) - i128::from(from.y().get());
+                let sx = i128::from(to.x().get()) - i128::from(from.x().get());
+                let sy = i128::from(to.y().get()) - i128::from(from.y().get());
+                let cross = dx * sy - dy * sx;
+                let len2 =
+                    dx.unsigned_abs() * dx.unsigned_abs() + dy.unsigned_abs() * dy.unsigned_abs();
+                let len = isqrt(len2);
+                assert!(
+                    cross.unsigned_abs() <= len.max(1),
+                    "{from:?} {goal:?} {to:?} cross {cross}"
+                );
+                assert!(dx * sx + dy * sy > 0, "{from:?} {goal:?} {to:?}");
+            }
         }
     }
 

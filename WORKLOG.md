@@ -1,5 +1,77 @@
 # WORKLOG
 
+## M7 review fixes (2026-11-06)
+
+Scope. Independent review of `818a52e0fa764a0012072ba5f1baf19157038833` reproduced three blockers. Same pull request 15. No merge. M8 was not started. M9.3 was not run. The 56 acceptance rows stay `not-run`. The seven open scoring rows stay open. This note does not say that no defect remains.
+
+### Heading overflow
+
+`headed_step` squared an `i64` heading. Debug panicked. Release wrapped and could step off axis, report blocked on a clear line, or propose more than 200 mm. `plan_approach` is reachable from the harness with any bag coordinate, so the sensor range did not hide it.
+
+Red. `cargo test -p navigation --lib approach_toward_a_far_bag --offline` panicked: `attempt to multiply with overflow` at the heading square.
+
+Green. The step is scaled with `i128` and a ceiling length, so the Euclidean length is at most the requested cap. A candidate longer than 200 mm is dropped. The harness refuses such a proposal without moving the base or the clock. Bags at x = 2968220, 2968221, 3000000, and 5000000 step on +x by at most 200 mm in debug and release. The extreme follow pose stays capped. Two hundred random goals stay within 1 mm of the independent line. `try_slide` can still take a long clear segment when called directly. That is unchanged.
+
+### Cancel admission
+
+Cancel returned before the shared-clock and deadline checks. A following cancel at 300001 was `Ok(Cancelled)` with the world clock left at 0. A split of world 400000 ms and trip 10 also cancelled.
+
+Every drive, including cancel, now admits the stamp first. Split, regression, and the same stamp change nothing and do not set the flag. A stamp after 300000 ms stores `TimeUp` and does not cancel. An in-budget cancel consumes that stamp, sets the follower cancelled, leaves the phase, and does not move the base. A later follow while cancelled stays cancelled and still consumes its stamp.
+
+### Arrival
+
+A take-bag cue inside 1200 mm arrived at the start, and again with a disk between the robot and the operator. Handoff then set `main_complete` while the car stayed hidden. That treated the cue as proof of arrival.
+
+The cue remains an HRI signal, not a car coordinate. Arrival also requires three observed facts: the base has left the pose where following started, the followed person has left the pose where they were first seen, and the segment to that person is clear of observed disks. `ARRIVE_MM` 1200 stays an assumption. A cue at the start does not arrive and handoff does not complete. A cue across a disk after a real step does not arrive. After the operator leads the base off those start poses and the segment is clear, the cue can release and a later handoff can finish the trip state. The navigator still does not read the car. Lost, refind, the wrong person, a far person, and a missing person stay as they were.
+
+### Checks
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 34, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 27, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+Still in force from the review, and not closed here. `segment_within` matched an independent reference on the structured set and on random samples. A tangent at exact radius is outside the open disk. Northern seeded routes can follow without a swept hit. A hard-to-see disk whose center is outside 800 mm is not in the sight, so the follower can stick instead of walking around it. The pick path can still pair world time 400000 ms with trip stamp 10. The operator is not a collision disk. `task_3_1` still does not depend on `sim_runtime`. None of this is a claim that no defect remains.
+
 ## M7 observed follow (2026-11-06)
 
 Scope. Issue 14. One writer. Branch `cursor/m7-follow-nav-9321` from `8422451965925b43976a245df6b77f98714c6498`. The robot follows the observed operator through local disks. The base moves. A held bag moves with it. The car coordinate is not an input. No scorer, optional return, queue, hardware, deploy, registration, contact, or spending. M8 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 and public 2024.2 are not the baseline. The raw PDF was not committed.

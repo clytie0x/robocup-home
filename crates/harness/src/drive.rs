@@ -1,8 +1,12 @@
 //! One coordinated base step.
 //!
-//! The trip stamp is the timeout authority. The world clock is moved to that
-//! same stamp or not at all. A blocked step consumes the stamp and does not
-//! move the base. `Ok` from `Trip::apply` is not success: a deadline is `TimeUp`.
+//! The trip stamp is the timeout authority for every drive, including cancel.
+//! The world clock is moved to that same stamp or not at all. A split clock, a
+//! backward stamp, and the same stamp change nothing. A stamp after the budget
+//! stores `TimeUp` and does not apply the command. An in-budget cancel consumes
+//! the stamp, marks the follower cancelled, and does not move the base.
+//! A blocked step consumes the stamp and does not move the base. `Ok` from
+//! `Trip::apply` is not success: a deadline is `TimeUp`.
 
 use domain::{Custody, Id, Point, Step, World};
 use manipulation::assume::REACH_MM;
@@ -61,13 +65,6 @@ pub fn step_drive(
     drive: Drive,
     cue: Cue,
 ) -> Result<NavEnd, FeedError> {
-    if matches!(drive, Drive::Cancel) {
-        if !matches!(trip.phase(), Phase::Following | Phase::Lost) {
-            return Err(FeedError::Trip(Reject::OutOfOrder));
-        }
-        *follower = follower.cancel();
-        return Ok(NavEnd::Cancelled);
-    }
     let now = shared(world, trip)?;
     if matches!(trip.phase(), Phase::Complete | Phase::TimeUp) {
         return Err(FeedError::Terminal);
@@ -84,6 +81,24 @@ pub fn step_drive(
         .ok_or(FeedError::Trip(Reject::Regressed))?;
     if elapsed > LIMIT_MS {
         return timeout(world, trip, at_ms);
+    }
+    if matches!(drive, Drive::Cancel) {
+        if !matches!(trip.phase(), Phase::Following | Phase::Lost) {
+            return Err(FeedError::Trip(Reject::OutOfOrder));
+        }
+        let cancelled = follower.cancel();
+        return commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            cancelled,
+            Event::Tick,
+            |next, outcome| {
+                (matches!(next.phase(), Phase::Following | Phase::Lost) && outcome.effect.is_none())
+                    .then_some(NavEnd::Cancelled)
+            },
+        );
     }
     match drive {
         Drive::Cancel => unreachable!(),
@@ -144,10 +159,18 @@ fn follow(
         return while_lost(world, trip, follower, at_ms, person, planned, intent);
     }
     match intent {
-        Intent::Cancelled => {
-            *follower = planned;
-            Ok(NavEnd::Cancelled)
-        }
+        Intent::Cancelled => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| {
+                (matches!(next.phase(), Phase::Following | Phase::Lost) && outcome.effect.is_none())
+                    .then_some(NavEnd::Cancelled)
+            },
+        ),
         Intent::Lost => commit_event(
             world,
             trip,
@@ -267,10 +290,18 @@ fn while_lost(
                     .then_some(NavEnd::WrongPerson)
             },
         ),
-        Intent::Cancelled => {
-            *follower = planned;
-            Ok(NavEnd::Cancelled)
-        }
+        Intent::Cancelled => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| {
+                (matches!(next.phase(), Phase::Following | Phase::Lost) && outcome.effect.is_none())
+                    .then_some(NavEnd::Cancelled)
+            },
+        ),
         _ => commit_event(
             world,
             trip,
@@ -374,6 +405,10 @@ fn move_or_block(
     planned: Follower,
     to: Point,
 ) -> Result<NavEnd, FeedError> {
+    let from = world.observe().robot.pose.point();
+    if step_too_long(from, to) {
+        return Err(FeedError::NotACommand);
+    }
     let mut probe = world.clone();
     match probe.try_slide(to, ROBOT_RADIUS_MM) {
         Err(SlideError::Blocked) => {
@@ -475,6 +510,13 @@ fn commit_event(
             Ok(end)
         }
     }
+}
+
+fn step_too_long(from: Point, to: Point) -> bool {
+    let dx = i128::from(to.x().get()) - i128::from(from.x().get());
+    let dy = i128::from(to.y().get()) - i128::from(from.y().get());
+    let cap = i128::from(navigation::assume::STEP_MM);
+    dx * dx + dy * dy > cap * cap
 }
 
 fn stage(
@@ -804,7 +846,10 @@ mod tests {
         .unwrap();
         assert_eq!(end, NavEnd::Cancelled);
         assert_eq!(pose(&world), point(0, 0));
-        assert_eq!(world.now_ms(), 0);
+        assert_eq!(world.now_ms(), 10);
+        assert_eq!(trip.now_ms(), Some(10));
+        assert_eq!(trip.phase(), Phase::Following);
+        assert!(follower.cancelled());
         assert!(!trip.arrived());
         let end = step_drive(
             &mut world,
@@ -819,6 +864,8 @@ mod tests {
         assert!(!trip.arrived());
         assert_eq!(trip.carried(), Some(bag));
         assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(world.now_ms(), 20);
+        assert_eq!(trip.phase(), Phase::Following);
 
         let (mut world, mut trip, operator, _) = ready();
         let mut follower = Follower::follow(operator);
@@ -839,6 +886,50 @@ mod tests {
         assert_eq!(pose(&world), point(0, 0));
         assert_eq!(world.now_ms(), 30);
         assert_ne!(pose(&world), world.truth().car());
+
+        let (mut world, mut trip, operator, _) = ready();
+        let mut follower = Follower::follow(operator);
+        let before = (pose(&world), world.now_ms(), trip, follower.cancelled());
+        assert_eq!(
+            step_drive(
+                &mut world,
+                &mut trip,
+                &mut follower,
+                LIMIT_MS + 1,
+                Drive::Cancel,
+                Cue::None,
+            ),
+            Err(FeedError::TimeUp)
+        );
+        assert_eq!(trip.phase(), Phase::TimeUp);
+        assert_eq!(world.now_ms(), LIMIT_MS + 1);
+        assert_eq!(pose(&world), before.0);
+        assert!(!follower.cancelled());
+        assert!(!trip.arrived());
+
+        let mut world = SimWorld::from_seed(1);
+        world.advance(Step::from_ms(400_000)).unwrap();
+        let mut trip = Trip::new();
+        let operator = world.observe().operator.id;
+        trip.apply(10, Event::Begin).unwrap();
+        let mut follower = Follower::follow(operator);
+        let pose_before = pose(&world);
+        assert_eq!(
+            step_drive(
+                &mut world,
+                &mut trip,
+                &mut follower,
+                11,
+                Drive::Cancel,
+                Cue::None,
+            ),
+            Err(FeedError::Split)
+        );
+        assert!(!follower.cancelled());
+        assert_eq!(world.now_ms(), 400_000);
+        assert_eq!(trip.now_ms(), Some(10));
+        assert_eq!(trip.phase(), Phase::AwaitPoint);
+        assert_eq!(pose(&world), pose_before);
     }
 
     fn crowd_near() -> Obstacle {
@@ -889,7 +980,7 @@ mod tests {
         assert_eq!(trip.phase(), Phase::Following);
         assert!(!trip.arrived());
         assert_eq!(pose(&world), point(0, 0));
-        let arrived = step_drive(
+        let cued = step_drive(
             &mut world,
             &mut trip,
             &mut follower,
@@ -898,36 +989,167 @@ mod tests {
             Cue::TakeBag,
         )
         .unwrap();
-        let NavEnd::Arrived { at, release } = arrived else {
-            panic!("{arrived:?}");
-        };
-        assert_eq!(at, point(0, 0));
-        assert_eq!(release, Effect::Release { bag, to: operator });
-        assert_eq!(trip.phase(), Phase::Releasing);
-        assert!(trip.arrived());
+        assert_ne!(
+            cued,
+            NavEnd::Arrived {
+                at: point(0, 0),
+                release: Effect::Release { bag, to: operator },
+            }
+        );
+        assert!(!trip.arrived());
         assert!(!trip.main_complete());
+        assert_eq!(trip.phase(), Phase::Following);
         assert_eq!(trip.carried(), Some(bag));
-        assert_ne!(at, world.truth().car());
+        assert!(crate::execute_handoff(&mut world, &mut trip, 300, operator).is_err());
+        assert!(!trip.main_complete());
         assert_eq!(world.revealed_car(), None);
         assert_eq!(world.now_ms(), 300);
-        assert_eq!(trip.now_ms(), Some(300));
-        crate::execute_handoff(&mut world, &mut trip, 300, operator).unwrap();
+    }
+
+    #[test]
+    fn a_cue_at_the_start_or_across_a_disk_does_not_hand_off() {
+        let (mut world, mut trip, operator, bag) = ready();
+        let mut follower = Follower::follow(operator);
+        let end = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            Cue::TakeBag,
+        )
+        .unwrap();
+        assert_ne!(
+            end,
+            NavEnd::Arrived {
+                at: pose(&world),
+                release: Effect::Release { bag, to: operator },
+            }
+        );
+        assert!(!trip.arrived());
+        assert!(crate::execute_handoff(&mut world, &mut trip, 200, operator).is_err());
+        assert!(!trip.main_complete());
+        assert_eq!(world.revealed_car(), None);
+
+        let (mut world, mut trip, operator, _bag) = ready();
+        let mut follower = Follower::follow(operator);
+        step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            Cue::None,
+        )
+        .unwrap();
+        assert_ne!(pose(&world), point(0, 0));
+        world.place_operator(point(0, 1100));
+        world.set_obstacles(vec![Obstacle {
+            id: Id::new(5).unwrap(),
+            pose: Pose::new(point(0, 500)),
+            class: ObstacleClass::SmallGround,
+            clearance: Mm::new(400),
+            bodies: vec![domain::Disk {
+                id: Id::new(5).unwrap(),
+                center: point(0, 500),
+                radius: Mm::new(40),
+            }],
+        }]);
+        let end = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            400,
+            Drive::Follow { person: operator },
+            Cue::TakeBag,
+        )
+        .unwrap();
+        assert!(!matches!(end, NavEnd::Arrived { .. }));
+        assert!(!trip.arrived());
+        assert!(crate::execute_handoff(&mut world, &mut trip, 400, operator).is_err());
+        assert!(!trip.main_complete());
+    }
+
+    #[test]
+    fn a_followed_clear_journey_can_hand_off_without_reading_the_car() {
+        let (mut world, mut trip, operator, bag) = ready();
+        let mut follower = Follower::follow(operator);
+        let car = world.truth().car();
+        step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            Cue::None,
+        )
+        .unwrap();
+        assert_ne!(pose(&world), point(0, 0));
+        world.place_operator(point(400, 1000));
+        let end = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            400,
+            Drive::Follow { person: operator },
+            Cue::TakeBag,
+        )
+        .unwrap();
+        let NavEnd::Arrived { at, release } = end else {
+            panic!("{end:?}");
+        };
+        assert_eq!(release, Effect::Release { bag, to: operator });
+        assert_eq!(at, pose(&world));
+        assert_ne!(at, car);
+        assert_ne!(at, point(0, 0));
+        assert!(trip.arrived());
+        assert!(!trip.main_complete());
+        assert_eq!(world.revealed_car(), None);
+        crate::execute_handoff(&mut world, &mut trip, 400, operator).unwrap();
         assert!(trip.main_complete());
-        let frozen = pose(&world);
-        assert_eq!(
-            step_drive(
+        assert_eq!(world.revealed_car(), None);
+        assert_ne!(pose(&world), car);
+    }
+
+    #[test]
+    fn a_far_bag_approach_does_not_panic_or_overshoot() {
+        for x in [2_968_220, 2_968_221, 3_000_000, 5_000_000] {
+            let mut world = SimWorld::from_seed(1);
+            let operator = world.observe().operator.id;
+            let bag = world.observe().bags[0].id;
+            let mut trip = Trip::new();
+            trip.apply(0, Event::Begin).unwrap();
+            trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+            trip.apply(0, Event::Named { bag }).unwrap();
+            world.place_free(bag, point(x, 0)).unwrap();
+            let mut follower = Follower::follow(operator);
+            let end = step_drive(
                 &mut world,
                 &mut trip,
                 &mut follower,
-                400,
-                Drive::Follow { person: operator },
-                Cue::TakeBag,
-            ),
-            Err(FeedError::Terminal)
-        );
-        assert_eq!(pose(&world), frozen);
-        assert_eq!(world.now_ms(), 300);
-        assert!(trip.main_complete());
+                100,
+                Drive::Approach { bag },
+                Cue::None,
+            )
+            .unwrap();
+            let NavEnd::Moved { to } = end else {
+                panic!("{x} {end:?}");
+            };
+            assert!(to.x().get() > 0, "{x} {to:?}");
+            assert_eq!(to.y().get(), 0, "{x} {to:?}");
+            assert!(
+                i64::from(to.x().get()) * i64::from(to.x().get()) <= 200 * 200,
+                "{x}"
+            );
+            assert_eq!(world.now_ms(), 100);
+            assert_eq!(trip.now_ms(), Some(100));
+            assert_eq!(trip.phase(), Phase::Picking);
+            assert!(trip.carried().is_none());
+            let placed = world.observe();
+            let free = placed.bags.iter().find(|item| item.id == bag).unwrap();
+            assert_eq!(free.pose.point(), point(x, 0));
+            assert_eq!(free.custody, domain::Custody::Free);
+        }
     }
 
     #[test]
