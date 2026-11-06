@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/domain",
+    "crates/harness",
     "crates/hri",
     "crates/manipulation",
     "crates/navigation",
@@ -22,3 +23,5 @@ hri = { path = "crates/hri" }
 manipulation = { path = "crates/manipulation" }
 navigation = { path = "crates/navigation" }
 perception = { path = "crates/perception" }
+sim_runtime = { path = "crates/sim_runtime" }
+task_3_1 = { path = "crates/task_3_1" }

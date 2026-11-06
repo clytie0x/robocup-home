@@ -1,7 +1,9 @@
 //! Seeded world and simulation clock.
 //!
 //! The clock moves only when a caller advances it. Lengths in [`assume`] are simulation assumptions unless the comment names a printed rule.
+//! [`AimSample`] is the operator-to-bag offset for one fixture bag. It has no bag id.
 
+mod aim;
 mod clock;
 mod rng;
 mod world;
@@ -35,5 +37,6 @@ pub mod assume {
     pub const TICK_UNIT: &str = "ms";
 }
 
+pub use aim::{AimError, AimSample, direction_mm};
 pub use clock::Clock;
 pub use world::{SimArm, SimBase, SimWorld, Truth};

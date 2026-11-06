@@ -1,0 +1,13 @@
+[package]
+name = "harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+domain.workspace = true
+hri.workspace = true
+perception.workspace = true
+sim_runtime.workspace = true
+task_3_1.workspace = true

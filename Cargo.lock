@@ -7,6 +7,17 @@ name = "domain"
 version = "0.1.0"
 
 [[package]]
+name = "harness"
+version = "0.1.0"
+dependencies = [
+ "domain",
+ "hri",
+ "perception",
+ "sim_runtime",
+ "task_3_1",
+]
+
+[[package]]
 name = "hri"
 version = "0.1.0"
 dependencies = [

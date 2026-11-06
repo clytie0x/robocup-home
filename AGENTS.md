@@ -2,7 +2,7 @@
 
 Long-term conventions for Teerapat Vatpitak and the team, for people and agents.
 This file is the only conventions document, so there is no `docs/conventions.md`.
-The repository has a Rust workspace. `sim_runtime` has a deterministic clock and a seeded world model. `task_3_1` is a pure task state machine. There is no perception pipeline, grasp model, path planner, scorer, or hardware procedure. The model is not a claim of physical accuracy.
+The repository has a Rust workspace. `sim_runtime` has a deterministic clock, a seeded world model, and a pointing sample for one fixture bag. `perception` selects a visible bag from that sample. `task_3_1` is a pure task state machine. `harness` posts the selection and confirms the report. There is no grasp model, path planner, scorer, or hardware procedure. The model is not a claim of physical accuracy.
 
 On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That instruction replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction. A later API read found this repository public. The refused attempt and that read are in [WORKLOG.md](WORKLOG.md).
 
@@ -34,7 +34,7 @@ A simulation result is not a hardware result.
 - Rust is the primary language.
 - Do not change stack, language, or style unless Teerapat gives an explicit instruction. That change needs the instruction, a rationale, an Issue, and an update to this file.
 - Modules stay separate: perception, navigation, manipulation, HRI, and task.
-- Workspace members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, and `sim_runtime`. `domain` is the one shared contract. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. No crate depends on `sim_runtime`.
+- Workspace members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, `sim_runtime`, and `harness`. `domain` is the one shared contract. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. `harness` is the integration crate and may depend on `sim_runtime`. `task_3_1` does not depend on `sim_runtime`. No other crate depends on `sim_runtime`.
 - Adapters keep the simulator out of task logic. Logic must not call a simulator directly.
 - OpenCV and large pretrained models may be direct dependencies.
 - Rewrite any other dependency that is old or unmaintained as Rust code this repository owns.
