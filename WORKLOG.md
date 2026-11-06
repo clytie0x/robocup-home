@@ -1,5 +1,90 @@
 # WORKLOG
 
+## M7 observed follow (2026-11-06)
+
+Scope. Issue 14. One writer. Branch `cursor/m7-follow-nav-9321` from `8422451965925b43976a245df6b77f98714c6498`. The robot follows the observed operator through local disks. The base moves. A held bag moves with it. The car coordinate is not an input. No scorer, optional return, queue, hardware, deploy, registration, contact, or spending. M8 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 and public 2024.2 are not the baseline. The raw PDF was not committed.
+
+### M6 review
+
+Reviewed head `1009b66909483cbabe8b566065d3e074ea73ce47` had no verified production blocker. That check was 112 library tests and 5 doctests, debug and release, with a reach probe of 20000 points, 20000 trips of 40 steps, and world custody plus timeout and fault atomicity. CI run `42211202059` succeeded: https://github.com/clytie0x/robocup-home/actions/runs/42211202059. The wording commit `82740a2d0b4274c4c49a6194d09cf33158ea2f32` is 113 library tests and 5 doctests. CI run `42213551511` succeeded on that head: https://github.com/clytie0x/robocup-home/actions/runs/42213551511. Those commits are in the merge `8422451965925b43976a245df6b77f98714c6498`. This review does not say that no defect remains.
+
+### Sources
+
+The PDF is the rule. The other links are prior art for a local follower. They are not dependencies, and they are not a substitute rulebook.
+
+- Professor PDF section 3.1, printed pages 15–17, physical pages 20–22. Cover 2024 Rev-1, revision 2024-07-09. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. No public URL is assigned to that file.
+- Local sensing with unknown obstacles: https://doi.org/10.1109/tac.1986.1104175
+- Bug algorithms use local knowledge rather than a preloaded map: https://www.cs.columbia.edu/~allen/F19/NOTES/Chap2-Bug.pdf
+- A standoff behind a moving person, as a pattern only: https://docs.nav2.org/jazzy/tutorials/general_tutorials/navigation2_dynamic_point_following/navigation2_dynamic_point_following/
+
+### Decisions
+
+`navigation` plans one step from people and disks in sensor range. The straight step is at most 200 mm. If that step hits a disk, the next candidate is a tangent, and the side stays until the straight step is clear. Sixteen headings cover the case where the tangent is blocked. The plan is not a route and not a teleport. `look` drops a hard-to-see disk beyond 800 mm and keeps other disks out to 2500 mm. Both ranges are assumptions.
+
+`sim_runtime` stores one disk for the small object, the hard-to-see object, and the barrier area. The crowd is 3 or 4 person disks, from `seed % 2`, spaced 600 mm apart. `try_slide` rejects a segment that meets a grown disk and otherwise moves the base. A held bag moves with the base. A free bag stays. Operator custody moves only when the fixture places the operator. That placement is not given to the planner. `revealed_car` stays empty.
+
+`step_drive` refuses a split clock and a backward stamp without writing either side. The same stamp does not move. Stamp 300000 can move. Stamp 300001 stores `TimeUp` and does not move. A blocked step advances both clocks and leaves the pose. Eight blocked steps report stuck. Cancel, loss, a wrong person, and a finished trip do not arrive. Re-finding the same id returns to `Following` and does not arrive on that step. Arrival is `Cue::TakeBag` while that person is inside 1200 mm. The trip then emits `Release`. The handoff is a later call. `REACH_MM` stays 2500. A bag at `(0, 3000)` with the operator at `(0, 1000)` is approached by the base and then picked.
+
+The pick path can still pair a world time of 400000 ms with a trip stamp of 10. The navigation path cannot.
+
+### Tests
+
+Red, before the behavior. `segment_within` returned false for every ordinary radius. `cargo test -p domain --lib segment_cannot_tunnel --offline` failed: `assertion failed: segment_within(from, to, center, 1)` for the segment from `(-1000, 0)` to `(1000, 0)` through a disk at the origin. `plan_follow` returned `Arrived` for every sight. `cargo test -p navigation --lib a_follow_plan_does_not_arrive_without_the_cue --offline` failed: `left: Arrived` `right: Arrived`.
+
+Green on this tree. Debug and release match. They do not close an acceptance row. Unit mapping: [docs/tasks/m7-unit-coverage.md](docs/tasks/m7-unit-coverage.md).
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 31, hri 2, manipulation 8, navigation 9, perception 20, sim_runtime 27, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+Limits. The radii, the 200 mm step, the sensor ranges, and the 1200 mm cue radius are not printed. The hard-to-see disk is nearer in range, not dimmer. The crowd is disks, not a social model. Arrival is the cue plus proximity, so this does not score the 300 point follow line and does not decide `CML-OPEN-FOLLOW`. The pick path still does not share the navigation clock. No claim is made that every defect has been found.
+
 ## M6 review wording (2026-11-06)
 
 Scope. Pull request 13, reviewed head `1009b66909483cbabe8b566065d3e074ea73ce47`. One factual sentence. No reach change, no clock rewrite, no algorithm change. M7 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
