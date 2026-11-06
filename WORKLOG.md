@@ -1,5 +1,55 @@
 # WORKLOG
 
+## R2 review fix, live base as the motion origin (2026-11-07)
+
+Reviewer `bc-0faa` on `e0b7e9c` closed the three earlier blockers and found one new one. A delayed sample was still accepted, then the step was planned from the captured base. At seed 1, delay 200 ms, clock 1600, the captured base was `(0, 200)`, the live base was `(-102, 171)`, and the planned target was `(-89, 378)`. The live distance squared was 43018, above `200² = 40000`, so the episode stopped with `NotACommand`. The same people and empty body list planned from the live base give `(-169, 359)`, distance squared 39833. Delay 1000 ms stopped at clock 6400: captured base `(153, 358)`, live base `(244, 289)`, target `(294, 498)`, distance squared 46181. From the live base the step is `(367, 446)`, distance squared 39778. One missed delivery stopped at the same 1600 ms step.
+
+The motion origin is now the current base. People, bodies, bags, the pointing ray, and the cue stay on the posted sample. The controller does not read a fresh exteroceptive list or the car for that step. A step longer than 200 mm asks for a fresh sample, advances the clock, and does not keep the sample.
+
+Red. `cargo test -p harness --lib a_delayed_sample_steps_from_the_current_base --offline` exited 101: `left Err(NotACommand) right Ok(Moved { to: (-169, 359) })`. The episode profiles stopped with fail `command`.
+
+Green. That step moves to `(-169, 359)` and the 1000 ms geometry moves to `(367, 446)`. Seed 1 after the change, measured, not required in advance: delay 200 ms completes, phase `complete`, clock 15200, custody `operator`, robot `(7997, -488)`, operator `(8000, -1500)`, 77 trace lines. Delay 1000 ms completes at clock 21000, robot `(7999, -628)`, 106 lines. One missed delivery completes at clock 15200, robot `(7997, -488)`, 77 lines. Shift `+8, -8` mm completes at clock 14800, robot `(8005, -495)`, operator still `(8000, -1500)`, 75 lines. The zero profile still matches the frozen 75-line trace. There was no remaining task-level failure on these four runs.
+
+This run's library count is 185: domain 8, harness 63, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757.
+
+## R2 review fixes, decision age and episode delivery (2026-11-07)
+
+Reviewer `bc-0faa` on `fc784b9` found three blockers. The library count 179 and CI were green and did not catch them.
+
+Age is `decision_ms - captured_ms`. Delivery latency is logged and is not the stale bound. The same posted sample stays actionable through a decision age of 1000 ms and is stale at 1001 ms. A second presentation of a capture already in history is a duplicate: `NeedFresh`, history unchanged. A newer capture recovers. `step_drive` and `accompany` write history only after the command returns `Ok`. The episode keeps one mailbox. The shutter is the only control-path `sense`. It stores the pointing ray with that capture. `shift_view` and the delay happen before selection, cue, follow, and approach. Delay 0 and shift 0 stay on the frozen 75-line trace. A missing or not-yet-due sample advances the sim clock one step and does not pause the 300000 ms budget.
+
+Red. With the delivery-latency age restored, `cargo test -p navigation --lib the_same_posted_sample_goes_stale_at_the_decision_clock --offline` exited 101: decision 1000 still reported age `Some(0)`. With history written before command validation, `cargo test -p harness --lib a_rejected_command_does_not_keep_the_sample_history --offline` exited 101: `left Some(400) right None`.
+
+Green. The same posted capture, delivery still 0, is `NeedFresh` at decisions 200 through 1400 and at 100000. The base stays on the first step. A newer capture moves it. A step that is too long for the current base, a wrong person, a follow during `Picking`, and accompany of the wrong person after `Complete` leave history, pose, and clock unchanged. The zero profile matches `r1_main_trace.txt`.
+
+Episode outcomes from `a_delayed_episode_uses_the_mailbox_and_can_miss_once`, seed 1, measured after the mailbox was wired. These are the world results, not a required pass. Delay 200 ms: `main_passed` false, phase `following`, clock 1600, custody `gripper`, fail `command`. Delay 1000 ms: `main_passed` false, phase `following`, clock 6400, custody `gripper`, fail `command`. One missed delivery: `main_passed` false, phase `following`, clock 1600, custody `gripper`, fail `command`. The fail is `NotACommand`: a delayed view still inside the 1000 ms decision age planned a step the current base could not take. Shift 8 mm and -8 mm per axis: `main_passed` true, phase `complete`, clock 14800, custody `operator`. The sensed operator differed from truth by that shift. Truth was not shifted.
+
+This run's library count is 184: domain 8, harness 62, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent, so the plain checker prints `pdf=False` and page text was not read. With `PROFESSOR_PDF` pointed at the attached file, the checker prints `pdf=True`: hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`, size 1129757.
+
+## R1 red-log clarification (2026-11-07)
+
+Independent review re-ran the two R1 halo tests on `3c6cab12`. The harness test failed at the bag-membership assertion. The writer log that shows `unwrap_err()` on `Ok(Moved { to: (0, 200) })` is from a build where that membership assertion was not yet in front of the approach call. Both failures are the same leak. They are not the same assertion line.
+
+## R2 sensor delivery (2026-11-07)
+
+R1 is merged at `8228d76c8d770216059941b5ce3c92ef5effb866`. This branch implements R2 only.
+
+### Design
+
+The controller no longer calls `sense` inside `step_drive`. It receives a `Posted` value. `accept` checks that value against `SampleHistory` and the sim clock at the decision. `Missing` stays missing. A capture older than the last accepted capture, or a capture or delivery later than that clock, is rejected and does not change pose, custody, or history. Age above 1000 ms is stale: the base stays and the fresh world is not read. Ages 0, 200, and 1000 ms are the approved delay profiles and may still move the base from the captured pose. The episode budget uses the trip stamp, not `captured_ms`.
+
+`shift_view` adds at most 8 mm to sensed people, bodies, and bags. The zero shift is identity. The shift does not take the world, so truth and `world.pick` stay on the real pose. 8 mm is an assumption named `synthetic-unmeasured-8mm`. It is not a measurement.
+
+Rejected shapes. Replaying the last pose whenever a sample is missing would chase that pose without a bound. Reading `observe` inside `follow` on a gap would put fresh truth back on the controller path. A seeded random offset would look like a calibration.
+
+The R1 main trace for seed 1 was frozen before these edits: 75 samples, clock 14800, 67 follow moves, longest step 200. The zero-delay path matches that trace. No pose field was dropped. Capture and delivery stamps are a separate log.
+
+Red. `cargo test -p navigation --lib a_reversed_sample_keeps_history_and_a_missing_sample_is_not_truth --offline` exited 101 because `Posted` and `accept` were not defined. `cargo test -p harness --lib a_held_sample_is_followed_after_the_operator_moves --offline` exited 101 with the base at `(200, 0)` after the operator moved to `(1500, 0)`. The held sample still had the operator at `(0, 1000)`.
+
+Green. That follow step stays on x = 0 and moves in y. A 200 ms sample and a 1000 ms sample do the same, with ages 200 and 1000. Approach toward a held bag at `(0, 3000)` still moves in y after the world bag is placed at `(4000, 0)`. A missing sample and a 1001 ms sample return `NeedFresh` and leave the base at the origin. A reversed capture leaves pose, custody, history, and then advances the clock to 500. A missing sample at 300000 ms stays out of `TimeUp`; the next stamp at 300001 ms is `TimeUp` with the base still at the origin. `shift_view` by 8 mm does not change `observe`, and `world.pick` still uses the true pose. `the_zero_profile_matches_the_r1_main_trace` passes. The R1 halo and fixed-car tests pass.
+
+This run's library count is 179: domain 8, harness 58, hri 2, manipulation 8, navigation 18, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. `pdfinfo` and `pdftotext` are absent. The attached PDF hash and size still match.
+
 ## R1 review fix, unseen-operator bag halo (2026-11-07)
 
 Reviewer `bc-0faa` reproduced a blocker on `3c6cab12`. Robot `(0, 0)`, operator `(0, 20000)`, visible free bag `(0, 19000)`, other bag `(50000, 50000)`, gesture offered. People were empty and the cue was `None`, but the view still contained bag 3 at `(0, 19000)`. `point_from_sample` could select it, and `step_drive` Approach moved the base to `(0, 200)` at clock 100 in `Picking`. Bag `(0, 18000)` was inside that halo and `(0, 17999)` was outside. Moving the unseen operator to `(20000, 0)` dropped the bag. The 2 m disk was tracking an unseen true person.

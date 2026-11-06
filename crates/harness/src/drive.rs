@@ -7,11 +7,16 @@
 //! the stamp, marks the follower cancelled, and does not move the base.
 //! A blocked step consumes the stamp and does not move the base. `Ok` from
 //! `Trip::apply` is not success: a deadline is `TimeUp`.
+//!
+//! The motion origin is the current base. People, bodies, bags, and the cue
+//! stay on the posted sample. A step longer than the base can take asks for a
+//! fresh sample, advances the clock, and does not keep that sample.
 
 use domain::{Custody, Id, Point, Step, World};
 use manipulation::assume::REACH_MM;
 use navigation::{
-    Cue, Follower, Intent, assume::ROBOT_RADIUS_MM, cue_from, plan_approach, plan_follow, sense,
+    Cue, Follower, Intent, Posted, SampleHistory, Taken, accept, assume::ROBOT_RADIUS_MM, cue_from,
+    plan_approach, plan_follow,
 };
 use sim_runtime::{SimWorld, SlideError};
 use task_3_1::{Effect, Event, LIMIT_MS, Outcome, Phase, Reject, Trip};
@@ -40,14 +45,21 @@ pub enum Drive {
 /// A committed navigation step. Arrival is a trip release command, not a handoff.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavEnd {
-    Moved { to: Point },
+    Moved {
+        to: Point,
+    },
     Waiting,
+    /// No usable sample. The base stays. This is not a fresh world read.
+    NeedFresh,
     Blocked,
     Stuck,
     Lost,
     WrongPerson,
     Refound,
-    Arrived { at: Point, release: Effect },
+    Arrived {
+        at: Point,
+        release: Effect,
+    },
     Cancelled,
     InReach,
     SameStamp,
@@ -74,14 +86,15 @@ pub fn step_drive(
     follower: &mut Follower,
     at_ms: u64,
     drive: Drive,
-    cue: Cue,
+    posted: &Posted,
+    history: &mut SampleHistory,
 ) -> Result<NavEnd, FeedError> {
     let now = shared(world, trip)?;
     if matches!(trip.phase(), Phase::Complete | Phase::TimeUp) {
         if let Drive::Accompany { person } = drive
             && trip.phase() == Phase::Complete
         {
-            return accompany(world, trip, follower, at_ms, person);
+            return accompany(world, trip, follower, at_ms, person, posted, history);
         }
         return Err(FeedError::Terminal);
     }
@@ -116,12 +129,59 @@ pub fn step_drive(
             },
         );
     }
-    match drive {
+    let (next_history, taken, _) = accept(*history, posted, now);
+    let view = match taken {
+        Taken::Rejected => {
+            return hold_still(world, trip, follower, at_ms, NavEnd::Waiting);
+        }
+        Taken::NeedFresh => {
+            return hold_still(world, trip, follower, at_ms, NavEnd::NeedFresh);
+        }
+        Taken::Act(view) => view,
+    };
+    let result = match drive {
         Drive::Cancel => unreachable!(),
-        Drive::Follow { person } => follow(world, trip, follower, at_ms, person, cue),
-        Drive::Approach { bag } => approach(world, trip, follower, at_ms, bag),
+        Drive::Follow { person } => follow(world, trip, follower, at_ms, person, &view),
+        Drive::Approach { bag } => approach(world, trip, follower, at_ms, bag, &view),
         Drive::Accompany { .. } => Err(FeedError::Trip(Reject::OutOfOrder)),
+    };
+    if keeps_sample(&result) {
+        *history = next_history;
     }
+    result
+}
+
+fn keeps_sample(result: &Result<NavEnd, FeedError>) -> bool {
+    match result {
+        Ok(NavEnd::NeedFresh) => false,
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+fn hold_still(
+    world: &mut SimWorld,
+    trip: &mut Trip,
+    follower: &mut Follower,
+    at_ms: u64,
+    end: NavEnd,
+) -> Result<NavEnd, FeedError> {
+    commit_event(
+        world,
+        trip,
+        follower,
+        at_ms,
+        *follower,
+        Event::Tick,
+        |next, outcome| {
+            outcome.effect.is_none().then_some(end).filter(|_| {
+                matches!(
+                    next.phase(),
+                    Phase::Following | Phase::Lost | Phase::Picking | Phase::Complete
+                )
+            })
+        },
+    )
 }
 
 fn shared(world: &SimWorld, trip: &Trip) -> Result<u64, FeedError> {
@@ -151,7 +211,7 @@ fn follow(
     follower: &mut Follower,
     at_ms: u64,
     person: Id,
-    cue: Cue,
+    view: &navigation::SensorView,
 ) -> Result<NavEnd, FeedError> {
     if !matches!(trip.phase(), Phase::Following | Phase::Lost) {
         return Err(FeedError::Trip(Reject::OutOfOrder));
@@ -159,18 +219,12 @@ fn follow(
     if follower.person() != person {
         return Err(FeedError::Trip(Reject::WrongId));
     }
-    let observed = world.observe();
-    let planner = world.obstacles_for_planner();
-    let view = sense(
-        observed.robot.pose.point(),
-        observed.operator,
-        &observed.bags,
-        &planner,
-        cue == Cue::TakeBag,
-        observed.now_ms,
-    );
-    let sight = view.sight();
-    let cue = cue_from(&view);
+    let sight = navigation::Sight {
+        robot: world.observe().robot.pose.point(),
+        people: &view.people,
+        bodies: &view.bodies,
+    };
+    let cue = cue_from(view);
     let before = *follower;
     let (planned, intent) = plan_follow(&before, &sight, cue);
     if trip.phase() == Phase::Lost {
@@ -341,20 +395,11 @@ fn approach(
     follower: &mut Follower,
     at_ms: u64,
     bag: Id,
+    view: &navigation::SensorView,
 ) -> Result<NavEnd, FeedError> {
     if trip.phase() != Phase::Picking {
         return Err(FeedError::Trip(Reject::OutOfOrder));
     }
-    let observed = world.observe();
-    let planner = world.obstacles_for_planner();
-    let view = sense(
-        observed.robot.pose.point(),
-        observed.operator,
-        &observed.bags,
-        &planner,
-        false,
-        observed.now_ms,
-    );
     let Some(target) = view.bags.iter().find(|item| item.id == bag) else {
         return Err(FeedError::Arm(manipulation::GripError::Missing));
     };
@@ -362,7 +407,8 @@ fn approach(
         return Err(FeedError::Arm(manipulation::GripError::NotFree));
     }
     let before = *follower;
-    match plan_approach(view.robot, target.pose.point(), &view.bodies, REACH_MM) {
+    let here = world.observe().robot.pose.point();
+    match plan_approach(here, target.pose.point(), &view.bodies, REACH_MM) {
         Intent::InReach => commit_event(
             world,
             trip,
@@ -421,7 +467,7 @@ fn move_or_block(
 ) -> Result<NavEnd, FeedError> {
     let from = world.observe().robot.pose.point();
     if step_too_long(from, to) {
-        return Err(FeedError::NotACommand);
+        return hold_still(world, trip, follower, at_ms, NavEnd::NeedFresh);
     }
     let mut probe = world.clone();
     match probe.try_slide(to, ROBOT_RADIUS_MM) {
@@ -536,6 +582,8 @@ fn accompany(
     follower: &mut Follower,
     at_ms: u64,
     person: Id,
+    posted: &Posted,
+    history: &mut SampleHistory,
 ) -> Result<NavEnd, FeedError> {
     let now = world.now_ms();
     if at_ms < now {
@@ -554,23 +602,23 @@ fn accompany(
     if follower.person() != person {
         return Err(FeedError::Trip(Reject::WrongId));
     }
-    let observed = world.observe();
-    let planner = world.obstacles_for_planner();
-    let view = sense(
-        observed.robot.pose.point(),
-        observed.operator,
-        &observed.bags,
-        &planner,
-        false,
-        observed.now_ms,
-    );
-    let sight = view.sight();
+    let (next_history, taken, _) = accept(*history, posted, now);
+    let view = match taken {
+        Taken::Act(view) => view,
+        Taken::Rejected => return hold_still(world, trip, follower, at_ms, NavEnd::Waiting),
+        Taken::NeedFresh => return hold_still(world, trip, follower, at_ms, NavEnd::NeedFresh),
+    };
+    let sight = navigation::Sight {
+        robot: world.observe().robot.pose.point(),
+        people: &view.people,
+        bodies: &view.bodies,
+    };
     let before = *follower;
     let (planned, intent) = plan_follow(&before, &sight, Cue::None);
     let done = |next: &Trip, outcome: Outcome, end: NavEnd| {
         (next.phase() == Phase::Complete && outcome.effect.is_none()).then_some(end)
     };
-    match intent {
+    let result = match intent {
         Intent::Move(to) => move_or_block(world, trip, follower, at_ms, before, planned, to),
         Intent::Stay | Intent::Arrived | Intent::InReach => commit_event(
             world,
@@ -626,7 +674,11 @@ fn accompany(
             Event::Tick,
             |next, outcome| done(next, outcome, NavEnd::Cancelled),
         ),
+    };
+    if keeps_sample(&result) {
+        *history = next_history;
     }
+    result
 }
 
 fn step_too_long(from: Point, to: Point) -> bool {
@@ -683,10 +735,39 @@ fn stage(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn live_post(world: &SimWorld, cue: Cue) -> Posted {
+        let observed = world.observe();
+        let offered = cue == Cue::TakeBag;
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            offered,
+            observed.now_ms,
+        );
+        Posted::ready(view, observed.now_ms)
+    }
+
+    fn step_drive(
+        world: &mut SimWorld,
+        trip: &mut Trip,
+        follower: &mut Follower,
+        at_ms: u64,
+        drive: Drive,
+        cue: Cue,
+    ) -> Result<NavEnd, FeedError> {
+        let posted = live_post(world, cue);
+        let mut history = SampleHistory::new();
+        super::step_drive(world, trip, follower, at_ms, drive, &posted, &mut history)
+    }
+
     use crate::{PickEnd, confirm_ready, execute_handoff, execute_pick};
     use domain::{Id, Mm, Obstacle, ObstacleClass, Pose, Step, World, within_reach};
     use manipulation::GripError;
     use navigation::assume::{SENSOR_MM, STUCK_LIMIT};
+    use navigation::sense;
     use sim_runtime::SimWorld;
     use task_3_1::{Effect, Event, Phase, Reject, Trip};
 
@@ -1290,6 +1371,817 @@ mod tests {
             assert_eq!(free.pose.point(), point(x, 0), "{x}");
             assert_eq!(free.custody, domain::Custody::Free, "{x}");
         }
+    }
+
+    fn following_trip(world: &SimWorld) -> (Trip, Id) {
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        trip.apply(0, Event::Grasped { bag }).unwrap();
+        trip.apply(0, Event::ReadyTold).unwrap();
+        (trip, operator)
+    }
+
+    #[test]
+    fn a_rejected_command_does_not_keep_the_sample_history() {
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.advance(Step::from_ms(400)).unwrap();
+        trip.apply(400, Event::Tick).unwrap();
+        let observed = world.observe();
+        let mut view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            400,
+        );
+        view.captured_ms = 400;
+        let posted = Posted::ready(view, 400);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let pose_before = pose(&world);
+        let stranger = Id::new(99).unwrap();
+        let err = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            600,
+            Drive::Follow { person: stranger },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(err, Err(FeedError::Trip(Reject::WrongId)));
+        assert_eq!(history.last_capture_ms(), None);
+        assert_eq!(pose(&world), pose_before);
+        assert_eq!(world.now_ms(), 400);
+        let mut recovery = sense(
+            world.observe().robot.pose.point(),
+            world.observe().operator,
+            &world.observe().bags,
+            &world.obstacles_for_planner(),
+            false,
+            100,
+        );
+        recovery.captured_ms = 100;
+        let posted = Posted::ready(recovery, 400);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            600,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(history.last_capture_ms(), Some(100));
+        assert_ne!(pose(&world), pose_before);
+
+        let mut world = SimWorld::from_seed(1);
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        let view = sense(
+            world.observe().robot.pose.point(),
+            world.observe().operator,
+            &world.observe().bags,
+            &world.obstacles_for_planner(),
+            false,
+            0,
+        );
+        let posted = Posted::ready(view, 0);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let err = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(err, Err(FeedError::Trip(Reject::OutOfOrder)));
+        assert_eq!(history.last_capture_ms(), None);
+        assert_eq!(world.now_ms(), 0);
+
+        let err = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Accompany { person: operator },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(err, Err(FeedError::Trip(Reject::OutOfOrder)));
+        assert_eq!(history.last_capture_ms(), None);
+    }
+
+    #[test]
+    fn a_held_post_is_not_replayed_across_later_decisions() {
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        let observed = world.observe();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            0,
+        );
+        assert_eq!(view.robot, point(0, 0));
+        assert_eq!(view.people[0].at, point(0, 1_000));
+        world.place_operator(point(1_500, 0));
+        let posted = Posted::ready(view, 0);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert!(matches!(end, NavEnd::Moved { .. }));
+        let first = pose(&world);
+        assert_eq!(first.x().get(), 0);
+        assert!(first.y().get() > 0);
+        assert_eq!(history.last_capture_ms(), Some(0));
+        assert_eq!(posted.delivered_ms(), 0);
+        for at in [400_u64, 600, 800, 1_000, 1_200, 1_400] {
+            let end = super::step_drive(
+                &mut world,
+                &mut trip,
+                &mut follower,
+                at,
+                Drive::Follow { person: operator },
+                &posted,
+                &mut history,
+            )
+            .unwrap();
+            assert_eq!(end, NavEnd::NeedFresh, "{at}");
+            assert_eq!(pose(&world), first, "{at}");
+            assert_eq!(history.last_capture_ms(), Some(0), "{at}");
+            assert_eq!(world.now_ms(), at, "{at}");
+        }
+
+        let mut late = SimWorld::from_seed(1);
+        let (mut late_trip, late_operator) = following_trip(&late);
+        late.advance(Step::from_ms(100_000)).unwrap();
+        late_trip.apply(100_000, Event::Tick).unwrap();
+        late.place_operator(point(1_500, 0));
+        let mut late_view = sense(
+            point(0, 0),
+            late.observe().operator,
+            &late.observe().bags,
+            &late.obstacles_for_planner(),
+            false,
+            0,
+        );
+        late_view.captured_ms = 0;
+        late_view.people[0].at = point(0, 1_000);
+        late_view.robot = point(0, 0);
+        let late_posted = Posted::ready(late_view, 0);
+        let before = pose(&late);
+        let mut late_history = SampleHistory::new();
+        let mut late_follower = Follower::follow(late_operator);
+        let end = super::step_drive(
+            &mut late,
+            &mut late_trip,
+            &mut late_follower,
+            100_200,
+            Drive::Follow {
+                person: late_operator,
+            },
+            &late_posted,
+            &mut late_history,
+        )
+        .unwrap();
+        assert_eq!(end, NavEnd::NeedFresh);
+        assert_eq!(pose(&late), before);
+        assert_eq!(late_history.last_capture_ms(), None);
+        assert_eq!(late.now_ms(), 100_200);
+
+        let recovered = sense(
+            world.observe().robot.pose.point(),
+            world.observe().operator,
+            &world.observe().bags,
+            &world.obstacles_for_planner(),
+            false,
+            world.now_ms(),
+        );
+        let captured = world.now_ms();
+        let fresh = Posted::ready(recovered, captured);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            captured + 200,
+            Drive::Follow { person: operator },
+            &fresh,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(history.last_capture_ms(), Some(captured));
+        assert!(pose(&world).x().get() > 0, "{:?}", pose(&world));
+    }
+
+    fn bare_view(
+        person: Id,
+        robot: Point,
+        at: Point,
+        bodies: &[navigation::SeenBody],
+    ) -> navigation::SensorView {
+        navigation::SensorView {
+            robot,
+            people: vec![navigation::SeenPerson { id: person, at }],
+            bodies: bodies.to_vec(),
+            bags: Vec::new(),
+            gesture: false,
+            captured_ms: 0,
+        }
+    }
+
+    fn remembered(person: Id, sights: &[(i32, i32, i32, i32)]) -> Follower {
+        let mut follower = Follower::follow(person);
+        for (rx, ry, px, py) in sights {
+            let view = bare_view(person, point(*rx, *ry), point(*px, *py), &[]);
+            let (next, _) = plan_follow(&follower, &view.sight(), Cue::None);
+            follower = next;
+        }
+        follower
+    }
+
+    fn step_sq(from: Point, to: Point) -> i128 {
+        let dx = i128::from(to.x().get()) - i128::from(from.x().get());
+        let dy = i128::from(to.y().get()) - i128::from(from.y().get());
+        dx * dx + dy * dy
+    }
+
+    #[test]
+    fn a_delayed_sample_steps_from_the_current_base() {
+        let base = point(-102, 171);
+        let ego = point(0, 200);
+        let person_at = point(400, 1_000);
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.try_slide(base, ROBOT_RADIUS_MM).unwrap();
+        assert_eq!(pose(&world), base);
+        let mut follower = remembered(operator, &[(0, 0, 0, 1_000), (0, 0, 200, 1_000)]);
+        let stale = bare_view(operator, ego, person_at, &[]);
+        let (planned, intent) = plan_follow(&follower, &stale.sight(), Cue::None);
+        assert_eq!(intent, Intent::Move(point(-89, 378)), "{planned:?}");
+        assert_eq!(step_sq(base, point(-89, 378)), 43_018);
+        let mut live = stale.clone();
+        live.robot = base;
+        let (_, legal) = plan_follow(&follower, &live.sight(), Cue::None);
+        assert_eq!(legal, Intent::Move(point(-169, 359)));
+        assert_eq!(step_sq(base, point(-169, 359)), 39_833);
+        let posted = Posted::ready(stale, 0);
+        let mut history = SampleHistory::new();
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(
+            end,
+            Ok(NavEnd::Moved {
+                to: point(-169, 359)
+            })
+        );
+        assert_eq!(pose(&world), point(-169, 359));
+        assert_eq!(history.last_capture_ms(), Some(0));
+        assert_eq!(world.now_ms(), 200);
+
+        let base = point(244, 289);
+        let ego = point(153, 358);
+        let body = navigation::SeenBody {
+            center: point(2_600, 0),
+            radius_mm: 350,
+        };
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.try_slide(base, ROBOT_RADIUS_MM).unwrap();
+        let mut follower = remembered(operator, &[(0, 0, 200, 1_000), (0, 0, 1_400, 1_000)]);
+        let mut stale = bare_view(operator, ego, point(1_600, 1_000), &[body]);
+        stale.captured_ms = 0;
+        let (_, intent) = plan_follow(&follower, &stale.sight(), Cue::None);
+        assert_eq!(intent, Intent::Move(point(294, 498)));
+        assert_eq!(step_sq(base, point(294, 498)), 46_181);
+        let mut live = stale.clone();
+        live.robot = base;
+        let (_, legal) = plan_follow(&follower, &live.sight(), Cue::None);
+        assert_eq!(legal, Intent::Move(point(367, 446)));
+        assert_eq!(step_sq(base, point(367, 446)), 39_778);
+        let posted = Posted::ready(stale, 0);
+        let mut history = SampleHistory::new();
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(
+            end,
+            Ok(NavEnd::Moved {
+                to: point(367, 446)
+            })
+        );
+        assert_eq!(pose(&world), point(367, 446));
+        assert_eq!(history.last_capture_ms(), Some(0));
+    }
+
+    #[test]
+    fn a_stale_approach_uses_the_live_base_and_an_overlong_step_waits() {
+        let mut world = SimWorld::from_seed(1);
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        world.place_free(bag, point(0, 3_000)).unwrap();
+        let observed = world.observe();
+        let mut view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            0,
+        );
+        assert!(view.bags.iter().any(|item| item.id == bag));
+        view.robot = point(1_000, 0);
+        let posted = Posted::ready(view, 0);
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Approach { bag },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert!(matches!(end, NavEnd::Moved { .. }));
+        assert_eq!(pose(&world).x().get(), 0);
+        assert!(pose(&world).y().get() > 0);
+        assert_eq!(history.last_capture_ms(), Some(0));
+        assert_eq!(world.now_ms(), 200);
+
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        let mut follower = Follower::follow(operator);
+        let before = follower;
+        let end = super::move_or_block(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            before,
+            before,
+            point(1_000, 0),
+        );
+        assert_eq!(end, Ok(NavEnd::NeedFresh));
+        assert!(!super::keeps_sample(&end));
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(world.now_ms(), 200);
+        assert_eq!(trip.now_ms(), Some(200));
+
+        let (mut done, mut done_trip, operator, _bag) = ready();
+        done_trip.apply(0, Event::Arrived).unwrap();
+        execute_handoff(&mut done, &mut done_trip, 0, operator).unwrap();
+        assert_eq!(done_trip.phase(), Phase::Complete);
+        let pose_before = pose(&done);
+        let clock = done.now_ms();
+        let posted = live_post(&done, Cue::None);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let stranger = Id::new(99).unwrap();
+        let err = super::step_drive(
+            &mut done,
+            &mut done_trip,
+            &mut follower,
+            clock + 200,
+            Drive::Accompany { person: stranger },
+            &posted,
+            &mut history,
+        );
+        assert_eq!(err, Err(FeedError::Trip(Reject::WrongId)));
+        assert_eq!(history.last_capture_ms(), None);
+        assert_eq!(pose(&done), pose_before);
+        assert_eq!(done.now_ms(), clock);
+        assert_eq!(done_trip.phase(), Phase::Complete);
+    }
+
+    #[test]
+    fn a_held_sample_is_followed_after_the_operator_moves() {
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        let observed = world.observe();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            observed.now_ms,
+        );
+        assert_eq!(view.people[0].at, point(0, 1_000));
+        world.place_operator(point(1_500, 0));
+        let posted = Posted::ready(view, world.now_ms());
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            100,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        let at = pose(&world);
+        assert!(at.y().get() > 0, "{at:?}");
+        assert_eq!(at.x().get(), 0, "{at:?}");
+        assert_ne!(world.observe().operator.pose.point(), point(0, 1_000));
+    }
+
+    fn deliver_old_follow(delay_ms: u64) -> (navigation::SampleStamp, (i32, i32)) {
+        use navigation::{SampleKind, accept};
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        let observed = world.observe();
+        let mut view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            0,
+        );
+        view.captured_ms = 0;
+        world.advance(domain::Step::from_ms(delay_ms)).unwrap();
+        trip.apply(delay_ms, Event::Tick).unwrap();
+        world.place_operator(point(1_500, 0));
+        let posted = Posted::ready(view, delay_ms);
+        let (_history, _taken, stamp) = accept(SampleHistory::new(), &posted, delay_ms);
+        assert_eq!(stamp.kind, SampleKind::Ready);
+        assert_eq!(stamp.captured_ms, Some(0));
+        assert_eq!(stamp.delivered_ms, delay_ms);
+        assert_eq!(stamp.age_ms, Some(delay_ms));
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            delay_ms + 200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        let at = pose(&world);
+        (stamp, (at.x().get(), at.y().get()))
+    }
+
+    #[test]
+    fn a_200ms_sample_and_a_1000ms_sample_move_from_the_old_pose() {
+        let (stamp, at) = deliver_old_follow(200);
+        assert_eq!(stamp.age_ms, Some(200));
+        assert!(at.1 > 0, "{at:?}");
+        assert_eq!(at.0, 0, "{at:?}");
+        let (stamp, at) = deliver_old_follow(1_000);
+        assert_eq!(stamp.age_ms, Some(1_000));
+        assert!(at.1 > 0, "{at:?}");
+        assert_eq!(at.0, 0, "{at:?}");
+    }
+
+    #[test]
+    fn a_held_bag_sample_is_approached_after_the_bag_moves() {
+        use crate::point_from_sample;
+        let mut world = SimWorld::from_seed(1);
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        let other = world.observe().bags[1].id;
+        world.set_visible(other, false).unwrap();
+        world.place_free(bag, point(0, 3_000)).unwrap();
+        let observed = world.observe();
+        let origin = observed.operator.pose.point();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            observed.now_ms,
+        );
+        let chosen = point_from_sample(Some(origin), Some((0, 2_000)), &view.bags).unwrap();
+        assert_eq!(chosen, bag);
+        world.place_free(bag, point(4_000, 0)).unwrap();
+        let fresh = sense(
+            world.observe().robot.pose.point(),
+            world.observe().operator,
+            &world.observe().bags,
+            &world.obstacles_for_planner(),
+            false,
+            world.now_ms(),
+        );
+        assert!(fresh.bags.iter().all(|item| item.id != bag));
+        let posted = Posted::ready(view, world.now_ms());
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            100,
+            Drive::Approach { bag },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        let at = pose(&world);
+        assert_eq!(at.x().get(), 0, "{at:?}");
+        assert!(at.y().get() > 0, "{at:?}");
+        assert_eq!(
+            world
+                .observe()
+                .bags
+                .iter()
+                .find(|item| item.id == bag)
+                .unwrap()
+                .pose
+                .point(),
+            point(4_000, 0)
+        );
+    }
+
+    #[test]
+    fn missing_and_stale_samples_do_not_chase_and_do_not_read_truth() {
+        use navigation::SampleKind;
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.place_operator(point(1_500, 0));
+        let posted = Posted::missing(0);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(end, NavEnd::NeedFresh);
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(history.last_capture_ms(), None);
+        assert_eq!(world.observe().operator.pose.point(), point(1_500, 0));
+
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.advance(domain::Step::from_ms(1_001)).unwrap();
+        trip.apply(1_001, Event::Tick).unwrap();
+        world.place_operator(point(1_500, 0));
+        let observed = world.observe();
+        let mut stale = sense(
+            point(0, 0),
+            observed.operator,
+            &observed.bags,
+            &[],
+            false,
+            0,
+        );
+        let _ = observed;
+        stale.captured_ms = 0;
+        stale.people = vec![navigation::SeenPerson {
+            id: operator,
+            at: point(0, 1_000),
+        }];
+        let posted = Posted::ready(stale, 1_001);
+        let (_history, taken, stamp) = navigation::accept(SampleHistory::new(), &posted, 1_001);
+        assert_eq!(stamp.kind, SampleKind::Stale);
+        assert_eq!(taken, navigation::Taken::NeedFresh);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            1_201,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(end, NavEnd::NeedFresh);
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(history.last_capture_ms(), None);
+    }
+
+    #[test]
+    fn a_reversed_sample_does_not_change_pose_custody_or_history() {
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        world.advance(domain::Step::from_ms(100)).unwrap();
+        trip.apply(100, Event::Tick).unwrap();
+        let observed = world.observe();
+        let mut view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            false,
+            100,
+        );
+        view.captured_ms = 100;
+        let posted = Posted::ready(view, 100);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            300,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        let pose_after = pose(&world);
+        let custody = world.carried();
+        assert_eq!(history.last_capture_ms(), Some(100));
+        world.place_operator(point(1_500, 0));
+        let mut older = sense(
+            world.observe().robot.pose.point(),
+            world.observe().operator,
+            &world.observe().bags,
+            &world.obstacles_for_planner(),
+            false,
+            40,
+        );
+        older.captured_ms = 40;
+        let reversed = Posted::ready(older, world.now_ms());
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            500,
+            Drive::Follow { person: operator },
+            &reversed,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(end, NavEnd::Waiting);
+        assert_eq!(pose(&world), pose_after);
+        assert_eq!(world.carried(), custody);
+        assert_eq!(history.last_capture_ms(), Some(100));
+        assert_eq!(world.now_ms(), 500);
+    }
+
+    #[test]
+    fn the_episode_budget_reaches_five_minutes_with_a_bad_sample() {
+        let mut world = SimWorld::from_seed(1);
+        let (mut trip, operator) = following_trip(&world);
+        let posted = Posted::missing(0);
+        let mut history = SampleHistory::new();
+        let mut follower = Follower::follow(operator);
+        let end = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            LIMIT_MS,
+            Drive::Follow { person: operator },
+            &posted,
+            &mut history,
+        )
+        .unwrap();
+        assert_eq!(end, NavEnd::NeedFresh);
+        assert_eq!(world.now_ms(), LIMIT_MS);
+        assert_eq!(trip.now_ms(), Some(LIMIT_MS));
+        assert_ne!(trip.phase(), Phase::TimeUp);
+        assert_eq!(pose(&world), point(0, 0));
+        let future = Posted::ready(
+            {
+                let mut view = sense(
+                    point(0, 0),
+                    world.observe().operator,
+                    &world.observe().bags,
+                    &[],
+                    false,
+                    0,
+                );
+                view.captured_ms = 9_000_000;
+                view
+            },
+            LIMIT_MS,
+        );
+        let err = super::step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            LIMIT_MS + 1,
+            Drive::Follow { person: operator },
+            &future,
+            &mut history,
+        );
+        assert_eq!(err, Err(FeedError::TimeUp));
+        assert_eq!(world.now_ms(), LIMIT_MS + 1);
+        assert_eq!(trip.phase(), Phase::TimeUp);
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(history.last_capture_ms(), None);
+    }
+
+    #[test]
+    fn the_synthetic_shift_does_not_write_truth_and_repeats() {
+        use navigation::{SYNTHETIC_SHIFT_MM, shift_view};
+        let world = SimWorld::from_seed(1);
+        let before = world.observe();
+        let view = sense(
+            before.robot.pose.point(),
+            before.operator,
+            &before.bags,
+            &world.obstacles_for_planner(),
+            false,
+            before.now_ms,
+        );
+        let once = shift_view(&view, SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM).unwrap();
+        let twice = shift_view(&view, SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM).unwrap();
+        assert_eq!(once, twice);
+        assert_eq!(world.observe().robot, before.robot);
+        assert_eq!(world.observe().bags, before.bags);
+        let other = SimWorld::from_seed(7);
+        let other_view = sense(
+            other.observe().robot.pose.point(),
+            other.observe().operator,
+            &other.observe().bags,
+            &other.obstacles_for_planner(),
+            false,
+            0,
+        );
+        let other_shift = shift_view(&other_view, SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM).unwrap();
+        assert_eq!(
+            other_shift.people[0].at.x().get() - other_view.people[0].at.x().get(),
+            SYNTHETIC_SHIFT_MM
+        );
+        let mut reached = SimWorld::from_seed(1);
+        let bag = reached.observe().bags[0].id;
+        reached.place_free(bag, point(2_496, 0)).unwrap();
+        let seen = sense(
+            reached.observe().robot.pose.point(),
+            reached.observe().operator,
+            &reached.observe().bags,
+            &reached.obstacles_for_planner(),
+            false,
+            0,
+        );
+        let shifted = shift_view(&seen, SYNTHETIC_SHIFT_MM, 0).unwrap();
+        let reported = shifted.bags.iter().find(|item| item.id == bag).unwrap();
+        assert!(reported.pose.point().x().get() > manipulation::assume::REACH_MM);
+        assert_eq!(reached.pick(bag, manipulation::assume::REACH_MM), Ok(()));
+        assert_eq!(
+            reached
+                .observe()
+                .bags
+                .iter()
+                .find(|item| item.id == bag)
+                .unwrap()
+                .pose
+                .point(),
+            reached.observe().robot.pose.point()
+        );
     }
 
     #[test]

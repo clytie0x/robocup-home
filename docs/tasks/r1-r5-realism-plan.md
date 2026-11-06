@@ -6,7 +6,7 @@ Normative source remains the professor PDF, SHA-256 `da69e2c276836ccb228ab3a9ba4
 
 The table in [3.1 Carry My Luggage](3.1-carry-my-luggage.md) stays 45 `pass` and 11 `not-run` until a later command says otherwise. Those results are model and catalog evidence. They are not a field score. The 11 `not-run` rows, including the seven open scoring rows, stay unresolved. This plan does not award a total.
 
-R1 through R5 are authorized in that order. R1 is the active milestone until its review gate passes. R2, R3, R4, and R5 do not need a new owner approval. Each one still stops for independent review before the next starts. No milestone invents a drop from a collision.
+R1 through R5 are authorized in that order. R1 is merged. R2 is the active milestone until its review gate passes. R3, R4, and R5 do not need a new owner approval. Each one still stops for independent review before the next starts. No milestone invents a drop from a collision.
 
 ## R1 Sensor boundary
 
@@ -21,6 +21,8 @@ Exit. Hold a sensor history fixed and swap the true car position. Controller act
 1. Capture and delivery stamps use the existing sim clock. A missing sample stays missing. There is no fallback to truth.
 2. Delays are 0 ms, 200 ms, and 1000 ms. Cases include one missing sample, a stale sample, and a reversed sample. Stop and request-fresh behavior stays bounded.
 3. One bounded deterministic positional perturbation profile is explicitly synthetic and unmeasured. The zero profile is the control.
+
+The current base pose is proprioception. Follow, approach, and accompany use that pose as the motion origin. The posted sample still supplies the people, bodies, bags, pointing ray, and cue. The controller does not replace those with a fresh truth list or the car. A planned step longer than the base can take requests a fresh sample, advances the authoritative clock, and does not keep that sample.
 
 Exit. The zero-profile trace matches the baseline. A reversed sample is rejected atomically and does not change pose or custody. Missing data does not reveal truth. The episode clock enforces 5 minutes independently of stale sample stamps.
 
@@ -58,7 +60,8 @@ These limits stay after R1. They are not field acceptance.
 - A visible bag inside the printed 2 m of the operator is in the sensor view only while that operator is already inside the robot sensor. That disk is a labeled setup assumption. It is not a measured camera and not a halo around an unseen person.
 - The model has no occlusion, no pixels, and no contact-force calibration.
 - The operator route is scripted by the scenario. The scenario may use the car. The controller does not.
-- The positional profile in R2 is synthetic and unmeasured. It is not implemented in R1.
+- The positional profile is a synthetic unmeasured shift of 8 mm on sensed people, bodies, and bags. The zero shift is the control. It is not a calibration. The robot base pose in the sample is not shifted.
+- The motion origin is the live base. A delayed sample does not carry its captured base pose into the step. Exteroceptive points stay on that sample.
 - Component tests may still leave the world clock and the trip stamp apart. The episode scorer requires them to match.
 - `CML-BAG-DEF`, the three hardware rows, and the seven open scoring rows stay `not-run`. The sheet does not award a run total.
 - A collision does not invent a drop.

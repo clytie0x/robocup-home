@@ -124,6 +124,237 @@ pub fn cue_from(view: &SensorView) -> Cue {
     }
 }
 
+/// Largest delivery age the controller may still act on. Older samples are stale.
+///
+/// 1000 ms is the longest approved delay profile. It is not a measured latency.
+pub const MAX_SAMPLE_AGE_MS: u64 = 1_000;
+
+/// Synthetic observation shift. Not a calibration.
+pub const SYNTHETIC_SHIFT_MM: i32 = 8;
+
+/// One delivered sensor sample. `Missing` is not a view of the world.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Posted {
+    Missing { delivered_ms: u64 },
+    Ready { view: SensorView, delivered_ms: u64 },
+}
+
+impl Posted {
+    pub fn missing(delivered_ms: u64) -> Self {
+        Self::Missing { delivered_ms }
+    }
+
+    pub fn ready(view: SensorView, delivered_ms: u64) -> Self {
+        Self::Ready { view, delivered_ms }
+    }
+
+    pub const fn delivered_ms(&self) -> u64 {
+        match self {
+            Self::Missing { delivered_ms } | Self::Ready { delivered_ms, .. } => *delivered_ms,
+        }
+    }
+}
+
+/// Last accepted capture time. It does not store a pose.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SampleHistory {
+    last_capture_ms: Option<u64>,
+}
+
+impl SampleHistory {
+    pub const fn new() -> Self {
+        Self {
+            last_capture_ms: None,
+        }
+    }
+
+    pub const fn last_capture_ms(self) -> Option<u64> {
+        self.last_capture_ms
+    }
+}
+
+/// What the controller may do with one delivery.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Taken {
+    Act(SensorView),
+    NeedFresh,
+    Rejected,
+}
+
+/// Why a delivery was accepted, ignored, or rejected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SampleKind {
+    Ready,
+    Missing,
+    Stale,
+    Duplicate,
+    Reversed,
+    Future,
+}
+
+/// Capture, delivery, and the decision clock. `age_ms` is the decision age.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SampleStamp {
+    pub captured_ms: Option<u64>,
+    pub delivered_ms: u64,
+    pub decision_ms: u64,
+    pub age_ms: Option<u64>,
+    pub kind: SampleKind,
+}
+
+/// Accept `posted` at `now_ms`, or refuse it.
+///
+/// `now_ms` is the sim clock at the decision. It is not the episode budget.
+/// A reversed or future sample returns the same history. A missing or stale
+/// sample does not invent a view.
+pub fn accept(
+    history: SampleHistory,
+    posted: &Posted,
+    now_ms: u64,
+) -> (SampleHistory, Taken, SampleStamp) {
+    let delivered_ms = posted.delivered_ms();
+    if delivered_ms > now_ms {
+        return (
+            history,
+            Taken::Rejected,
+            stamp(None, delivered_ms, now_ms, None, SampleKind::Future),
+        );
+    }
+    match posted {
+        Posted::Missing { .. } => (
+            history,
+            Taken::NeedFresh,
+            stamp(None, delivered_ms, now_ms, None, SampleKind::Missing),
+        ),
+        Posted::Ready { view, .. } => accept_ready(history, view, delivered_ms, now_ms),
+    }
+}
+
+fn accept_ready(
+    history: SampleHistory,
+    view: &SensorView,
+    delivered_ms: u64,
+    now_ms: u64,
+) -> (SampleHistory, Taken, SampleStamp) {
+    let captured = view.captured_ms;
+    if captured > delivered_ms || captured > now_ms {
+        return (
+            history,
+            Taken::Rejected,
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                None,
+                SampleKind::Future,
+            ),
+        );
+    }
+    if history.last_capture_ms.is_some_and(|prev| captured < prev) {
+        let age = now_ms.saturating_sub(captured);
+        return (
+            history,
+            Taken::Rejected,
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                Some(age),
+                SampleKind::Reversed,
+            ),
+        );
+    }
+    if history.last_capture_ms == Some(captured) {
+        let age = now_ms.saturating_sub(captured);
+        return (
+            history,
+            Taken::NeedFresh,
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                Some(age),
+                SampleKind::Duplicate,
+            ),
+        );
+    }
+    let age = now_ms.saturating_sub(captured);
+    if age > MAX_SAMPLE_AGE_MS {
+        return (
+            history,
+            Taken::NeedFresh,
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                Some(age),
+                SampleKind::Stale,
+            ),
+        );
+    }
+    let mut next = history;
+    next.last_capture_ms = Some(captured);
+    (
+        next,
+        Taken::Act(view.clone()),
+        stamp(
+            Some(captured),
+            delivered_ms,
+            now_ms,
+            Some(age),
+            SampleKind::Ready,
+        ),
+    )
+}
+
+fn stamp(
+    captured_ms: Option<u64>,
+    delivered_ms: u64,
+    decision_ms: u64,
+    age_ms: Option<u64>,
+    kind: SampleKind,
+) -> SampleStamp {
+    SampleStamp {
+        captured_ms,
+        delivered_ms,
+        decision_ms,
+        age_ms,
+        kind,
+    }
+}
+
+/// The shift is outside the synthetic bound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShiftError;
+
+/// Shift sensed people, bodies, and bags. The robot pose and the world are not inputs.
+pub fn shift_view(view: &SensorView, dx: i32, dy: i32) -> Result<SensorView, ShiftError> {
+    if dx.unsigned_abs() > u32::try_from(SYNTHETIC_SHIFT_MM).unwrap_or(0)
+        || dy.unsigned_abs() > u32::try_from(SYNTHETIC_SHIFT_MM).unwrap_or(0)
+    {
+        return Err(ShiftError);
+    }
+    let mut next = view.clone();
+    for person in &mut next.people {
+        person.at = shift_point(person.at, dx, dy);
+    }
+    for body in &mut next.bodies {
+        body.center = shift_point(body.center, dx, dy);
+    }
+    for bag in &mut next.bags {
+        let at = bag.pose.point();
+        bag.pose = domain::Pose::new(shift_point(at, dx, dy));
+    }
+    Ok(next)
+}
+
+fn shift_point(point: Point, dx: i32, dy: i32) -> Point {
+    Point::new(
+        Mm::new(point.x().get().saturating_add(dx)),
+        Mm::new(point.y().get().saturating_add(dy)),
+    )
+}
+
 fn bag_in_view(robot: Point, operator: Point, operator_seen: bool, bag: &domain::Bag) -> bool {
     bag.visible
         && (within_reach(robot, bag.pose.point(), assume::SENSOR_MM)
@@ -1166,5 +1397,109 @@ mod tests {
         assert_eq!(kept.bags.len(), 1);
         assert_eq!(kept.bags[0].pose.point(), at(0, 3_000));
         assert!(kept.gesture);
+    }
+
+    fn ready_view(captured_ms: u64) -> SensorView {
+        sense(
+            at(0, 0),
+            operator_at(0, 1_000),
+            &[bag_at(1_000, 0, true)],
+            &[],
+            false,
+            captured_ms,
+        )
+    }
+
+    #[test]
+    fn a_reversed_sample_keeps_history_and_a_missing_sample_is_not_truth() {
+        let view = ready_view(100);
+        let posted = Posted::ready(view, 100);
+        let (history, taken, stamp) = accept(SampleHistory::new(), &posted, 100);
+        assert_eq!(stamp.kind, SampleKind::Ready);
+        assert_eq!(stamp.captured_ms, Some(100));
+        assert_eq!(stamp.delivered_ms, 100);
+        assert_eq!(stamp.age_ms, Some(0));
+        assert!(matches!(taken, Taken::Act(_)));
+        let older = Posted::ready(ready_view(40), 200);
+        let (after, rejected, stamp) = accept(history, &older, 200);
+        assert_eq!(rejected, Taken::Rejected);
+        assert_eq!(after, history);
+        assert_eq!(stamp.kind, SampleKind::Reversed);
+        assert_eq!(after.last_capture_ms(), Some(100));
+        let missing = Posted::missing(200);
+        let (still, fresh, stamp) = accept(after, &missing, 200);
+        assert_eq!(fresh, Taken::NeedFresh);
+        assert_eq!(still, after);
+        assert_eq!(stamp.kind, SampleKind::Missing);
+        assert_eq!(stamp.age_ms, None);
+    }
+
+    #[test]
+    fn a_future_sample_is_rejected_and_a_stale_sample_does_not_become_the_plan() {
+        let future = Posted::ready(ready_view(500), 100);
+        let (history, taken, stamp) = accept(SampleHistory::new(), &future, 100);
+        assert_eq!(taken, Taken::Rejected);
+        assert_eq!(stamp.kind, SampleKind::Future);
+        assert_eq!(history.last_capture_ms(), None);
+        let late = Posted::ready(ready_view(0), 1_001);
+        let (_history, taken, stamp) = accept(SampleHistory::new(), &late, 1_001);
+        assert_eq!(taken, Taken::NeedFresh);
+        assert_eq!(stamp.kind, SampleKind::Stale);
+        assert_eq!(stamp.age_ms, Some(1_001));
+        let aged = Posted::ready(ready_view(0), 1_000);
+        let (_history, taken, stamp) = accept(SampleHistory::new(), &aged, 1_000);
+        assert!(matches!(taken, Taken::Act(_)));
+        assert_eq!(stamp.kind, SampleKind::Ready);
+        assert_eq!(stamp.age_ms, Some(1_000));
+    }
+
+    #[test]
+    fn the_synthetic_shift_is_bounded_and_the_zero_shift_is_identity() {
+        let view = ready_view(0);
+        assert_eq!(shift_view(&view, 0, 0).unwrap(), view);
+        let shifted = shift_view(&view, SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM).unwrap();
+        assert_eq!(shifted.robot, view.robot);
+        assert_eq!(
+            shifted.bags[0].pose.point(),
+            at(1_000 + SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM)
+        );
+        assert_eq!(
+            shift_view(&view, SYNTHETIC_SHIFT_MM, -SYNTHETIC_SHIFT_MM).unwrap(),
+            shifted
+        );
+        assert!(shift_view(&view, SYNTHETIC_SHIFT_MM + 1, 0).is_err());
+        assert_eq!(SYNTHETIC_SHIFT_MM, 8);
+        assert_eq!(MAX_SAMPLE_AGE_MS, 1_000);
+    }
+
+    #[test]
+    fn the_same_posted_sample_goes_stale_at_the_decision_clock() {
+        let posted = Posted::ready(ready_view(0), 0);
+        let (_, taken, stamp) = accept(SampleHistory::new(), &posted, 1_000);
+        assert!(matches!(taken, Taken::Act(_)));
+        assert_eq!(stamp.decision_ms, 1_000);
+        assert_eq!(stamp.age_ms, Some(1_000));
+        assert_eq!(stamp.delivered_ms, 0);
+        let (_, taken, stamp) = accept(SampleHistory::new(), &posted, 1_001);
+        assert_eq!(taken, Taken::NeedFresh);
+        assert_eq!(stamp.kind, SampleKind::Stale);
+        assert_eq!(stamp.age_ms, Some(1_001));
+        let (history, first, _) = accept(SampleHistory::new(), &posted, 0);
+        assert!(matches!(first, Taken::Act(_)));
+        for now in [200, 400, 600, 800, 1_000, 1_200, 1_400, 100_000] {
+            let (kept, taken, stamp) = accept(history, &posted, now);
+            assert_eq!(kept.last_capture_ms(), history.last_capture_ms());
+            assert_ne!(taken, Taken::Act(ready_view(0)), "acted at {now}");
+            assert_eq!(stamp.decision_ms, now);
+            assert_eq!(stamp.delivered_ms, 0);
+            assert_eq!(stamp.captured_ms, Some(0));
+            assert_eq!(stamp.kind, SampleKind::Duplicate);
+            assert_eq!(stamp.age_ms, Some(now));
+        }
+        let fresh = Posted::ready(ready_view(100_000), 100_000);
+        let (_history, taken, stamp) = accept(history, &fresh, 100_000);
+        assert!(matches!(taken, Taken::Act(_)));
+        assert_eq!(stamp.age_ms, Some(0));
+        assert_eq!(stamp.kind, SampleKind::Ready);
     }
 }
