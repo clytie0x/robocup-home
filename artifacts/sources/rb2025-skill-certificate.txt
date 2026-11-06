@@ -1,0 +1,25 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
+Source: https://github.com/RoboCupAtHome/RuleBook/releases/download/2025.1/rulebook.pdf
+SHA256: d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11
+Printed section 1.7.5. The example does not match section 5.1.
+Retrieved: 2026-11-06
+
+BEGIN_PAGE_TEXT
+1.7.5 Skill Certificates
+The @Home league features certificates for best demonstrated skills in Navigation, Manipula-
+tion, Person Recognition, and Natural Language Processing. A team is given the certificate if
+it scores at least 75% of the attainable points for that skill. This is counted over all tests and
+challenges, so, for example, if a robot scores manipulation points during the Help-me-Carry test
+to open the door, that will count for the Manipulation certificate. Note that the certificate will
+only be handed out if the team is not the overall winner of the competition.
+
+1.7.6 Open-source software award
+Since Nagoya 2017, RoboCup@Home awards the best contribution to the community by means
+of an open source software solution. To be eligible for the award, the software must be easy
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+END_PAGE_TEXT

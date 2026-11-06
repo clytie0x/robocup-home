@@ -1,0 +1,552 @@
+NORMATIVE EXCERPT
+File identifier: C:\Users\teera\Downloads\at-home-robocup-my-2025-1.pdf
+Coordinator-reported same-hash duplicate: C:\Users\teera\Downloads\at-home-robocup-my-2025.pdf
+Attached copy hashed in this workspace. No public URL is assigned to this file.
+SHA-256: da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600
+Size: 1129757 bytes
+Pages: 52
+pdfinfo CreationDate: 2024-07-09T14:56:18Z
+Cover: Version 2024 Rev-1. Last Revision Date 2024-07-09. Final version for RoboCup 2024 (Revision 2024-07-09 1).
+The filename says 2025. The printed year is 2024.
+
+Printed pages 1 and 3 through 12. Chapter 1 competition paragraph and Chapter 2 general rules.
+
+BEGIN_PAGE_TEXT
+
+--- physical page 6 ---
+
+Chapter 1. Introduction                                                                          1
+
+
+
+
+Chapter 1
+
+Introduction
+1.1 RoboCup
+RoboCup is an international joint project to promote AI, robotics, and related fields. It is an
+attempt to foster AI and intelligent-robotics research by providing standard problems where a
+wide range of technologies can be integrated and examined. More information can be found at
+http://www.robocup.org/.
+
+
+1.2 RoboCup@Home
+The RoboCup@Home league aims to develop service and assistive robot technology with high
+relevance for future personal domestic applications. It is the largest international annual com-
+petition for autonomous service robots and is part of the RoboCup initiative. A set of bench-
+mark tests is used to evaluate the abilities and performance of different robots in a realistic,
+non-standardized home environment setting. The focus is on, but is not limited to, the follow-
+ing domains: human-robot interaction and cooperation, navigation and mapping in dynamic
+environments, computer vision and object recognition under natural light conditions, object
+manipulation, adaptive behaviors, behavior integration, ambient intelligence, standardization
+and system integration. The competition is co-located with the RoboCup symposium.
+
+
+1.3 Competition
+The competition consists of two Stages and a Final . Each stage consists of a series of Tests that
+are being held in a daily life environment. The best teams from Stage I advance to Stage II ,
+which consists of more difficult tests. The competition ends with the Final , where only the two
+highest-ranked teams of each league compete to select the winner.
+
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 8 ---
+
+Chapter 2. General Rules and Regulations                                                          3
+
+
+
+
+Chapter 2
+
+General Rules and Regulations
+These are the general rules and regulations for the competition in the RoboCup@Home league.
+Every rule in this section can be considered to implicitly include the term “unless stated other-
+wise”. This means that additional or contrary rules, in particular with respect to the specification
+of tests, have a higher priority than those mentioned in the general rules and regulations.
+
+
+2.1 Scenario
+Most competition tests take place in the RoboCup@HomeArena, but some tests may take
+place outside, in a previously unknown public place. In this section, the Arena and its contents
+are described, in particular the furnishing and other information that is common between tests
+and leagues.
+
+
+2.1.1 RoboCup@Home Arena
+The RoboCup@HomeArena is a realistic home setting (an apartment) consisting of inter-
+connected rooms. The minimal configuration consists of:
+
+   • a bedroom,
+   • a dining room,
+   • a living room, and
+   • a kitchen
+
+There is usually one Arena per league. Depending on the local organization, there may also
+be multiple Arenas that may be different from each other, and a robot must be prepared to
+perform any task in any Arena.
+   The arena is arranged and decorated to resemble a typical apartment in the hosting country,
+including all necessities and decorations one can expect to find in a normal home. Note that
+what is considered normal may vary greatly based on the culture and location where RoboCup
+is hosted. Decorations may include, but are not limited to, plants, mirrors, paintings, posters,
+plates, picture frames, wall clocks, candles with holders, and books.
+
+
+2.1.2 Walls, Doors, and Floor
+The indoor home setting will be surrounded by high and low walls, which are built up using
+standard fair construction material.
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 9 ---
+
+4                                                                                                2.1 Scenario
+
+
+    1. Walls: Walls are fixed and cannot be modified during the competition. The minimum
+       wall height is 60 cm; a maximum height is not specified, but must allow the audience to
+       watch the competition.
+    2. Doors: Inside the Arena, rooms are connected by doors (at least one). All doors have
+       handles, not knobs, and can be closed at any time; it is thus expected that robots are
+       either able to open them or find a plan around them.
+    3. Floor: The floor and doorways of the Arena are even, so there are no significant steps
+       or stairways; however, minor unevenness, such as carpets, transitions in floor covering
+       between different areas, and minor gaps (especially at doorways) can be expected.
+    4. Appearance: The floor and walls are mostly monochromatic, but may contain textures,
+       such as a carpet on the floor, or a poster or picture on the wall.
+
+
+2.1.3 Furniture
+The Arena is furnished with typical objects common for the host country. The minimal config-
+uration consists of:
+
+    • a bed,
+    • a couch,
+    • a small table,
+    • a small dinner table with two chairs,
+    • two trash bins,
+    • an open cupboard or a small table with a television and remote control,
+    • a cupboard with drawers,
+    • a bookcase, and
+    • a coat rack
+
+The Arena’s kitchen has:
+
+    • a dishwasher,
+    • a microwave,
+    • a sink, and
+    • a refrigerator (with some cans and plastic bottles inside)
+
+A typical Arena setup is shown in Figure 2.1a.
+
+
+Cupboard
+
+The cupboard can be any shelf-like furniture in which objects can be placed, such that the
+minimum distance between shelves is 30 cm and at least two drawers are between 90 cm and
+120 cm from floor level. The cupboard may have doors.
+
+
+Fridge
+
+At least one powered and functioning fridge is required in the Arena. The fridge must not be
+smaller than 120 cm.
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 10 ---
+
+Chapter 2. General Rules and Regulations                                                        5
+
+
+
+
+                     (a) Typical Arena                                    (b) Typical objects
+
+                      Figure 2.1: An example of a RoboCup@Homescenario
+
+
+2.1.4 Changes to the Arena
+Since robots should be able to function in the real world, the Arena is not fixed and might
+change without further notice.
+
+  1. Major changes: Any furniture (at a Predefined Location or not) that cannot be expected
+     to be fully static in an everyday environment might be moved slightly between tests. In
+     particular, furniture will not change rooms or move drastically inside a room, but a couch
+     or table may be slightly rotated or moved; fixed locations for such furniture items should
+     not be assumed. Walls will stay in place and rooms will not change function. Passages
+     might be blocked.
+  2. Minor Changes: Slightly moved chairs, slightly closed doors, or anything similar cannot
+     be avoided and might happen at any time, even during a test.
+
+2.1.5 Objects
+Some tests in the RoboCup@Home league involve recognizing and manipulating objects (see
+Figure Figure 2.1b). The TC will compile a list of at least 30 objects for this purpose; the list
+will contain a picture of the each object, as well as its official name and Object Category (for
+instance, an Apple belongs to the Fruits category). Most objects are likely to be lightweight and
+easy to grasp with one hand. Every Object Category has an assigned Predefined Location, where
+objects of that category can usually be found during tests (for example, an Fruits can be found
+on the Kitchen Table); assignments are announced during the Setup Days (see Competition
+Organisation Document).
+  Objects are provided at the competition for training. Teams may keep at most five training
+objects at a time and for at most one hour. Modifying the training objects is not allowed.
+  Two types of objects are used in the tasks:
+
+  1. Known Objects: Objects previously known to the robot, divided into:
+      1.1. Consistent Objects: Objects whose image appears in the list of objects.
+      1.2. Similar Objects: Objects whose image is not present in the list of objects, but look
+           similar enough to one of them that a person would consider them the same kind of
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 11 ---
+
+6                                                                                                  2.1 Scenario
+
+
+              object. For example, an apple whose color is different from the apple in the list of
+              objects, or a piece of cloth with a different pattern.
+         1.3. Standard Objects: Objects chosen from the YCB Dataset.1 They are published 6
+              months in advance on the RoboCup@Home website2 , so that they can be aquired
+              and trained beforehand.
+     2. Unknown Objects: Any other object that is not in the object list but can be grasped or
+        handled (e.g., Arena decorations).
+
+     The minimal configuration of Known Objects consists of:
+
+      • Tableware: Dish, bowl, cup (or mug), and napkin (see Figure 2.2a).
+      • Cutlery : Fork, knife, and spoon.
+      • Trash Bags: Big plastic trash bags, preferably with a handle.
+      • Bags: Lightweight and with stiff, vertical handles (see Figure 2.2b).
+      • Disks or books: A set of discs (LP, CD, DVD, or BluRay) or books.
+      • Coat rack : A rack or pole to hang coats and other clothes.
+      • Trays: A transport object such as a tray or basket, intended for bimanual manipulation
+        (see Figure 2.2c).
+      • Pourable: An object whose content can be poured (such as a cereal box).
+      • Heavy object: Weight between 1.0kg and 1.5kg.
+      • Tiny object: A lightweight object that is not bigger than 5 cm (such as paper, a teabag,
+        or a pen).
+      • Fragile object: An easy-to-break object, (such as a chocolate egg).
+      • Deformable object: A flexible object that may take different shapes (such as cloth).
+      • Garbage bag : A garbage bag that can be tied.
+
+
+
+
+           (a) Cereal bowls                (b) Bright-colored paper bags                  (c) Serving tray
+
+                                 Figure 2.2: Example of object containers
+
+  During the competition, objects can be requested based on their Object Category, physical
+attributes, or a combination of both. Relevant attributes to be used are:
+
+      • Color (such as red, blue, black with white dots, etc.).
+      • Relative estimated size (smallest, largest, big one, etc.).
+      • Relative estimated weight (lightest, heaviest).
+ 1
+     http://www.ycbbenchmarks.com/object-set/
+ 2
+     https://athome.robocup.org/standard-objects
+
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 12 ---
+
+Chapter 2. General Rules and Regulations                                                         7
+
+
+   • Relative position (left of, rightmost, etc.).
+   • Object description (is fragile, is a container, can be poured, requires two hands, etc.).
+Remark: Measurements are estimations and based on common sense. It is OK for robots to
+consider similar objects to be about the same size or weight.
+
+2.1.6 Predefined Rooms and Locations
+Some tests in the RoboCup@Home league involve a Predefined Location where people or objects
+can be found. There will also be at least two doors, named an Entrance and an Exit, which lead
+in and out of the Arena, respectively. Room names, predefined locations, and location classes
+are announced during the Setup Days (see Competition Organisation Document).
+
+2.1.7 Predefined Person Names
+Some tests in the RoboCup@Home league involve memorizing a person’s name. All people in
+the Arena have an assigned Predefined Name chosen by the TC. The list of names contains
+25 % male, 25 % female, and 50 % gender-neutral names taken from the list of most commonly
+used names in the United States. Predefined names are announced during the Setup Days (see
+Competition Organisation Document).
+
+2.1.8 Wireless network
+For wireless communication, an Arena Network is provided. The actual infrastructure depends
+on the local organization. Reliability and performance of the network is not guaranteed; robots
+are expected to be able to run without a wireless network.
+  The following rules apply:
+   • Only the Arena Network can be used during tests.
+   • Only the active team in a task is allowed to use the Arena Network .
+   • The Arena Network provides one Virtual Local Area Network (VLANs) per team.
+   • Each VLAN is most likely to have its own SSID/password.
+   • VLAN traffic is separated from any other team and is routed to the team’s network cable
+     in the team area.
+   • Each VLAN is also connected to the Internet.
+  Teams broadcasting unauthorized (aka rogue) wireless networks will be disqualified from the
+competition and their devices may be temporarily confiscated by the OC; this includes smart-
+phones and concealed SSIDs. It is thus advised to verify your devices for any breaches of this
+nature.
+
+
+2.2 Deus Ex Machina: Bypassing Features With Human Help
+Because the Show Must Go On
+
+Robots can’t score unless they accomplish the main goal of a task. However, in many real-life
+situations, a minor malfunction may prevent the robot from accomplishing a task. To prevent
+this situation, while fostering awareness and human-robot interaction, robots are allowed to
+request human assistance during a test.
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 13 ---
+
+8                                                                                      2.2 Deus Ex Machina
+
+
+2.2.1 Procedure
+The procedure to request human assistance while solving a task is as follows:
+
+    1. Request help: The robot must indicate loud and clear that it requires human assistance.
+       It must be clearly stated:
+          • The nature of the assistance
+          • The particular goal or desired result
+          • How the action must be carried out (when necessary)
+          • Details about how to interact with the robot (when necessary)
+          • Detailed information to identify objects for picking and placing (e.g. object name,
+            color or location). The provided information needs to show that objects were per-
+            ceived by the robot.
+    2. Supervise: The robot must be aware of the human’s actions, being able to tell when the
+       requested action has been completed, as well as guiding the human assistant (if necessary)
+       during the process.
+    3. Acknowledge: The robot must politely thank the human for the assistance provided.
+
+Example
+In the following example, a robot has to clean the table but is unable to grasp the spoon.
+    R: I am sorry, but the spoon is too small for me to take.
+       Could you please help me with it?
+       Please say "robot yes" or "robot no" to confirm.
+    H: Robot, yes!
+    R: Thank you! Please follow my instructions.
+       Please take the purple spoon from the table. It is on my left.
+       (The robot also shows the result of the perception, e.g. by pointing at the spoon
+       or showing a picture with a bounding box on the screen)
+    H: (Referee takes purple spoon)
+    R: I saw you took the spoon.
+       Would you be so kind as to follow me to the kitchen?
+       Please keep the spoon visible in front of you so I can track you. Thank you!
+    R: You can stop following me now.
+       As you can see, the dishwasher is already open.
+       Please place the spoon in the gray basket on the lower tray.
+    R: Lovely! Thanks for your help.
+       I’ll let you know if I need further assistance.
+
+
+2.2.2 Scoring
+There is no limit in the amount of times a robot can request human assistance, but score
+reduction applies every time it is requested.
+
+    1. Partial execution: A reduction of 10% of the maximum attainable score is applied when
+       the robot request a partial solution (e.g. pointing to the person the robot is looking for
+       or placing an object within grasping distance). The referee decides whether the requested
+       action is simple enough to corresponds to a partial execution or not.
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 14 ---
+
+Chapter 2. General Rules and Regulations                                                        9
+
+
+  2. Full awareness: A reduction of 20% of the maximum attainable score is applied when the
+     robot is able to track and supervise activity, detecting possible, and when the requested
+     action has been completed.
+  3. No awareness: A reduction of 30% of the maximum attainable score is applied when the
+     robot has to be told when the requested action has been completed.
+  4. Bonuses: No bonus points can be scored when the robot requests help to solve part of a
+     task that normally would grant a bonus.
+  5. Score reduction overlap: The score reduction for multiple requests of the same kind
+     do not stack, but overlap. The total reduction applied correspond to the worse execution
+     (higher reduction of all akin help requests). This means, a robot won’t be reduced again
+     for requesting help to transport a second object, but a second reduction will apply when
+     the robot asks for a door to be opened.
+  6. Allowed types of assistance: The types of assistance allowed in a given task are specified
+     in the respective task description. It should be noted that only the assistance types
+     explicitly mentioned in a task description are actually allowed in a task; other types of
+     assistance are not allowed and will nullify the obtained points for the part of the task in
+     which they are applied. For instance, if a task focused on manipulation does not explicitly
+     mention a Deus Ex Machina penalty for instructing a person to perform a manipulation
+     activity, it should not be assumed that this is a loophole that can be exploited.
+
+2.2.3 Bypassing Automatic Speech Recognition
+Giving commands to the robot is essential in many tests. When the robot is not able to receive
+spoken commands, teams are allowed to provide means to bypass ASR via an Alternative method
+for HRI (see Section 2.2.3). Nonetheless, Automatic Speech Recognition is preferred.
+  The following rules apply in addition to the ones specified in section Section 2.2.2
+
+  1. ASR with Default Operator: No score reduction. The command is given by the human
+     operator who must speak (not shout) loud and clear. The default operator may repeat the
+     command up to three times.
+  2. ASR with Custom Operator: A reduction of 10% of the maximum attainable score
+     is applied when a custom operator is requested. The Team Leader chooses a person who
+     gives the command exactly as instructed by the referee.
+  3. Gestures: A reduction of 20% of the maximum attainable score is applied when a gesture
+     (or set of gestures) is used to instruct the robot.
+  4. QR Codes: A reduction of 30% of the maximum attainable score is applied when a QR
+     code is used to instruct the robot.
+  5. Alternative Input Method: A reduction of up to 30% of the maximum attainable score
+     is applied when a alternative HRI interface, is used to instruct the robot. Alternative HRI
+     interfaces (see Section 2.2.3) must be previously approved by the TC during the Robot
+     Inspection (see Competition Organisation Document).
+
+Alternative interfaces for HRI
+Alternative methods and interfaces for HRI offer a way for a robot to start or complete a task.
+Any reasonable method may be used, with the following criteria:
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 15 ---
+
+10                                                                         2.3 Special penalties and bonuses
+
+
+     • Intuitive to use and self-explanatory: a manual should not be needed. Teams are
+       not allowed to explain how to interface with the robot.
+     • Effortless use: Must be as easy to use as uttering a command.
+     • Is smart and preemptive: The interface adapts to the user input, displaying only the
+       options that make sense or that the robot can actually perform.
+     • Exploits the best of the device being used (eg. touch screen, display area, speakers, etc.)
+
+  Preferably, the alternative HRI must be also adapted to the user. Consider localization (with
+English as the default), but also potential users of service robots at their home. For example:
+elderly people and people with physical disabilities.
+
+
+2.3 Special penalties and bonuses
+2.3.1 Penalty for not attending
+     1. Automatic schedule: All teams are automatically scheduled for all tests.
+     2. Announcement: If a team cannot participate in a test (for any reason), the team leader
+        has to announce this to the OC at least 60 minutes before the test slot begins.
+     3. Penalties: A team that is not present at the start position when their scheduled test
+        starts, the team is not allowed to participate in the test anymore. If the team has not
+        announced that it is not going to participate, it gets a penalty of 250 points.
+
+
+2.3.2 Extraordinary penalties
+     1. Penalty for cheating: If a team member is found cheating or breaking Fair Play, the
+        team will be automatically disqualified of the running test, and a penalty of 500 points is
+        handed out. The Technical Committee (TC) may also disqualify the team for the entire
+        competition.
+     2. Penalty for faking robots: If a team starts a test, but it does not solve any of the
+        partial tasks (and is obviously not trying to do so), a penalty of 250 points is handed out.
+        The decision is made by the referees and the monitoring TC member.
+     3. Extra penalty for collision: In case of major, (grossly) negligent collisions the Technical
+        Committee (TC) may disqualify the team for a test (the team receives 0 points), or for
+        the entire competition.
+     4. Not showing up as referee or jury member: If a team does not provide a referee or
+        jury member (being at the Arena on time), the team receives a penalty of 250 points, and
+        will be remembered for qualification decisions in future competitions.
+        Jury members missing a performance to evaluate are excluded from the jury, and the team
+        is disqualified from the test (receives 0 points).
+     5. Modifying or altering standard platform robots: If any unauthorized modification
+        is found on a Standard Platform League robot, the responsible team will be immediately
+        disqualified for the entire competition while also receiving a penalty of 500 points in the
+        overall score. This behavior will be remembered for qualification decisions in future com-
+        petitions.
+
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 16 ---
+
+Chapter 2. General Rules and Regulations                                                        11
+
+
+2.3.3 Bonus for outstanding performance
+  1. For every regular test in Stage I and Stage II , the @Home Technical Committee (TC) can
+     decide to give an extra bonus for outstanding performance of up to 10% of the maximum
+     test score.
+  2. This is to reward teams that do more than what is needed to solely score points in a test
+     but show innovative and general approaches to enhance the scope of @Home.
+  3. If a team thinks that it deserves this bonus, it should announce (and briefly explain) this
+     to the Technical Committee (TC) beforehand.
+  4. It is the decision of the Technical Committee (TC) if (and to which degree) the bonus
+     score is granted.
+
+2.3.4 Bonus for perceived social intelligence
+  1. For the test Receptionist in Stage I and, Restaurant in Stage II tests. Teams are evaluated
+     on the robot’s perceived social intelligence performance
+  2. This bonus, ranging from 0 to 50, depends on the robot’s social performance which will
+     be assessed by Referees using a specially designed scale in a survey.
+  3. The survey evaluates how the robot recognizes, adapts to, and predicts emotions, behav-
+     iors, and cognitions. Each component is assessed through several questions, scored on a
+     scale from 1 to 5, where 1 represents ”strongly disagree” and 5 represents ”strongly agree.”
+     The questions used for evaluation include:
+        • This robot notices human presence
+        • This robot enjoys meeting people
+        • This robot recognizes individual people
+        • This robot notices when people do things
+        • This robot adapts effectively to different things people do
+        • This robot anticipates people’s behavior
+        • This robot tries to be helpful
+        • This robot is trustworthy
+        • This robot cares about others
+        • This robot tries to hurt people
+        • This robot knows if someone is part of a social group
+        • This robot thinks it is better than everyone else
+        • This robot adapts its behavior based upon what people around it know
+        • This robot is impolite
+        • This robot is socially competent
+     Detailed information can be found in this manual.
+  4. In each evaluation, the score for every question is summed up and then normalized as
+     follows:
+                                                   x − xmin
+                                         x′ = N ·
+                                                  xmax − xmin
+     Here, N is the normalizing factor (50), x is the sum of scores for each question in the
+     current evaluation, xmin is set to 15 (since there are 15 questions), and xmax is set to 75
+     (as the maximum score for each question is 5).
+  5. The final score is calculated as the average of individual evaluator scores.
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 17 ---
+
+12                                                                         2.3 Special penalties and bonuses
+
+
+     6. The referee has the authority to skip the social assessment test if they believe the robot’s
+        performance is not suitable for measurement.
+     7. After the test is completed, the evaluators will fill out the form, and the scores will be
+        automatically recorded in this spreadsheet.
+
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+END_PAGE_TEXT

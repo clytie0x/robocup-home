@@ -1,0 +1,158 @@
+NORMATIVE EXCERPT
+File identifier: C:\Users\teera\Downloads\at-home-robocup-my-2025-1.pdf
+Coordinator-reported same-hash duplicate: C:\Users\teera\Downloads\at-home-robocup-my-2025.pdf
+Attached copy hashed in this workspace. No public URL is assigned to this file.
+SHA-256: da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600
+Size: 1129757 bytes
+Pages: 52
+pdfinfo CreationDate: 2024-07-09T14:56:18Z
+Cover: Version 2024 Rev-1. Last Revision Date 2024-07-09. Final version for RoboCup 2024 (Revision 2024-07-09 1).
+The filename says 2025. The printed year is 2024.
+
+Printed pages 15, 16, and 17. Section 3.1 Carry My Luggage.
+
+BEGIN_PAGE_TEXT
+
+--- physical page 20 ---
+
+Chapter 3. Tests in Stage I                                                                     15
+
+
+3.1 Carry My Luggage
+The robot helps the operator to carry some luggage to a car which is parked outside.
+Main Goal: The robot helps the operator to carry a bag to a car parked outside.
+
+Optional Goals:
+  1. Re-entering the arena
+  2. Following the queue on the way back to the arena
+
+Focus
+Person following, navigation in unmapped environments, social navigation.
+
+Setup
+   • Locations:
+        – The test takes place both inside and outside the Arena.
+        – The robot starts at a predefined location in the living room.
+   • People: The operator is standing in front of the robot and is pointing at the bag to be
+     carried outside.
+   • Objects: At least two bags are placed near the operator (within a 2m distance and visible
+     to the robot).
+
+Procedure
+  1. Picking up the bag: The robot picks up the bag pointed at by the operator.
+  2. Following the operator: The robot should inform the operator when it is ready to follow
+     them. The operator walks naturally towards the car; after reaching the car, the operator
+     takes the bag back and thanks the robot.
+  3. Obstacles: The robot will face 4 obstacles along its way (in arbitrary order): (a) a small
+     object on the ground, (b) a hard-to-see object, (c) a crowd of people obstructing the path
+     outside, and (d) a small area blocked using retractable barriers.
+  4. Optional goals:
+      4.1. Re-entering the arena: The robot returns to the arena, going back in through the
+           entrance.
+      4.2. Following the queue: After the robot has reached the car, a few of the people that
+           formed the crowd obstructing the robot return to the arena in a queue. The robot
+           can decide to join the queue on its way back to the arena, in a manner that appears
+           natural to the people in the queue.
+
+Additional Rules and Remarks
+  1. Car location: There is no real car outside; instead, a fixed location outside the Arena is
+     designated as a car location.
+  2. Reaching the car: The robot can reach the car location only by following the operator
+     (the location is unknown before the test).
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 21 ---
+
+16                                                                                     3.1 Carry My Luggage
+
+
+     3. Deus ex Machina: Score reductions for human assistance are applied in case the robot
+        loses the operator, and needs to find them again through:
+
+        3.1. Natural interaction (e.g., waving and calling)
+        3.2. Unnatural interaction (e.g., raising both hands and jumping)
+        3.3. Coming back (e.g., asking the operator to step back in front of the robot)
+        3.4. Touching the robot (e.g., pulling the robot’s hand)
+
+       Note: Penalties for human assistance are only applied if the robot continues to score after
+       the interaction. Penalties can be applied multiple times up to a total of 250 points.
+
+
+
+
+Referee Instructions
+
+The referees need to:
+     • Select one volunteer to act as the operator.
+     • Select three to four people to obstruct the robot’s path outside and form the queue on the
+       way back to the arena.
+     • Choose positions for the bags and assign a bag to the operator.
+     • Choose the order of the obstacles that the robot will face outside while following the
+       operator.
+     • Designate a location outside as a car location.
+     • Designate a location for the queue to form returning into the arena. The queue is composed
+       of the same people that form the crowd.
+     • Mind the robot when it goes outside the Arena.
+
+
+
+
+OC Instructions
+
+At least two hours before test:
+     • Select and announce the robot’s starting point.
+     • Select which bags will be used in the test.
+
+
+
+
+Score Sheet
+
+The maximum time for this test is 5 minutes.
+
+
+
+                 RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 22 ---
+
+Chapter 3. Tests in Stage I                                                                         17
+
+
+Action                                                                                          Score
+Main Goal
+Perceiving the correct beg (visualize on screen or say which one)                                  15
+Picking up the correct bag                                                                        100
+Following the person to the car                                                                   300
+Avoiding the crowd of people obstructing the path                                                  50
+Avoiding the small object on the ground                                                            50
+Avoiding the hard-to-see object                                                                    50
+Avoiding the area blocked with retractable barriers                                                50
+Bonus rewards
+Re-entering the arena                                                                             100
+Joining and staying in the queue on the way to the arena                                          300
+Penalties
+Dropping the bag                                                                                  –50
+Deus Ex Machina Penalties
+Rediscovering the operator by natural interaction                                                 –50
+Rediscovering the operator by unnatural interaction                                              –100
+Rediscovering the operator by asking them to come back                                           –150
+Rediscovering the operator by direct contact                                                     –200
+Special Penalties & Bonuses
+Not attending (see sec. 2.3.1)                                                                   –500
+Using alternative start signal                                                                   –100
+Outstanding performance (see sec. 2.3.3)                                                          101
+
+
+
+Total Score (excluding special penalties & standard bonuses)                                     1015
+
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+END_PAGE_TEXT

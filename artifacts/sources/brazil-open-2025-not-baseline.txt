@@ -1,0 +1,35 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
+Source: https://cbr.robocup.org.br/wp-content/uploads/2025/08/Rulebook-1.pdf
+SHA256: 9e4b1f735bffc6b29b64ade8af805fdc24bbeed4dab76c0a1650bfa622cca338
+PDF CreationDate: 2025-07-10T18:00:27Z
+Title page: RoboCup Brazil Open, Version 2025, Last Build Date July 10, 2025
+Footer: Draft version for Latin American Robotics Competition 2025
+About page: official rulebook of the @Home competition for the RoboCup Brazil Open Competition 2025, written based on https://github.com/RoboCupAtHome/RuleBook/
+Role: different competition, draft, not the baseline. Score numbers from this file are not used.
+
+BEGIN_PAGE_TEXT
+6.1 Carry My Luggage [Party Host]
+The robot helps the operator to carry some luggage to a car which is parked outside.
+Main Goal: The robot helps the operator to carry a bag to a car parked outside.
+
+
+
+Focus
+This task focuses on person tracking, navigation in unmapped environments, social navigation
+and obstacle avoidance.
+
+Setup
+     • Locations:
+          – The test can take place both inside and/or outside the Arena.
+          – The robot starts at the living room’s center.
+     • People: The operator is standing in front of the robot and is pointing at the bag to be
+       carried outside.
+     • Objects: At least two bags are placed near the operator (within a 2m distance and visible
+       to the robot).
+     • Obstacle: There will be a random object on the ground, in the robot’s path. The object
+       will be the same for all teams.
+
+Procedure
+     1. Picking up the bag: The robo
+END_PAGE_TEXT
