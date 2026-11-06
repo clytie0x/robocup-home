@@ -1,5 +1,25 @@
 # WORKLOG
 
+## R5 action alignment (2026-11-07)
+
+The picture joined each delivery to the latest recorded action whose end stamp was at or before the decision clock. That end stamp is the previous command. On the seed-1 success log, the mark at decision 1000 was labeled `in-reach` while the command issued there moved the base from `(0, 0)` to `(39, 195)` and ended at 1200. The mark at decision 14400 was labeled `moved` while the base stayed at `(7997, -488)`.
+
+Each base command is now stored with the delivery note that issued it, the decision stamp, the end stamp, and the base before and after that command. The picture reads that record. It does not choose the label by subtracting neighboring poses. A sample with no base command says `no base command`. Capture time that was not recorded says `absent`. The header says `stop reason: none` or `stop reason: lost`. Capture, delivery, and decision are on separate lines from the action line.
+
+The success picture now carries `data-decision="1000" data-end="1200" data-action="moved" data-before="0,0" data-after="39,195"`. The next command is decision 1200, end 1400, `moved`, base `(39, 195)` to `(-56, 370)`. `moved` always changes the base. `in-reach`, `waiting`, `need-fresh`, and `same-stamp` do not. The same check covers the delay-200 run and the stay-away loss. The zero-delay trace is unchanged.
+
+Hash algorithm remains SHA-256 from `sha256sum`.
+
+| file | bytes | sha256 |
+| --- | --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | 27448 | `f49f467a29421b35dd31b2f047974ca87f7631151246aea5bfd68a1ca15abd0e` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | 5577 | `2365d26fa2b9f2c0065890b4ca255cdcbffeb1ef39d3850cc402864dbaff3725` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | 28746 | `2f4a0709561451491cc8b8a06a248c249e07dc925d28083e01e756f5eb28a4ea` |
+
+Independent review of this head, then the multi-challenger interrogate, are still required. This entry does not say the plan is complete.
+
+This run's library count is 194: domain 8, harness 72, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware.
+
 ## R5 SVG replay (2026-11-07)
 
 R4 is merged at `4c1bd111fb0d5c7a203b8243a1c7f3897e56746f`. The picture is drawn from the episode log: the world trace and the delivery notes. A sensor circle is emitted only for a ready sample. Missing, stale, duplicate, reversed, and future samples are labels and are not drawn as a fresh observation. The file says it is a 2D simulation, not hardware and not a score. It does not award a field total.

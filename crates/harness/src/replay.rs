@@ -19,6 +19,7 @@ pub struct Mark {
     pub captured_ms: Option<u64>,
     pub delivered_ms: u64,
     pub decision_ms: u64,
+    pub end_ms: Option<u64>,
     pub age_ms: Option<u64>,
     pub kind: &'static str,
     pub fresh: bool,
@@ -27,6 +28,10 @@ pub struct Mark {
     pub truth_x: i32,
     pub truth_y: i32,
     pub action: &'static str,
+    pub before_x: Option<i32>,
+    pub before_y: Option<i32>,
+    pub after_x: Option<i32>,
+    pub after_y: Option<i32>,
     pub custody: &'static str,
 }
 
@@ -68,12 +73,16 @@ pub fn render(picture: &Picture) -> String {
         13,
         "#222",
         &format!(
-            "seed {}  {}  phase {}  fail {}  custody {}",
+            "seed {}  {}  phase {}  stop reason: {}  custody {}",
             picture.seed,
-            xml(picture.profile),
-            xml(picture.phase),
-            xml(picture.fail),
-            xml(picture.custody)
+            picture.profile,
+            picture.phase,
+            if picture.fail == "-" {
+                "none"
+            } else {
+                picture.fail
+            },
+            picture.custody
         ),
     );
     text(
@@ -123,10 +132,14 @@ fn overview(body: &mut String, picture: &Picture, map: &Bounds) {
             && let (Some(x), Some(y)) = (mark.sensed_x, mark.sensed_y)
         {
             body.push_str(&format!(
-                "<circle class=\"sensor\" data-fresh=\"1\" data-kind=\"ready\" data-captured=\"{}\" data-delivered=\"{}\" data-decision=\"{}\" data-sensed=\"{},{}\" data-truth=\"{},{}\" cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"none\" stroke=\"#e07a3d\" stroke-width=\"1.5\"/>\n",
-                opt_ms(mark.captured_ms),
+                "<circle class=\"sensor\" data-fresh=\"1\" data-kind=\"ready\" data-captured=\"{}\" data-delivered=\"{}\" data-decision=\"{}\" data-end=\"{}\" data-action=\"{}\" data-before=\"{}\" data-after=\"{}\" data-sensed=\"{},{}\" data-truth=\"{},{}\" cx=\"{}\" cy=\"{}\" r=\"3\" fill=\"none\" stroke=\"#e07a3d\" stroke-width=\"1.5\"/>\n",
+                stamp(mark.captured_ms),
                 mark.delivered_ms,
                 mark.decision_ms,
+                stamp(mark.end_ms),
+                xml(mark.action),
+                pair(mark.before_x, mark.before_y),
+                pair(mark.after_x, mark.after_y),
                 x,
                 y,
                 mark.truth_x,
@@ -141,17 +154,20 @@ fn overview(body: &mut String, picture: &Picture, map: &Bounds) {
 
 fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
     body.push_str(&format!(
-        "<g data-kind=\"{}\" data-fresh=\"{}\" data-captured=\"{}\" data-delivered=\"{}\" data-decision=\"{}\" data-age=\"{}\" data-action=\"{}\">\n",
+        "<g data-kind=\"{}\" data-fresh=\"{}\" data-captured=\"{}\" data-delivered=\"{}\" data-decision=\"{}\" data-end=\"{}\" data-age=\"{}\" data-action=\"{}\" data-before=\"{}\" data-after=\"{}\">\n",
         xml(mark.kind),
         if mark.fresh { "1" } else { "0" },
-        opt_ms(mark.captured_ms),
+        stamp(mark.captured_ms),
         mark.delivered_ms,
         mark.decision_ms,
-        opt_ms(mark.age_ms),
-        xml(mark.action)
+        stamp(mark.end_ms),
+        stamp(mark.age_ms),
+        xml(mark.action),
+        pair(mark.before_x, mark.before_y),
+        pair(mark.after_x, mark.after_y)
     ));
     body.push_str(&format!(
-        "<rect x=\"{x}\" y=\"{y}\" width=\"300\" height=\"128\" fill=\"#fff\" stroke=\"#ddd\"/>\n"
+        "<rect x=\"{x}\" y=\"{y}\" width=\"300\" height=\"132\" fill=\"#fff\" stroke=\"#ddd\"/>\n"
     ));
     text(
         body,
@@ -159,13 +175,7 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
         y + 18,
         12,
         "#222",
-        &format!(
-            "{}  capture {}  delivery {}  decision {}",
-            mark.kind,
-            opt_ms(mark.captured_ms),
-            mark.delivered_ms,
-            mark.decision_ms
-        ),
+        &format!("{}  capture {}", mark.kind, stamp(mark.captured_ms)),
     );
     text(
         body,
@@ -173,7 +183,32 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
         y + 36,
         12,
         "#222",
-        &format!("action {}  custody {}", mark.action, mark.custody),
+        &format!(
+            "delivery {}  decision {}",
+            mark.delivered_ms, mark.decision_ms
+        ),
+    );
+    text(
+        body,
+        x + 8,
+        y + 54,
+        12,
+        "#222",
+        &match mark.end_ms {
+            Some(end) => format!("action {} ends {end}", mark.action),
+            None => format!("action {}  no base command", mark.action),
+        },
+    );
+    text(
+        body,
+        x + 8,
+        y + 72,
+        12,
+        "#222",
+        &match (mark.before_x, mark.before_y, mark.after_x, mark.after_y) {
+            (Some(bx), Some(by), Some(ax), Some(ay)) => format!("base {bx},{by} to {ax},{ay}"),
+            _ => "base absent".to_string(),
+        },
     );
     if mark.fresh
         && let (Some(sx), Some(sy)) = (mark.sensed_x, mark.sensed_y)
@@ -181,7 +216,7 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
         text(
             body,
             x + 8,
-            y + 56,
+            y + 90,
             12,
             "#e07a3d",
             &format!("posted sensor {sx},{sy}"),
@@ -189,16 +224,19 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
         text(
             body,
             x + 8,
-            y + 74,
+            y + 108,
             12,
             "#111",
-            &format!("truth operator {},{}", mark.truth_x, mark.truth_y),
+            &format!(
+                "truth operator {},{}  custody {}",
+                mark.truth_x, mark.truth_y, mark.custody
+            ),
         );
     } else {
         text(
             body,
             x + 8,
-            y + 56,
+            y + 90,
             12,
             "#666",
             &format!("{}. Not a fresh observation.", mark.kind),
@@ -206,10 +244,13 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
         text(
             body,
             x + 8,
-            y + 74,
+            y + 108,
             12,
             "#111",
-            &format!("truth operator {},{}", mark.truth_x, mark.truth_y),
+            &format!(
+                "truth operator {},{}  custody {}",
+                mark.truth_x, mark.truth_y, mark.custody
+            ),
         );
     }
     body.push_str("</g>\n");
@@ -304,8 +345,17 @@ fn text(body: &mut String, x: i32, y: i32, size: i32, fill: &str, value: &str) {
     ));
 }
 
-fn opt_ms(value: Option<u64>) -> String {
-    value.map(|ms| ms.to_string()).unwrap_or_default()
+fn stamp(value: Option<u64>) -> String {
+    value
+        .map(|ms| ms.to_string())
+        .unwrap_or_else(|| "absent".to_string())
+}
+
+fn pair(x: Option<i32>, y: Option<i32>) -> String {
+    match (x, y) {
+        (Some(x), Some(y)) => format!("{x},{y}"),
+        _ => "absent".to_string(),
+    }
 }
 
 fn xml(value: &str) -> String {
@@ -342,6 +392,67 @@ mod tests {
     }
 
     #[test]
+    fn each_command_stays_on_the_sample_that_issued_it() {
+        for case in [ReplayCase::Success, ReplayCase::Delay200, ReplayCase::Loss] {
+            let picture = crate::episode::replay_picture(case);
+            let mut claimed_ends = Vec::new();
+            for mark in &picture.marks {
+                let Some(end) = mark.end_ms else {
+                    assert_eq!(mark.action, "none");
+                    assert!(mark.before_x.is_none());
+                    continue;
+                };
+                assert!(
+                    !claimed_ends.contains(&end) || end == mark.decision_ms,
+                    "end {end} is shared by two decisions"
+                );
+                claimed_ends.push(end);
+                assert_eq!(
+                    (mark.before_x.is_some(), mark.before_y.is_some()),
+                    (true, true)
+                );
+                assert_eq!(
+                    (mark.after_x.is_some(), mark.after_y.is_some()),
+                    (true, true)
+                );
+                let before = (mark.before_x.unwrap(), mark.before_y.unwrap());
+                let after = (mark.after_x.unwrap(), mark.after_y.unwrap());
+                let moved = before != after;
+                match mark.action {
+                    "moved" => {
+                        assert!(moved, "moved without a base change at {}", mark.decision_ms)
+                    }
+                    "in-reach" | "waiting" | "need-fresh" | "same-stamp" => assert!(
+                        !moved,
+                        "{} moved the base at {}",
+                        mark.action, mark.decision_ms
+                    ),
+                    _ => {}
+                }
+                assert!(end >= mark.decision_ms);
+            }
+        }
+        let success = crate::episode::replay_picture(ReplayCase::Success);
+        let step = success
+            .marks
+            .iter()
+            .find(|mark| mark.decision_ms == 1_000 && mark.action != "none")
+            .unwrap();
+        assert_eq!(step.action, "moved");
+        assert_eq!(step.end_ms, Some(1_200));
+        assert_eq!((step.before_x, step.before_y), (Some(0), Some(0)));
+        assert_eq!((step.after_x, step.after_y), (Some(39), Some(195)));
+        let svg = render(&success);
+        assert!(svg.contains("data-decision=\"1000\""));
+        assert!(svg.contains("data-end=\"1200\""));
+        assert!(svg.contains("data-action=\"moved\""));
+        assert!(svg.contains("data-before=\"0,0\""));
+        assert!(svg.contains("data-after=\"39,195\""));
+        assert!(svg.contains("stop reason: none"));
+        assert!(svg.contains("capture absent") || svg.contains("capture "));
+    }
+
+    #[test]
     fn a_withheld_sample_is_not_drawn_as_a_fresh_sensor() {
         let picture = Picture {
             seed: 1,
@@ -361,7 +472,12 @@ mod tests {
                 sensed_y: Some(9),
                 truth_x: 10,
                 truth_y: 20,
+                end_ms: Some(1_201),
                 action: "need-fresh",
+                before_x: Some(0),
+                before_y: Some(0),
+                after_x: Some(0),
+                after_y: Some(0),
                 custody: "gripper",
             }],
         };
@@ -392,7 +508,8 @@ mod tests {
         assert_ne!(loss, success);
         assert!(loss.contains("phase lost"));
         assert!(loss.contains("custody gripper"));
-        assert!(loss.contains("fail lost"));
+        assert!(loss.contains("stop reason: lost"));
+        assert!(success.contains("stop reason: none"));
 
         let delayed = replay_svg(ReplayCase::Delay200);
         assert_ne!(delayed, success);
@@ -403,6 +520,7 @@ mod tests {
         );
 
         let missing = replay_svg(ReplayCase::Missing);
+        assert!(missing.contains("capture absent"));
         assert!(missing.contains("data-kind=\"missing\""));
         assert!(missing.contains("data-fresh=\"0\""));
         let missing_group = missing.split("data-kind=\"missing\"").nth(1).unwrap();

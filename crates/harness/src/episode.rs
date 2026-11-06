@@ -608,7 +608,7 @@ struct Episode {
     mail: Mail,
     last_cue: Cue,
     departing: bool,
-    actions: Vec<(u64, &'static str)>,
+    steps: Vec<StepRecord>,
     #[cfg(test)]
     posted_orders: Vec<PostedEdge>,
 }
@@ -684,7 +684,7 @@ impl Episode {
             mail: Mail::zero(),
             last_cue: Cue::None,
             departing: false,
-            actions: Vec::new(),
+            steps: Vec::new(),
             #[cfg(test)]
             posted_orders: Vec::new(),
         }
@@ -1992,6 +1992,7 @@ impl Episode {
             Posted::Missing { .. } => Cue::None,
         };
         self.record_sample(&posted);
+        let note_index = self.mail.log.len() - 1;
         let before_clock = self.world.now_ms();
         let before = xy(self.world.observe().robot.pose.point());
         let result = robot_follow(
@@ -2013,7 +2014,17 @@ impl Episode {
             Err(FeedError::Trip(_)) => "trip",
             Err(FeedError::Arm(_)) => "arm",
         };
-        self.actions.push((self.world.now_ms(), action));
+        let after = xy(self.world.observe().robot.pose.point());
+        self.steps.push(StepRecord {
+            note_index,
+            decision_ms: before_clock,
+            end_ms: self.world.now_ms(),
+            action,
+            before_x: before.0,
+            before_y: before.1,
+            after_x: after.0,
+            after_y: after.1,
+        });
         match result {
             Ok(end) => {
                 if self.trip.now_ms() != Some(self.world.now_ms()) {
@@ -2408,6 +2419,17 @@ fn phase_name(phase: Phase) -> &'static str {
     }
 }
 
+struct StepRecord {
+    note_index: usize,
+    decision_ms: u64,
+    end_ms: u64,
+    action: &'static str,
+    before_x: i32,
+    before_y: i32,
+    after_x: i32,
+    after_y: i32,
+}
+
 fn end_name(end: &NavEnd) -> &'static str {
     match end {
         NavEnd::Moved { .. } => "moved",
@@ -2471,19 +2493,15 @@ impl Episode {
             .mail
             .log
             .iter()
-            .map(|note| {
-                let action = self
-                    .actions
-                    .iter()
-                    .rev()
-                    .find(|(ms, _)| *ms <= note.decision_ms)
-                    .map(|(_, name)| *name)
-                    .unwrap_or("-");
+            .enumerate()
+            .map(|(index, note)| {
+                let step = self.steps.iter().find(|step| step.note_index == index);
                 let fresh = note.kind == SampleKind::Ready;
                 crate::replay::Mark {
                     captured_ms: note.captured_ms,
                     delivered_ms: note.delivered_ms,
-                    decision_ms: note.decision_ms,
+                    decision_ms: step.map(|step| step.decision_ms).unwrap_or(note.decision_ms),
+                    end_ms: step.map(|step| step.end_ms),
                     age_ms: note.age_ms,
                     kind: kind_name(note.kind),
                     fresh,
@@ -2491,7 +2509,11 @@ impl Episode {
                     sensed_y: if fresh { note.sensed_y } else { None },
                     truth_x: note.truth_x,
                     truth_y: note.truth_y,
-                    action,
+                    action: step.map(|step| step.action).unwrap_or("none"),
+                    before_x: step.map(|step| step.before_x),
+                    before_y: step.map(|step| step.before_y),
+                    after_x: step.map(|step| step.after_x),
+                    after_y: step.map(|step| step.after_y),
                     custody: note.custody,
                 }
             })
