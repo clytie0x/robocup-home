@@ -1,5 +1,29 @@
 # WORKLOG
 
+## R1 through R5 interrogate plan (2026-11-07)
+
+Documentation only. No code change. Pull request 25 stays open and is not merged. The code candidate is `08e85403f78ccbcdb025f62d110bdebfb68c528c`. Independent review of that head was safe: 194 library tests and 7 doctests, debug and release. CI run `42284519561` succeeded on that SHA. This entry does not start a fix and does not say the plan is complete.
+
+### Intent
+
+A bounded, reproducible laptop simulation of Carry My Luggage in two dimensions: posted sensing with real delivery boundaries, causal world events, frozen scenarios judged apart from the script, and an SVG drawn from the recorded log. It is a 2D model. It is not a hardware result, a field score, or complete acceptance. Section 3.1 stays 45 `pass` and 11 `not-run`. No hardware row is closed. GPSR is unchanged. The professor PDF remains the rule: cover 2024 Rev-1, revision 2024-07-09, SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2024.2 and public 2025.1 are not the baseline.
+
+### Seats
+
+Two independent read-only cloud workspaces inspect R1 through R5 up to that candidate. Seat A is the existing reviewer. Seat B is a fresh adversary. Neither seat makes a tracked edit or pushes a shared branch. Each failure is proved against the real code, with the exact command, the actual output, and the required output, in that seat's own scratch artifacts.
+
+The coordinator is the only writer. A finding is adopted only after the coordinator reproduces it. Root causes that are the same defect are merged. Speculation is dropped. A defect the approved plan already excludes stays excluded. An in-scope defect that survives that filter is fixed, then that exact new head gets the full regression, an independent check, and CI.
+
+Cross-judge, pick, and graft are not part of this interrogate.
+
+### Read
+
+Sensor timing, identity, and cause. Replay provenance, time, and meaning. Tests that would still pass if the behavior were wrong. Claims set against the professor source.
+
+One residual is a probe, not a decided defect: a ready sample with no operator is drawn with the words `Not a fresh observation`.
+
+This entry does not implement the interrogate. No further milestone starts from this commit.
+
 ## R5 action alignment (2026-11-07)
 
 The picture joined each delivery to the latest recorded action whose end stamp was at or before the decision clock. That end stamp is the previous command. On the seed-1 success log, the mark at decision 1000 was labeled `in-reach` while the command issued there moved the base from `(0, 0)` to `(39, 195)` and ended at 1200. The mark at decision 14400 was labeled `moved` while the base stayed at `(7997, -488)`.
