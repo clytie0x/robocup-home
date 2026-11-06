@@ -11,7 +11,7 @@
 use domain::{Custody, Id, Point, Step, World};
 use manipulation::assume::REACH_MM;
 use navigation::{
-    Cue, Follower, Intent, Sight, assume::ROBOT_RADIUS_MM, look, plan_approach, plan_follow,
+    Cue, Follower, Intent, assume::ROBOT_RADIUS_MM, cue_from, plan_approach, plan_follow, sense,
 };
 use sim_runtime::{SimWorld, SlideError};
 use task_3_1::{Effect, Event, LIMIT_MS, Outcome, Phase, Reject, Trip};
@@ -161,12 +161,16 @@ fn follow(
     }
     let observed = world.observe();
     let planner = world.obstacles_for_planner();
-    let (people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
-    let sight = Sight {
-        robot: observed.robot.pose.point(),
-        people: &people,
-        bodies: &bodies,
-    };
+    let view = sense(
+        observed.robot.pose.point(),
+        observed.operator,
+        &observed.bags,
+        &planner,
+        cue == Cue::TakeBag,
+        observed.now_ms,
+    );
+    let sight = view.sight();
+    let cue = cue_from(&view);
     let before = *follower;
     let (planned, intent) = plan_follow(&before, &sight, cue);
     if trip.phase() == Phase::Lost {
@@ -342,24 +346,23 @@ fn approach(
         return Err(FeedError::Trip(Reject::OutOfOrder));
     }
     let observed = world.observe();
-    let Some(target) = observed.bags.iter().find(|item| item.id == bag) else {
+    let planner = world.obstacles_for_planner();
+    let view = sense(
+        observed.robot.pose.point(),
+        observed.operator,
+        &observed.bags,
+        &planner,
+        false,
+        observed.now_ms,
+    );
+    let Some(target) = view.bags.iter().find(|item| item.id == bag) else {
         return Err(FeedError::Arm(manipulation::GripError::Missing));
     };
     if target.custody != Custody::Free {
         return Err(FeedError::Arm(manipulation::GripError::NotFree));
     }
-    if !target.visible {
-        return Err(FeedError::Arm(manipulation::GripError::Invisible));
-    }
-    let planner = world.obstacles_for_planner();
-    let (_people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
     let before = *follower;
-    match plan_approach(
-        observed.robot.pose.point(),
-        target.pose.point(),
-        &bodies,
-        REACH_MM,
-    ) {
+    match plan_approach(view.robot, target.pose.point(), &view.bodies, REACH_MM) {
         Intent::InReach => commit_event(
             world,
             trip,
@@ -553,12 +556,15 @@ fn accompany(
     }
     let observed = world.observe();
     let planner = world.obstacles_for_planner();
-    let (people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
-    let sight = Sight {
-        robot: observed.robot.pose.point(),
-        people: &people,
-        bodies: &bodies,
-    };
+    let view = sense(
+        observed.robot.pose.point(),
+        observed.operator,
+        &observed.bags,
+        &planner,
+        false,
+        observed.now_ms,
+    );
+    let sight = view.sight();
     let before = *follower;
     let (planned, intent) = plan_follow(&before, &sight, Cue::None);
     let done = |next: &Trip, outcome: Outcome, end: NavEnd| {
@@ -1253,7 +1259,7 @@ mod tests {
     }
 
     #[test]
-    fn a_far_bag_approach_does_not_panic_or_overshoot() {
+    fn an_unsensed_extreme_bag_does_not_move_the_base() {
         for x in [2_968_220, 2_968_221, 3_000_000, 5_000_000] {
             let mut world = SimWorld::from_seed(1);
             let operator = world.observe().operator.id;
@@ -1264,7 +1270,7 @@ mod tests {
             trip.apply(0, Event::Named { bag }).unwrap();
             world.place_free(bag, point(x, 0)).unwrap();
             let mut follower = Follower::follow(operator);
-            let end = step_drive(
+            let err = step_drive(
                 &mut world,
                 &mut trip,
                 &mut follower,
@@ -1272,24 +1278,17 @@ mod tests {
                 Drive::Approach { bag },
                 Cue::None,
             )
-            .unwrap();
-            let NavEnd::Moved { to } = end else {
-                panic!("{x} {end:?}");
-            };
-            assert!(to.x().get() > 0, "{x} {to:?}");
-            assert_eq!(to.y().get(), 0, "{x} {to:?}");
-            assert!(
-                i64::from(to.x().get()) * i64::from(to.x().get()) <= 200 * 200,
-                "{x}"
-            );
-            assert_eq!(world.now_ms(), 100);
-            assert_eq!(trip.now_ms(), Some(100));
-            assert_eq!(trip.phase(), Phase::Picking);
-            assert!(trip.carried().is_none());
+            .unwrap_err();
+            assert_eq!(err, FeedError::Arm(GripError::Missing), "{x}");
+            assert_eq!(pose(&world), point(0, 0), "{x}");
+            assert_eq!(world.now_ms(), 0, "{x}");
+            assert_eq!(trip.now_ms(), Some(0), "{x}");
+            assert_eq!(trip.phase(), Phase::Picking, "{x}");
+            assert!(trip.carried().is_none(), "{x}");
             let placed = world.observe();
             let free = placed.bags.iter().find(|item| item.id == bag).unwrap();
-            assert_eq!(free.pose.point(), point(x, 0));
-            assert_eq!(free.custody, domain::Custody::Free);
+            assert_eq!(free.pose.point(), point(x, 0), "{x}");
+            assert_eq!(free.custody, domain::Custody::Free, "{x}");
         }
     }
 

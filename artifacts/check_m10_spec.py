@@ -14,7 +14,7 @@ GENERAL = ROOT / "artifacts" / "sources" / "professor-general.txt"
 TASK_31 = ROOT / "docs" / "tasks" / "3.1-carry-my-luggage.md"
 
 EXPECTED_HASH = "da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600"
-TASK_31_HASH = "b88ea111e77f639c3fe589c10874c222ba087b3c07eb3cf462154ba14411bc06"
+TASK_31_HASH = "6325c732a0c7819e43ba9d65d801eb147316364b5afe701d43f7b93dd7a49633"
 ROW_COUNT = 42
 OUTSTANDING_LABEL = "Outstanding performance (see sec. 2.3.3)"
 ABSENT_PROSE = "it gets a penalty of 250 points."

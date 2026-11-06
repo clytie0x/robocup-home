@@ -10,7 +10,7 @@ use domain::{
 };
 use navigation::{
     Cue, Follower, assume::ARRIVE_MM, assume::ROBOT_RADIUS_MM, assume::SENSOR_MM, assume::STEP_MM,
-    look,
+    cue_from, look, sense,
 };
 use sim_runtime::SimWorld;
 use sim_runtime::assume::{
@@ -26,7 +26,7 @@ use super::{
 };
 
 pub const SOURCE_HASH: &str = "da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600";
-pub const MODEL: &str = "m8-follow-car-v1";
+pub const MODEL: &str = "r1-sensor-v1";
 
 const STEP_MS: u64 = 200;
 const KEEP_MM: i32 = 1_500;
@@ -752,6 +752,14 @@ impl Episode {
 
     fn perceive_and_ready(&mut self) -> Result<(), ()> {
         let observed = self.world.observe();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &observed.obstacles,
+            false,
+            observed.now_ms,
+        );
         let sample = match self.world.aim_at(self.pointed) {
             Ok(sample) => sample,
             Err(_) => {
@@ -762,7 +770,7 @@ impl Episode {
         let chosen = match point_from_sample(
             Some(sample.origin()),
             Some((sample.dx(), sample.dy())),
-            &observed.bags,
+            &view.bags,
         ) {
             Ok(id) => id,
             Err(_) => {
@@ -1247,28 +1255,33 @@ impl Episode {
         }
     }
 
-    fn cue_for_robot(&mut self) -> Cue {
-        let observed = self.world.observe();
-        let (people, _) = look(
-            observed.robot.pose.point(),
-            observed.operator,
-            &observed.obstacles,
-        );
-        let sees = people.iter().any(|person| person.id == self.operator);
-        let operator = observed.operator.pose.point();
-        let offer = match self.opt.offer {
+    /// Scenario intention. This may read the car. The controller does not.
+    fn scenario_offer(&self) -> bool {
+        if self.opt.follow_crowd {
+            return false;
+        }
+        let operator = self.world.observe().operator.pose.point();
+        match self.opt.offer {
             Offer::Always => true,
             Offer::AtCar => operator == self.car,
             Offer::AtRouteEnd => self
                 .route
                 .last()
                 .is_some_and(|last| operator == *last && self.route_i + 1 >= self.route.len()),
-        };
-        if offer && sees && !self.opt.follow_crowd {
-            Cue::TakeBag
-        } else {
-            Cue::None
         }
+    }
+
+    fn cue_for_robot(&mut self) -> Cue {
+        let observed = self.world.observe();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &self.world.obstacles_for_planner(),
+            self.scenario_offer(),
+            observed.now_ms,
+        );
+        cue_from(&view)
     }
 
     fn hand_off(&mut self) -> Result<(), ()> {
@@ -2776,5 +2789,130 @@ mod tests {
             !injected.hit[1] && !injected.hit[2] && !injected.hit[3],
             "CML-SCORE-SMALL"
         );
+    }
+
+    #[test]
+    fn a_fixed_gesture_keeps_the_plan_when_the_car_moves() {
+        use navigation::{Follower, cue_from, plan_follow, sense};
+        let world = SimWorld::from_seed(1);
+        let obs = world.observe();
+        let before = sense(
+            obs.robot.pose.point(),
+            obs.operator,
+            &obs.bags,
+            &obs.obstacles,
+            false,
+            obs.now_ms,
+        );
+        let mut shifted = world.clone();
+        shifted.set_car(obs.operator.pose.point());
+        let next = shifted.observe();
+        let after = sense(
+            next.robot.pose.point(),
+            next.operator,
+            &next.bags,
+            &next.obstacles,
+            false,
+            next.now_ms,
+        );
+        assert_eq!(before, after);
+        assert_ne!(world.truth().car(), shifted.truth().car());
+        let follower = Follower::follow(obs.operator.id);
+        let (_, left) = plan_follow(&follower, &before.sight(), cue_from(&before));
+        let (_, right) = plan_follow(&follower, &after.sight(), cue_from(&after));
+        assert_eq!(left, right);
+        let offered = sense(
+            obs.robot.pose.point(),
+            obs.operator,
+            &obs.bags,
+            &obs.obstacles,
+            true,
+            obs.now_ms,
+        );
+        assert_eq!(cue_from(&offered), Cue::TakeBag);
+        let mut far = world.clone();
+        far.place_operator(point(0, 20_000));
+        let far_obs = far.observe();
+        let missed = sense(
+            far_obs.robot.pose.point(),
+            far_obs.operator,
+            &far_obs.bags,
+            &far_obs.obstacles,
+            true,
+            far_obs.now_ms,
+        );
+        assert_eq!(cue_from(&missed), Cue::None);
+        assert!(
+            missed
+                .people
+                .iter()
+                .all(|person| person.id != obs.operator.id)
+        );
+    }
+
+    #[test]
+    fn an_unseen_disk_stays_in_the_world_and_still_blocks() {
+        use navigation::sense;
+        use sim_runtime::SlideError;
+        let mut world = SimWorld::from_seed(1);
+        let bag = world.observe().bags[0].id;
+        world.place_free(bag, point(0, 30_000)).unwrap();
+        let mut obstacles = world.observe().obstacles;
+        let center = point(0, 30_000);
+        let id = Id::new(70).unwrap();
+        obstacles.push(Obstacle {
+            id,
+            pose: Pose::new(center),
+            class: ObstacleClass::SmallGround,
+            clearance: Mm::new(400),
+            bodies: vec![Disk {
+                id,
+                center,
+                radius: Mm::new(400),
+            }],
+        });
+        world.set_obstacles(obstacles);
+        let obs = world.observe();
+        let view = sense(
+            obs.robot.pose.point(),
+            obs.operator,
+            &obs.bags,
+            &obs.obstacles,
+            true,
+            obs.now_ms,
+        );
+        assert!(view.bags.iter().all(|item| item.id != bag));
+        assert!(view.bodies.iter().all(|body| body.center != center));
+        assert!(
+            obs.bags
+                .iter()
+                .any(|item| item.id == bag && item.pose.point() == center)
+        );
+        assert!(
+            obs.obstacles
+                .iter()
+                .any(|item| item.bodies.iter().any(|disk| disk.center == center))
+        );
+        assert_eq!(
+            world.try_slide(center, ROBOT_RADIUS_MM),
+            Err(SlideError::Blocked)
+        );
+    }
+
+    #[test]
+    fn an_in_range_gesture_at_the_car_passes_and_a_wrong_place_cue_does_not() {
+        let good = main_at(1, None);
+        assert!(good.main_passed, "{}", good.summary());
+        assert_eq!(good.operator, good.car);
+        assert!(good.local_cue);
+        assert!(good.trip_flag);
+        assert_eq!(good.custody, "operator");
+        assert!(good.clocks_match);
+        let wrong = run(Script::EarlyCue { seed: 1 });
+        assert!(wrong.trip_flag, "{}", wrong.summary());
+        assert!(!wrong.main_passed);
+        assert_ne!(wrong.operator, wrong.car);
+        assert_eq!(wrong.phase, "complete");
+        assert_eq!(wrong.custody, "operator");
     }
 }

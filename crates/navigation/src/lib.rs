@@ -51,6 +51,8 @@ pub mod assume {
     pub const APPROACH_MARGIN_MM: i32 = 100;
     /// Sixteen headings. Not a search framework.
     pub const MODEL: &str = "standoff-headings-v1";
+    /// Printed "within 2 m" of the operator. Not a measured sensor.
+    pub const TASK_BAG_MM: i32 = 2_000;
 }
 
 /// Observed cue. `TakeBag` is an explicit operator signal, not a car coordinate.
@@ -58,6 +60,71 @@ pub mod assume {
 pub enum Cue {
     None,
     TakeBag,
+}
+
+/// What a controller may read. There is no car coordinate in this type.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SensorView {
+    pub robot: Point,
+    pub people: Vec<SeenPerson>,
+    pub bodies: Vec<SeenBody>,
+    pub bags: Vec<domain::Bag>,
+    pub gesture: bool,
+    pub captured_ms: u64,
+}
+
+impl SensorView {
+    pub fn sight(&self) -> Sight<'_> {
+        Sight {
+            robot: self.robot,
+            people: &self.people,
+            bodies: &self.bodies,
+        }
+    }
+}
+
+/// Range-limited snapshot. `gesture_offered` is the scenario bit, not a car test.
+///
+/// The caller chooses `obstacles`. A legacy collision fault can omit a class
+/// before this call. This function does not.
+pub fn sense(
+    robot: Point,
+    operator: Actor,
+    bags: &[domain::Bag],
+    obstacles: &[Obstacle],
+    gesture_offered: bool,
+    captured_ms: u64,
+) -> SensorView {
+    let (people, bodies) = look(robot, operator, obstacles);
+    let operator_seen = people.iter().any(|person| person.id == operator.id);
+    let bags = bags
+        .iter()
+        .filter(|bag| bag_in_view(robot, operator.pose.point(), bag))
+        .cloned()
+        .collect();
+    SensorView {
+        robot,
+        people,
+        bodies,
+        bags,
+        gesture: gesture_offered && operator_seen,
+        captured_ms,
+    }
+}
+
+/// Cue from a sensor view. The car is not an argument.
+pub fn cue_from(view: &SensorView) -> Cue {
+    if view.gesture {
+        Cue::TakeBag
+    } else {
+        Cue::None
+    }
+}
+
+fn bag_in_view(robot: Point, operator: Point, bag: &domain::Bag) -> bool {
+    bag.visible
+        && (within_reach(robot, bag.pose.point(), assume::SENSOR_MM)
+            || within_reach(operator, bag.pose.point(), assume::TASK_BAG_MM))
 }
 
 /// A person the sensor reported.
@@ -1002,5 +1069,63 @@ mod tests {
         };
         let (_people, seen) = look(at(0, 0), operator, &[small]);
         assert_eq!(seen.len(), 1);
+    }
+
+    fn operator_at(x: i32, y: i32) -> domain::Actor {
+        domain::Actor {
+            id: id(2),
+            pose: Pose::new(at(x, y)),
+        }
+    }
+
+    fn bag_at(x: i32, y: i32, visible: bool) -> domain::Bag {
+        domain::Bag {
+            id: id(3),
+            pose: Pose::new(at(x, y)),
+            kind: domain::BagKind::LightweightStiffVerticalHandles,
+            visible,
+            custody: domain::Custody::Free,
+        }
+    }
+
+    #[test]
+    fn an_offered_gesture_outside_range_is_lost_and_not_a_cue() {
+        let operator = operator_at(0, 20_000);
+        let view = sense(at(0, 0), operator, &[], &[], true, 4);
+        assert!(!view.gesture);
+        assert!(view.people.is_empty());
+        assert_eq!(cue_from(&view), Cue::None);
+        let (_, intent) = plan_follow(
+            &Follower::follow(operator.id),
+            &view.sight(),
+            cue_from(&view),
+        );
+        assert_eq!(intent, Intent::Lost);
+    }
+
+    #[test]
+    fn a_bag_outside_the_robot_sensor_and_the_two_meter_disk_is_absent() {
+        let operator = operator_at(0, 1_000);
+        let near = bag_at(0, 3_000, true);
+        let far = bag_at(0, 30_000, true);
+        let hidden = bag_at(400, 1_000, false);
+        let disk = Obstacle {
+            id: id(6),
+            pose: Pose::new(at(0, 30_000)),
+            class: ObstacleClass::SmallGround,
+            clearance: Mm::new(400),
+            bodies: vec![Disk {
+                id: id(6),
+                center: at(0, 30_000),
+                radius: Mm::new(400),
+            }],
+        };
+        let view = sense(at(0, 0), operator, &[near, far, hidden], &[disk], true, 9);
+        assert_eq!(view.captured_ms, 9);
+        assert_eq!(view.bags.len(), 1);
+        assert_eq!(view.bags[0].pose.point(), at(0, 3_000));
+        assert!(view.bodies.is_empty());
+        assert!(view.gesture);
+        assert_eq!(cue_from(&view), Cue::TakeBag);
     }
 }

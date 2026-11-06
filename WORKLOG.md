@@ -1,5 +1,82 @@
 # WORKLOG
 
+## R1 sensor boundary, approved plan recorded (2026-11-07)
+
+Teerapat approved the revised five-milestone plan at 2026-11-07 00:36 Asia/Bangkok, including the replay picture, and said to follow the plan. The record is [docs/tasks/r1-r5-realism-plan.md](docs/tasks/r1-r5-realism-plan.md). This pull request implements R1 only. It does not merge and it does not start R2. There is no sanctioned Issue tool in this run, so no Issue was opened.
+
+### Design
+
+The controller type is `navigation::SensorView`. It has robot pose, in-range people, in-range bodies, the bags the view may name, one gesture bit, and `captured_ms`. It has no car field. `sense` does not take a car. The scenario still decides when the human offers the gesture, and that decision may use the car. `cue_from` reads only the view.
+
+World `try_slide`, `pick`, and `hand_to` keep using truth for collisions, reach, and custody. `collision_fault` stays a legacy omission on the obstacle slice the harness passes into `sense` for planning. The sensor function itself does not drop a class. `decide` for a named pick still classifies invisible, out of reach, and missing on the world bag, so those existing refusals stay distinct.
+
+A visible bag enters the view when it is inside `SENSOR_MM` of the robot or inside the printed 2 m of the operator. The second clause keeps the legal far-bag approach. A bag outside both, and an obstacle disk outside the class sensor, stay in the world and stay out of the view.
+
+Rejected shapes. A car field zeroed inside the same snapshot still types the leak. Filtering `observe` would hide truth from the scorer. A new crate adds a package the workspace does not need.
+
+### Throughput
+
+Blocking step: record this plan, then a failing behavioral test, then the sensor wiring. One writer. `episode.rs` and `drive.rs` are shared, so the work is one pull request. R2 is a later review, not a parallel branch.
+
+### Red and green
+
+Red, before `sense` existed. `cargo test -p harness --lib an_unsensed_extreme_bag_does_not_move_the_base --offline` exited 101. The approach still returned `Ok(Moved { to: Point { x: Mm(200), y: Mm(0) } })` for a bag at x = 2968220. `cargo test -p navigation --lib an_offered_gesture_outside_range_is_lost_and_not_a_cue --offline` exited 101 with `cannot find function sense` and `cannot find function cue_from`.
+
+Green. Those tests, plus `a_bag_outside_the_robot_sensor_and_the_two_meter_disk_is_absent`, `a_fixed_gesture_keeps_the_plan_when_the_car_moves`, `an_unseen_disk_stays_in_the_world_and_still_blocks`, and `an_in_range_gesture_at_the_car_passes_and_a_wrong_place_cue_does_not`, passed. The numeric cap for a huge approach coordinate stays in `approach_toward_a_far_bag_stays_on_axis_and_inside_the_step`. The old drive test was chasing that coordinate from world truth. It now expects `GripError::Missing` and an unmoved base.
+
+The section 3.1 spec file gained one sentence that points at this plan. Its row results were not edited. `artifacts/check_m10_spec.py` pins that file, so the pin moved from `b88ea111e77f639c3fe589c10874c222ba087b3c07eb3cf462154ba14411bc06` to `6325c732a0c7819e43ba9d65d801eb147316364b5afe701d43f7b93dd7a49633`.
+
+This run's library count is 166, not the earlier 161. The added tests are navigation 2 and harness 3. Doctests stay 7. Debug and release match. `check_m1_spec.py` reports 56 rows. `check_m10_spec.py` reports 42 `not-run`, 6 open, 2 hardware. The section 3.1 table was not rewritten, so its 45 `pass` and 11 `not-run` labels are unchanged. `pdfinfo` and `pdftotext` are absent here. `PROFESSOR_PDF` still matched the hash and the byte size, and the checker printed `pdf=True` on that basis. It did not run a page-count tool in this run.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 49, hri 2, manipulation 8, navigation 14, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, task_3_2 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same library counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=9 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+pdfinfo and pdftotext absent; hash and size matched
+
+python3 artifacts/check_m10_spec.py --self-test
+self-test ok
+
+python3 artifacts/check_m10_spec.py
+ok rows=42 not-run=42 open=6 hardware=2
+```
+
 ## M10 scaffold for section 3.2 (2026-11-06)
 
 Tasks 1 and 2 of the approved plan only. Same pull request as the research. No command body, score, deadline, navigation, door hardware, or section 3.1 change. This does not merge. No later milestone was started.

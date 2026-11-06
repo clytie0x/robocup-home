@@ -14,7 +14,7 @@ A hit is a motion segment that meets a disk still in the world at that step. Rem
 
 ## Two authorities
 
-The scenario reads `truth().car()` and moves the operator along a lane that clears world disks. That lane is operator behavior. `robot_follow` takes a local sight and a cue. It has no car argument. `revealed_car` stays empty.
+The scenario reads `truth().car()` and moves the operator along a lane that clears world disks. That lane is operator behavior. `robot_follow` takes a local sight and a cue. It has no car argument. `revealed_car` stays empty. From R1, the cue bit is a scripted gesture. The sensor reports it only when that person is inside the existing range. The scenario may choose to offer the gesture at the car. The controller function does not compare poses to the car.
 
 `navigation::Cue::TakeBag` plus leaving the first-sight poses can still set the trip flag. That is the M7 component fixture. `EpisodeReport::main_passed` does not read the flag. It requires the operator to be on the designated car point, the pointed bag in operator custody, the robot within the labeled `ARRIVE_MM` of that operator, a locally seen cue, steps no longer than 200 mm, one shared clock at or under 300000 ms, and no jump. An early cue, a stop short of the point, an unseen operator, a jump, and the homeward-only direction fail that check even when the flag is set.
 
