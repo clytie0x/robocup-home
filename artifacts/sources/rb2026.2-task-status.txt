@@ -1,3 +1,5 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
 Source: https://github.com/RoboCupAtHome/RuleBook/releases/download/2026.2/rulebook.pdf
 SHA256: d35e93c7f291a59a823691905b47dcd7e8de14ab3a4c546aca55ba20b30ce128
 GitHub release asset digest: sha256:d35e93c7f291a59a823691905b47dcd7e8de14ab3a4c546aca55ba20b30ce128

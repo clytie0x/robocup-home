@@ -7,5 +7,5 @@ The repository is documentation only. There is no runnable application, no simul
 The Rust toolchain version, edition, and CI baseline are not decided.
 
 - Locked conventions: [AGENTS.md](AGENTS.md)
-- Task 3.1 acceptance specification for 2025.1 section 5.1 Help Me Carry: [docs/tasks/3.1-carry-my-luggage.md](docs/tasks/3.1-carry-my-luggage.md)
+- Task 3.1 Carry My Luggage acceptance specification, from the professor PDF dated 2024-07-09: [docs/tasks/3.1-carry-my-luggage.md](docs/tasks/3.1-carry-my-luggage.md)
 - Verification log: [WORKLOG.md](WORKLOG.md)

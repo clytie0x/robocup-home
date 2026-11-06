@@ -1,3 +1,5 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
 Source URL retrieved 2026-11-06: https://robocupathome.github.io/RuleBook/rulebook/master.pdf
 SHA256: 45aa98b1773f202abfd7cd919b8aba5581cbf2e0182216fe479ee2eed59ace38
 PDF CreationDate: 2026-10-14T14:38:35Z

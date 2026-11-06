@@ -1,3 +1,5 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
 Source: https://cbr.robocup.org.br/wp-content/uploads/2025/08/Rulebook-1.pdf
 SHA256: 9e4b1f735bffc6b29b64ade8af805fdc24bbeed4dab76c0a1650bfa622cca338
 PDF CreationDate: 2025-07-10T18:00:27Z

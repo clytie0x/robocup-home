@@ -1,3 +1,5 @@
+NONBASELINE. Provenance only. Not the professor file and not the normative baseline.
+
 Source: https://github.com/RoboCupAtHome/RuleBook/releases/download/2025.1/rulebook.pdf
 SHA256: d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11
 Printed section 1.7.5. The example does not match section 5.1.
