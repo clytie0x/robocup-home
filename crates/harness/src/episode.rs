@@ -2500,7 +2500,9 @@ impl Episode {
                 crate::replay::Mark {
                     captured_ms: note.captured_ms,
                     delivered_ms: note.delivered_ms,
-                    decision_ms: step.map(|step| step.decision_ms).unwrap_or(note.decision_ms),
+                    decision_ms: step
+                        .map(|step| step.decision_ms)
+                        .unwrap_or(note.decision_ms),
                     end_ms: step.map(|step| step.end_ms),
                     age_ms: note.age_ms,
                     kind: kind_name(note.kind),
