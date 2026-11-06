@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Design-inventory check for section 3.2. This is not a task score.
-# CI does not run this file. The local command is in WORKLOG.md.
+# CI runs this file from the spec-checker step, after the section 3.1 checker.
 
 import hashlib
 import sys
@@ -10,11 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "docs" / "tasks" / "3.2-general-purpose-service-robot.md"
 EXCERPT = ROOT / "artifacts" / "sources" / "professor-3.2.txt"
+GENERAL = ROOT / "artifacts" / "sources" / "professor-general.txt"
 TASK_31 = ROOT / "docs" / "tasks" / "3.1-carry-my-luggage.md"
 
 EXPECTED_HASH = "da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600"
 TASK_31_HASH = "b88ea111e77f639c3fe589c10874c222ba087b3c07eb3cf462154ba14411bc06"
-ROW_COUNT = 41
+ROW_COUNT = 42
+OUTSTANDING_LABEL = "Outstanding performance (see sec. 2.3.3)"
+ABSENT_PROSE = "it gets a penalty of 250 points."
+REPEAT_SENTENCE = "The default operator may repeat the command up to three times."
 
 OPEN_IDS = (
     "GPSR-OPEN-OUT",
@@ -58,7 +62,37 @@ def rows(spec):
     return found
 
 
-def collect(spec, excerpt, task_31):
+def flat(text):
+    return " ".join(text.split())
+
+
+def score_cell(spec, label):
+    prefix = f"| {label} |"
+    for line in spec.splitlines():
+        if line.startswith(prefix):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) >= 2:
+                return cells[1]
+    return None
+
+
+def excerpt_score(body, label):
+    for line in body.splitlines():
+        if label in line:
+            tokens = line.split()
+            if tokens:
+                return tokens[-1]
+    return None
+
+
+def row_by_id(found, row_id):
+    for cells in found:
+        if cells and cells[0] == row_id:
+            return cells
+    return None
+
+
+def collect(spec, excerpt, general, task_31):
     problems = []
     if task_31 is not None:
         digest = hashlib.sha256(task_31).hexdigest()
@@ -103,9 +137,30 @@ def collect(spec, excerpt, task_31):
             problems.append(f"{row_id} unexpected open block")
         if row_id in HARDWARE_IDS and gate != "hardware":
             problems.append(f"{row_id} left hardware")
-    for row_id in OPEN_IDS + HARDWARE_IDS:
+    for row_id in OPEN_IDS + HARDWARE_IDS + ("GPSR-GEN-REPEAT", "GPSR-PROSE-ABSENT", "GPSR-SCORE-OUT"):
         if row_id not in seen:
             problems.append(f"missing {row_id}")
+    if score_cell(spec, OUTSTANDING_LABEL) != "150":
+        problems.append("sheet outstanding is not 150")
+    if excerpt_score(body, OUTSTANDING_LABEL) != "150":
+        problems.append("excerpt outstanding is not 150")
+    general_body = page_body(general)
+    general_flat = flat(general_body)
+    if ABSENT_PROSE not in general_flat:
+        problems.append("general excerpt lost the 250 point absence prose")
+    if REPEAT_SENTENCE not in general_flat:
+        problems.append("general excerpt lost the default-operator repeat sentence")
+    prose = row_by_id(found, "GPSR-PROSE-ABSENT")
+    if prose is None or "250 points" not in prose[1] or "2.3.1" not in prose[1]:
+        problems.append("absence prose row lost 250 points")
+    absent = row_by_id(found, "GPSR-OPEN-ABSENT")
+    if absent is None or absent[7] != "open" or "This row cannot pass." not in absent[1]:
+        problems.append("absence conflict is not open")
+    elif "250 points" not in absent[1] or "–500" not in absent[1] or "Both are in this PDF." not in absent[1]:
+        problems.append("absence conflict lost a cited number")
+    repeat = row_by_id(found, "GPSR-GEN-REPEAT")
+    if repeat is None or repeat[5] != "not-run" or REPEAT_SENTENCE not in repeat[1]:
+        problems.append("default-operator repeat row is missing or credited")
     return problems
 
 
@@ -113,25 +168,42 @@ def self_test():
     failures = []
     spec = SPEC.read_text(encoding="utf-8")
     excerpt = EXCERPT.read_text(encoding="utf-8")
+    general = GENERAL.read_text(encoding="utf-8")
     task_31 = TASK_31.read_bytes()
-    if collect(spec, excerpt, task_31):
+    if collect(spec, excerpt, general, task_31):
         failures.append("current inventory should pass")
-        failures.extend(collect(spec, excerpt, task_31)[:8])
+        failures.extend(collect(spec, excerpt, general, task_31)[:8])
         return failures
     passed = spec.replace("| not-run | sim | none |", "| pass | sim | none |", 1)
-    if not any("result pass" in item for item in collect(passed, excerpt, task_31)):
+    if not any("result pass" in item for item in collect(passed, excerpt, general, task_31)):
         failures.append("a pass result should fail")
     dropped = spec.replace("| GPSR-OPEN-CMD |", "| GPSR-OPEN-CMD-HIDDEN |", 1)
-    if not any("GPSR-OPEN-CMD" in item for item in collect(dropped, excerpt, task_31)):
+    if not any("GPSR-OPEN-CMD" in item for item in collect(dropped, excerpt, general, task_31)):
         failures.append("dropping an open row should fail")
     borrowed = spec.replace("The filename says 2025.", "The filename says 2025. 1015.", 1)
-    if not any("borrows" in item for item in collect(borrowed, excerpt, task_31)):
+    if not any("borrows" in item for item in collect(borrowed, excerpt, general, task_31)):
         failures.append("a borrowed total should fail")
     quiet = excerpt.replace("1500", "1501", 1)
-    if not any("1500" in item for item in collect(spec, quiet, task_31)):
+    if not any("1500" in item for item in collect(spec, quiet, general, task_31)):
         failures.append("a changed total in the excerpt should fail")
+    outstanding = spec.replace("| 150 | no |", "| 999 | no |", 1)
+    if not any("outstanding" in item for item in collect(outstanding, excerpt, general, task_31)):
+        failures.append("sheet outstanding 999 should fail")
+    prose = spec.replace(
+        "a penalty of 250 points when a team",
+        "a penalty of 500 points when a team",
+        1,
+    )
+    if not any("250" in item for item in collect(prose, excerpt, general, task_31)):
+        failures.append("absence prose 500 should fail")
+    general_prose = general.replace(ABSENT_PROSE, "it gets a penalty of 500 points.", 1)
+    if not any("250" in item for item in collect(spec, excerpt, general_prose, task_31)):
+        failures.append("general excerpt absence prose 500 should fail")
+    conflict = spec.replace("Both are in this PDF. ", "", 1)
+    if not any("conflict" in item for item in collect(conflict, excerpt, general, task_31)):
+        failures.append("removing the absence conflict sentence should fail")
     moved = bytes(task_31).replace(b"1015", b"1016", 1)
-    if not any("section 3.1" in item for item in collect(spec, excerpt, moved)):
+    if not any("section 3.1" in item for item in collect(spec, excerpt, general, moved)):
         failures.append("an edited section 3.1 file should fail")
     return failures
 
@@ -147,6 +219,7 @@ def main(argv):
     problems = collect(
         SPEC.read_text(encoding="utf-8"),
         EXCERPT.read_text(encoding="utf-8"),
+        GENERAL.read_text(encoding="utf-8"),
         TASK_31.read_bytes(),
     )
     if problems:
