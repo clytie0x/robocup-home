@@ -37,7 +37,9 @@ pub mod assume {
     /// A household pointing study reported about 9.6 cm of average position error.
     /// This fixture's nominal ray is the integer vector from the operator to the
     /// aimed bag, so the corridor is only how far a candidate may sit from that ray.
-    /// It is not a measured error for this model.
+    /// It is not a measured error for this model. The test multiplies this width
+    /// by `floor(hypot)` of the direction, so a short direction is a stricter
+    /// tube than a longer writing of the same ray. That difference is not physical.
     pub const CORRIDOR_MM: i32 = 150;
 
     /// Perpendicular gap, in millimeters, that is still too small to be unique.

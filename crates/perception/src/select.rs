@@ -44,10 +44,13 @@ impl std::error::Error for SelectError {}
 /// continues only where the dot product with a candidate offset is positive.
 /// The perpendicular distance is `|dx * py - dy * px| / hypot(dx, dy)`.
 /// The comparison uses `floor(hypot)` so the corridor is never wider than
-/// [`crate::assume::CORRIDOR_MM`]. A unique choice also has to beat the next hit
-/// by more than [`crate::assume::TIE_GAP_MM`] using `ceil(hypot)`, which refuses
-/// a tie that quantization could flip. Neither comparison uses the candidate
-/// order or the id value.
+/// [`crate::assume::CORRIDOR_MM`]. That floor length is not scale-invariant:
+/// a short integer direction rejects points that the same ray, written with a
+/// longer direction, accepts. This is the integer test, not a physical width.
+/// A unique choice also has to beat the next hit by more than
+/// [`crate::assume::TIE_GAP_MM`] using `ceil(hypot)`, which refuses a tie that
+/// quantization could flip. Neither comparison uses the candidate order or the
+/// id value.
 pub fn select(
     origin: Option<Point>,
     direction: Option<(i32, i32)>,
@@ -381,6 +384,33 @@ mod tests {
         let chosen = select(Some(origin), Some((800, 0)), &[off, on]).unwrap();
         assert_eq!(chosen, on.id);
         assert_ne!(chosen, off.id);
+    }
+
+    #[test]
+    fn a_non_integer_length_accepts_cross_299_and_rejects_cross_301() {
+        let inside = cand(3, 1, 150, true);
+        let chosen = select(Some(origin()), Some((2, 1)), &[inside]).unwrap();
+        assert_eq!(chosen, inside.id);
+        let outside = cand(4, 1, 151, true);
+        assert_eq!(
+            select(Some(origin()), Some((2, 1)), &[outside]),
+            Err(SelectError::NoHit)
+        );
+        assert_ne!(
+            select(Some(origin()), Some((2, 1)), &[outside]),
+            Ok(outside.id)
+        );
+    }
+
+    #[test]
+    fn the_floor_corridor_rejects_a_short_direction_that_a_longer_one_accepts() {
+        let bag = cand(5, 0, 180, true);
+        assert_eq!(
+            select(Some(origin()), Some((1, 1)), &[bag]),
+            Err(SelectError::NoHit)
+        );
+        let chosen = select(Some(origin()), Some((100, 100)), &[bag]).unwrap();
+        assert_eq!(chosen, bag.id);
     }
 
     #[test]
