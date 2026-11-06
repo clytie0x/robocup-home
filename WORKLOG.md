@@ -1,6 +1,30 @@
 # WORKLOG
 
+## Visibility and M2 CI read (2026-11-06)
+
+Read after the M2 merge. This is the current visibility. No visibility write was made in this read. The refused 403 attempt in the next section stays as history.
+
+```text
+gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch,html_url:.html_url}'
+{"default_branch":"main","html_url":"https://github.com/clytie0x/robocup-home","private":false,"visibility":"public"}
+
+gh repo view clytie0x/robocup-home --json nameWithOwner,isPrivate,visibility,url,defaultBranchRef
+{"defaultBranchRef":{"name":"main"},"isPrivate":false,"nameWithOwner":"clytie0x/robocup-home","url":"https://github.com/clytie0x/robocup-home","visibility":"PUBLIC"}
+```
+
+M2 is merged at `58cfa9de29c033a0061dc7e654d84b20fb69e6f6`. Pull-request CI run `42186659932` attempt 2 completed with conclusion success on head `52e73bde7b0a236e723406ee60b643a515cbb68c`. The merge push also completed with conclusion success: run `42193390300` attempt 1 on that merge commit, https://github.com/clytie0x/robocup-home/actions/runs/42193390300. The billing failure on run `42185539820` remains the earlier record in the M2 section. It is not the current CI result.
+
+```text
+gh api repos/clytie0x/robocup-home/actions/runs/42186659932 --jq '{id,run_attempt,event,head_sha,head_branch,conclusion,status,html_url}'
+{"conclusion":"success","event":"pull_request","head_branch":"cursor/rust-workspace-ci-91af","head_sha":"52e73bde7b0a236e723406ee60b643a515cbb68c","html_url":"https://github.com/clytie0x/robocup-home/actions/runs/42186659932","id":42186659932,"run_attempt":2,"status":"completed"}
+
+gh api repos/clytie0x/robocup-home/actions/runs/42193390300 --jq '{id,run_attempt,event,head_sha,head_branch,conclusion,status,html_url}'
+{"conclusion":"success","event":"push","head_branch":"main","head_sha":"58cfa9de29c033a0061dc7e654d84b20fb69e6f6","html_url":"https://github.com/clytie0x/robocup-home/actions/runs/42193390300","id":42193390300,"run_attempt":1,"status":"completed"}
+```
+
 ## Visibility instruction (2026-11-06)
+
+Historical refused attempt. It is not the current visibility. The current read is the section above.
 
 On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction.
 
@@ -218,7 +242,9 @@ annotation on .github:
 The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
 ```
 
-Privacy, read only:
+That billing failure is run `42185539820`. It is not the current CI result. The completed runs are in the visibility and M2 CI read above.
+
+Privacy read during M2, before the repository was public. It is not the current visibility.
 
 ```text
 gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch}'
