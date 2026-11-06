@@ -1,0 +1,156 @@
+NORMATIVE EXCERPT
+File identifier: C:\Users\teera\Downloads\at-home-robocup-my-2025-1.pdf
+Coordinator-reported same-hash duplicate: C:\Users\teera\Downloads\at-home-robocup-my-2025.pdf
+Attached copy hashed in this workspace. No public URL is assigned to this file.
+SHA-256: da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600
+Size: 1129757 bytes
+Pages: 52
+pdfinfo CreationDate: 2024-07-09T14:56:18Z
+Cover: Version 2024 Rev-1. Last Revision Date 2024-07-09. Final version for RoboCup 2024 (Revision 2024-07-09 1).
+The filename says 2025. The printed year is 2024.
+Extraction: pdftotext 24.02.0 -layout. Physical pages 23, 24, and 25. Printed pages 18, 19, and 20.
+
+Printed pages 18, 19, and 20. Section 3.2 General Purpose Service Robot.
+
+BEGIN_PAGE_TEXT
+
+--- physical page 23 ---
+
+18                                                                       3.2 General Purpose Service Robot
+
+
+3.2 General Purpose Service Robot
+The robot is asked to understand and execute commands requiring a wide range of different
+abilities.
+
+Main Goal: Execute 3 commands requested by the operator.
+
+Optional Goals:
+  1. Understand a command given by a non-expert operator.
+
+
+Focus
+Task planning, object/people detection and recognition, object feature recognition, object manip-
+ulation
+
+
+Setup
+     • Locations:
+          – Task location: The task takes place inside the Arena, but some commands may
+            require the robot to go out. The Arena is in its nominal state for this task.
+          – Start location: The robot starts outside the Arena. When the door opens, the
+            robot moves towards the Instruction Point.
+          – Instruction point: At the beginning of the test, as well as after finishing the first
+            and second command, the robot moves to the Instruction Point.
+     • People:
+          – Operators: A Professional Operator (the referee) commands the robot to execute
+            a task. Optionally, commands can be issued by a Non-Expert Operator, i.e. a person
+            from the audience with no robotics background. In this case, the referee gives the
+            goal of the command to the non-expert operator, who will then issue it to the robot
+            in their own words. For example, the generated command might be “Bring me a coke
+            from the kitchen.” then the non-expert operator will be told “The robot should bring
+            you a coke, which is found in the kitchen.”, who then tells the robot “I want a coke.
+            Go to the kitchen and get me one.” If the robot consistently fails to understand the
+            non-expert operator (e.g. after two retries), teams can default to a custom operator.
+
+
+Procedure
+     1. Instruction point: At least two hours before the test, the referees announce the location
+        of the Instruction Point.
+     2. Test start: The robot moves to the Instruction Point when the arena door is open.
+     3. Command execution: The operator instructs the robot to execute a command and the
+        robot performs the task.
+     4. Back to the instruction point: The robot goes back to the Instruction Point and waits
+        for the next command.
+
+
+
+                 RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 24 ---
+
+Chapter 3. Tests in Stage I                                                                        19
+
+
+     5. Pausing the Timer: The referee might pause the timer as soon as the robot reaches
+        the instruction point to give time to setup the arena for the next command. The timer
+        resumes as soon as the referee steps back in front of the robot for the next command.
+
+
+
+Additional Rules and Remarks
+     1. Partial scoring: The main task allows partial scoring (per completed command).
+     2. Command generator: Tasks will be generated using the official command generator1 .
+     3. Non-expert operators: Referees are not allowed to instruct non-expert operators on
+        how to operate the robot. Teams attempting to instruct or bias the operator will be
+        disqualified from the task.
+     4. Deus ex Machina: The scores are reduced if human assistance is received, in particular
+        for:
+
+           • using a custom operator
+           • bypassing speech recognition by using an alternative HRI
+           • receiving human assistance to accomplish a task (score reduction is applied consistent
+             with the other tasks in this rulebook)
+           • instructing a human assistant to perform the whole task
+
+
+
+Referee Instructions
+      • Provide the commands to the operators.
+
+
+
+OC Instructions
+
+At least two hours before the test:
+      • Generate the robot commands (don’t reveal them to the teams!).
+      • Announce the location of the instruction point.
+      • Recruit volunteers to assist during the test.
+
+During the test:
+      • Rearrange the arena so that it is in its nominal condition before each command.
+
+
+
+Score Sheet
+
+The maximum time for this test is 5 minutes.
+
+ 1
+     https://github.com/johaq/CommandGenerator
+
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+--- physical page 25 ---
+
+20                                                                    3.2 General Purpose Service Robot
+
+
+Action                                                                           Score
+Main Goal
+Executing the task associated with each command                                  3×400
+Bonus Rewards
+Understanding a command given by a non-expert operator                           3×100
+Deus Ex Machina Penalties
+Using a custom operator                                                          3×–50
+Bypassing speech recognition                                                     3×–50
+Instructing a human to perform parts of the task will apply a percentage penalty3×–400
+according to similar penalties in other Stage I tests.
+Special Penalties & Bonuses
+Not attending (see sec. 2.3.1)                                                    –500
+Using alternative start signal                                                    –100
+Outstanding performance (see sec. 2.3.3)                                           150
+
+
+
+Total Score (excluding special penalties & standard bonuses)                                    1500
+
+
+
+
+              RoboCup@Home Rulebook / Final version for RoboCup 2024 (Revision 2024-07-09 1)
+
+END_PAGE_TEXT

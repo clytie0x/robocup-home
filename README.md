@@ -32,6 +32,9 @@ The last command is the seeded episode set. The counts from the latest run are i
 
 Crates live under `crates/`. `domain` is the one shared contract between task logic and adapters. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. `harness` may depend on `sim_runtime`. `task_3_1` does not. No other crate depends on `sim_runtime`.
 
+M9 is merged at `d6d9940820e92c7b8b8e5c290a4a45b703b90a11`. M10, so far, is a design inventory for section 3.2 General Purpose Service Robot. No `task_3_2` crate is in the workspace. The inventory rows are `not-run`.
+
 - Locked conventions: [AGENTS.md](AGENTS.md)
 - Task 3.1 Carry My Luggage acceptance specification, from the professor PDF dated 2024-07-09: [docs/tasks/3.1-carry-my-luggage.md](docs/tasks/3.1-carry-my-luggage.md)
+- Section 3.2 design inventory, from the same professor PDF: [docs/tasks/3.2-general-purpose-service-robot.md](docs/tasks/3.2-general-purpose-service-robot.md)
 - Verification log: [WORKLOG.md](WORKLOG.md)
