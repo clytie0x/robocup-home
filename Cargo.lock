@@ -12,6 +12,7 @@ version = "0.1.0"
 dependencies = [
  "domain",
  "hri",
+ "manipulation",
  "perception",
  "sim_runtime",
  "task_3_1",

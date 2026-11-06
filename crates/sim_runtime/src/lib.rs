@@ -39,4 +39,4 @@ pub mod assume {
 
 pub use aim::{AimError, AimSample, direction_mm};
 pub use clock::Clock;
-pub use world::{SimArm, SimBase, SimWorld, Truth};
+pub use world::{ArmError, SimArm, SimBase, SimWorld, Truth};

@@ -12,7 +12,7 @@ PIN = "1.99.1"
 EDITION = "2024"
 EXPECTED = {
     "domain": set(),
-    "harness": {"domain", "hri", "perception", "sim_runtime", "task_3_1"},
+    "harness": {"domain", "hri", "manipulation", "perception", "sim_runtime", "task_3_1"},
     "hri": {"domain"},
     "manipulation": {"domain"},
     "navigation": {"domain"},

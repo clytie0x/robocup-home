@@ -30,9 +30,32 @@ impl MockReport {
     }
 }
 
+/// Mock ready signal. Telling the operator is not implied by a grasp.
+///
+/// A fresh mock has not confirmed a recipient.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MockReady {
+    told: Option<Id>,
+}
+
+impl MockReady {
+    pub const fn new() -> Self {
+        Self { told: None }
+    }
+
+    pub const fn confirmed(self) -> Option<Id> {
+        self.told
+    }
+
+    /// Records the operator who was told. This is not a grasp and not a follow command.
+    pub fn tell(&mut self, operator: Id) {
+        self.told = Some(operator);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::MockReport;
+    use super::{MockReady, MockReport};
     use domain::Id;
 
     #[test]
@@ -50,5 +73,18 @@ mod tests {
         report.show(replaced);
         assert_eq!(report.confirmed(), Some(replaced));
         assert_ne!(report.confirmed(), Some(shown));
+    }
+
+    #[test]
+    fn the_ready_mock_confirms_only_the_operator_it_was_told() {
+        let fresh = MockReady::new();
+        assert_eq!(fresh.confirmed(), None);
+        let mut ready = fresh;
+        let told = Id::new(2).unwrap();
+        let other = Id::new(4).unwrap();
+        ready.tell(told);
+        assert_eq!(ready.confirmed(), Some(told));
+        assert_ne!(ready.confirmed(), Some(other));
+        assert_eq!(fresh.confirmed(), None);
     }
 }

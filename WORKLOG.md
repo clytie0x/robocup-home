@@ -1,5 +1,163 @@
 # WORKLOG
 
+## M6 review wording (2026-11-06)
+
+Scope. Pull request 13, reviewed head `1009b66909483cbabe8b566065d3e074ea73ce47`. One factual sentence. No reach change, no clock rewrite, no algorithm change. M7 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+Independent read-only review of that head reported no verified production blocker. Its full checks were 112 library tests and 5 doctests, debug and release, spec `pdf=True`, and CI run `42211202059` success: https://github.com/clytie0x/robocup-home/actions/runs/42211202059. It also reported a reach reference of 20000 points, 20000 trips of 40 steps, world custody, and timeout and fault atomicity, and those probes held. This follow-up did not repeat that probe. The review does not say that no defect remains.
+
+The sentence in `manipulation` and in the M6 decision said a bag at the printed 2 m from the operator is inside the 2500 mm disk. That is true for the seeded horizontal placements. It is not true for the whole printed disk. The operator is at `(0, 1000)` and a bag at `(0, 3000)` is 2000 mm from the operator and 3000 mm from the robot at the origin. `decide` and `execute_pick` already return out of reach and leave the world unchanged. `REACH_MM` stays 2500. It is not a rulebook length. Reaching the rest of that disk means moving the base in M7.
+
+The same review noted that the world clock and the trip stamp can differ. A world time of 400000 ms and a pick at trip stamp 10 is valid here, because the deadline reads the trip stamp. The clocks stay separate. They are not a wall clock. Joining them is M7 and M8 work.
+
+`a_legal_two_meter_placement_behind_the_operator_is_outside_the_seeded_reach` passed on the existing decision before the wording edit. No earlier test used operator `(0, 1000)` and bag `(0, 3000)`.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 7, harness 21, hri 2, manipulation 8, navigation 0, perception 20, sim_runtime 25, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+## M6 simulated gripper (2026-11-06)
+
+Scope. Issue 12. One writer. Branch `cursor/m6-sim-arm-37d5` from `c70a7b3b5fefab82f592671b7dbd145377ce2ea0`. A manipulation decision and a simulated single gripper for pick, carry, drop, and handoff, wired through the existing trip. No motion planner, camera, navigation, optional return, scorer, hardware, deploy, registration, contact, or spending. M7 and M8 were not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+### M5 independent re-review
+
+Reviewed `ae255f82c4f58650ad999c4b36397ee42f482bb6`, which is an ancestor of the merge `c70a7b3`. CI run `42207373451` completed with conclusion success on that head: https://github.com/clytie0x/robocup-home/actions/runs/42207373451. That run is the debug and release suite for the merged M5 tree. This session counted 86 `#[test]` functions and 4 doctests in that tree. It did not repeat the full release suite locally.
+
+`keep_deadline` stores `TimeUp` when `Trip::apply` returns `Ok` with no effect. The three deadline tests passed here. With that latch removed, `a_late_confirmation_does_not_name_and_keeps_time_up` and `a_late_report_keeps_time_up_and_an_earlier_stamp_cannot_repost` returned `Err(NotAReport)` instead of `Err(TimeUp)`. The latch was restored. The floor-corridor tests were not re-mutated in this session. No M5 production change was made. M9.3 was not run. This review does not say that no defect remains.
+
+### Plan
+
+`manipulation` depends only on `domain` and decides a pick, drop, or release. `sim_runtime` still depends only on `domain` and owns the one gripper, bag custody, and location. `task_3_1` is unchanged. `harness` gains a dependency on `manipulation` and is still the only crate that may see both the trip and the simulator. `Cargo.lock` adds that path edge only.
+
+### Decisions
+
+The PDF says the robot picks up the pointed bag, tells the operator it is ready, and the operator takes the bag back at the car. It states no arm length, grasp pose, drop point, or gripper count. Those numbers below are assumptions.
+
+`REACH_MM` is 2500. It covers the seeded bags, which sit on the horizontal through the operator at `(0, 1000)` with `|x|` from 400 through 2000. It does not cover every bag inside the printed 2 m of that operator. A bag at `(0, 3000)` is 2000 mm from the operator and 3000 mm from the robot at `(0, 0)`, so it is outside this disk. Picking that placement means moving the base, which is M7 navigation. The base is not moved here. A held bag and a dropped bag are recorded at the robot base (`SITE` = `robot-base`). There is no gripper frame and no contact model. After handoff the bag remains in the world at the operator pose with operator custody. It is not deleted and it is not free.
+
+The world clock and the trip stamp are separate counts. Neither is a wall clock. The five-minute check uses the trip stamp. A world time of 400000 ms does not make a pick at trip stamp 10 late. Coordinating the clocks is M7 and M8 work. This milestone does not rewrite either clock.
+
+Custody is `Free`, `Gripper`, or `Operator`. At most one bag is `Gripper`, and that id is `carried`. A refusal does not change custody, pose, the trace, or the trip, except a late stamp, which stores `TimeUp` and does not apply the payload. An injected grasp or handoff fault is a flag on the world. It is checked after the geometric and role refusals, and it does not move the bag.
+
+`decide` is not execution and not confirmation. `execute_pick` admits `Grasped` on a trip copy first. A deadline is stored and the world is left alone. A refusal discards that copy. A legal grasp then changes the world and only then stores the trip. `PickEnd::Matched` requires the adapter and the trip to hold that same bag. The other bag is `Mismatched` and is not success. `confirm_ready` is a later `MockReady` call. It does not follow and it does not move the base. `execute_handoff` does not apply `Arrived`. Tests that need `Releasing` apply that event themselves and say it is not navigation.
+
+### Sources
+
+Used for the shape. Not taken as dependencies. The PDDL actions are not this model's coordinates.
+
+- Professor PDF section 3.1, printed pages 15–17. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. No public URL is assigned to that file.
+- Gripper STRIPS: `free` and `carry` are exclusive, pick deletes `at`, drop restores `at` and `free`: https://www.ida.liu.se/~TDDD48/labs/2023/domains/strips/gripper.pddl
+- The same pick and drop effects: https://www.cs.toronto.edu/~sheila/2542/w09/A1/introtopddl2.pdf
+- Pick replaces `AtPose` with `AtGrasp` and clears `HandEmpty`: https://learning-and-intelligent-systems.github.io/kitchen-worlds/domain-operators/
+- `i128` products, as in the M5 selector: https://doc.rust-lang.org/std/primitive.i128.html
+
+### Tests
+
+Red, before the behavior. The reach stub returned true. `reach_is_an_inclusive_disk_and_does_not_wrap` failed because a 1 mm offset at radius 0 was inside. The decide stub returned `Grasped` of id 1. `cargo test -p manipulation --lib --offline` was 8 failed and 0 passed. Representative assertions: `(2501, 0)` was `Ok(Grasped { bag: Id(1) })` instead of `Err(OutOfReach)`; a hidden bag was that same `Ok` instead of `Err(Invisible)`. The gripper stub set `carried` and still returned success. `cargo test -p sim_runtime --lib --offline` on the new names was 8 failed. Representative assertions: reach 0 was `Ok(())` instead of `Err(OutOfReach)`; the held list was `[]` instead of `[Id(3)]`; an empty drop was `Ok(Point { x: 0, y: 0 })` instead of `Err(Empty)`; a handoff to a bag id was `Ok(())` instead of `Err(Role)`. The ready stub stored id 1. Its test was 1 failed: `Some(Id(1))` instead of `Some(Id(2))`. The harness stubs returned a matched id 1, a follow of id 2, a drop at the origin, and a release of id 1. The new harness tests were 8 failed. Representative assertions: seed pickup was `Matched { bag: Id(1) }` instead of `Id(3)`; a hidden bag was that `Ok` instead of `Err(Arm(Invisible))`; an empty drop was `Ok(Point)` instead of `Err(Trip(Impossible))`; ready before a grasp was `Ok(Follow)` instead of `Err(Trip(OutOfOrder))`; handoff before arrival was `Ok(Released { bag: Id(1) })` instead of `Err(Trip(OutOfOrder))`.
+
+Green on this tree. Debug and release match. They do not close an acceptance row. Unit mapping: [docs/tasks/m6-unit-coverage.md](docs/tasks/m6-unit-coverage.md).
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 7, harness 20, hri 2, manipulation 8, navigation 0, perception 20, sim_runtime 25, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+domain 7, harness 20, hri 2, manipulation 8, navigation 0, perception 20, sim_runtime 25, task_3_1 30
+0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+domain 1, manipulation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+The attached copy is the same baseline hash. `pdf=True` checks that hash, the 1129757 byte size, 52 pages, and the 2024-07-09 creation date.
+
+After green, four scratches were restored. An unconditional `Grasped` failed the reach, hidden, and injected-failure tests: `(2501, 0)` was `Ok(Grasped { bag: Id(3) })` instead of `Err(OutOfReach)`. A pick that set `carried` and left custody free failed `each_fixture_bag_is_held_once_and_leaves_the_other_bag_in_place` with `[]` instead of `[Id(3)]`. A drop that did not clear `carried` failed `drop_clears_the_gripper_at_the_robot_and_a_second_drop_does_not` with `Some(Id(3))` instead of `None`. Returning the trip copy from `keep_deadline` without storing `TimeUp` made `deadlines_do_not_execute_a_physical_action` return `Err(NotACommand)` instead of `Err(TimeUp)`.
+
+### Limits
+
+The reach disk and the robot-base site are assumptions, not printed measurements and not a motion plan. The gripper does not simulate contact, weight, or handles. Follow and arrival are not implemented. A handoff test that applies `Arrived` is a fixture, not an M7 pass. A passing test does not mean an acceptance row passed. The open scoring rows are untouched. No statement here says the software has no remaining defects. M7, M8, and M9.3 were not started.
+
 ## M5 review fixes (2026-11-06)
 
 Scope. Pull request 11, reviewed head `1e28b3024cdfe63df98f5e46a4f4a85a5c5a6b85`. Two harness defects. No selector defect was verified. No merge, and M6 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.

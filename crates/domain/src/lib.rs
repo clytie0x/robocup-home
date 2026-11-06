@@ -7,10 +7,10 @@ mod id;
 mod time;
 mod world;
 
-pub use geom::{GeomError, Mm, Point};
+pub use geom::{GeomError, Mm, Point, within_reach};
 pub use id::Id;
 pub use time::{Step, TimeError};
 pub use world::{
-    Actor, Arm, Bag, BagKind, Base, Event, EventKind, Observation, Obstacle, ObstacleClass, Pose,
-    World,
+    Actor, Arm, Bag, BagKind, Base, Custody, Event, EventKind, Observation, Obstacle,
+    ObstacleClass, Pose, World,
 };

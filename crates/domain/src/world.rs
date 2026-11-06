@@ -38,13 +38,24 @@ pub struct Actor {
     pub pose: Pose,
 }
 
+/// Where a bag is allowed to be. A held bag is not free at its previous point.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Custody {
+    Free,
+    Gripper,
+    Operator,
+}
+
 /// A fixture bag. `visible` records the setup fact, not a perception result.
+///
+/// `custody` says who has the bag. It is not a stiffness measurement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bag {
     pub id: Id,
     pub pose: Pose,
     pub kind: BagKind,
     pub visible: bool,
+    pub custody: Custody,
 }
 
 /// One obstacle placeholder.
@@ -92,6 +103,19 @@ pub enum EventKind {
     },
     Advanced {
         step_ms: u64,
+    },
+    Placed {
+        bag: Id,
+    },
+    Grasped {
+        bag: Id,
+    },
+    Dropped {
+        bag: Id,
+    },
+    Handed {
+        bag: Id,
+        to: Id,
     },
 }
 

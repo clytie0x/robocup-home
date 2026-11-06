@@ -78,9 +78,22 @@ impl Point {
     }
 }
 
+/// Inclusive planar disk. A negative radius contains no point.
+///
+/// The square is computed in `i128`, so the ends of `i32` do not wrap into the disk.
+pub fn within_reach(from: Point, to: Point, radius_mm: i32) -> bool {
+    if radius_mm < 0 {
+        return false;
+    }
+    let dx = i128::from(to.x().get()) - i128::from(from.x().get());
+    let dy = i128::from(to.y().get()) - i128::from(from.y().get());
+    let radius = i128::from(radius_mm);
+    dx * dx + dy * dy <= radius * radius
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{GeomError, Mm, Point};
+    use super::{GeomError, Mm, Point, within_reach};
 
     #[test]
     fn meters_reject_non_finite_and_out_of_range_values() {
@@ -121,6 +134,49 @@ mod tests {
         );
         assert_eq!(point.x().get(), 3);
         assert_eq!(point.y().get(), i32::MIN);
+    }
+
+    #[test]
+    fn reach_is_an_inclusive_disk_and_does_not_wrap() {
+        let origin = Point::new(Mm::new(0), Mm::new(0));
+        assert!(within_reach(origin, origin, 0));
+        assert!(!within_reach(origin, Point::new(Mm::new(1), Mm::new(0)), 0));
+        assert!(within_reach(
+            origin,
+            Point::new(Mm::new(2500), Mm::new(0)),
+            2500
+        ));
+        assert!(!within_reach(
+            origin,
+            Point::new(Mm::new(2501), Mm::new(0)),
+            2500
+        ));
+        assert!(within_reach(
+            origin,
+            Point::new(Mm::new(-2500), Mm::new(0)),
+            2500
+        ));
+        assert!(within_reach(
+            origin,
+            Point::new(Mm::new(1500), Mm::new(2000)),
+            2500
+        ));
+        assert!(!within_reach(
+            origin,
+            Point::new(Mm::new(1500), Mm::new(2001)),
+            2500
+        ));
+        assert!(!within_reach(origin, origin, -1));
+        assert!(!within_reach(
+            Point::new(Mm::new(i32::MIN), Mm::new(0)),
+            Point::new(Mm::new(i32::MAX), Mm::new(0)),
+            2500
+        ));
+        assert!(!within_reach(
+            Point::new(Mm::new(0), Mm::new(i32::MIN)),
+            Point::new(Mm::new(0), Mm::new(i32::MAX)),
+            i32::MAX
+        ));
     }
 
     #[test]
