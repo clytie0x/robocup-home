@@ -1,5 +1,85 @@
 # WORKLOG
 
+## M10 scaffold for section 3.2 (2026-11-06)
+
+Tasks 1 and 2 of the approved plan only. Same pull request as the research. No command body, score, deadline, navigation, door hardware, or section 3.1 change. This does not merge. No later milestone was started.
+
+### Independent review
+
+Reviewer `bc-2385` read head `62b84c2bd8cf115b483cdae9c65539b974658112`. No verified blocker. The scaffold was cleared to proceed. The reviewer checked the section 3.2 excerpt at 85 whitespace-normalized lines and found `artifacts/sources/SHA256SUMS` valid. The section 3.1 `pdfinfo` fix was needed: the base raised `CalledProcessError` on a 9-byte file. The reviewer ran that self-test with and without poppler. Missing and unreadable paths still fail. This slice keeps that fix as it was.
+
+The reviewer's in-memory mutations of the inventory still passed the checker at that head: the outstanding sheet cell 150 changed to 999, the absence prose 250 changed to 500, and the sentence "Both are in this PDF." removed. Those three now fail `artifacts/check_m10_spec.py`. The anchors are the printed sheet cell and the excerpt token 150, the general excerpt sentence "it gets a penalty of 250 points.", the prose row, and the open absence row. CI runs `--self-test` and the plain checker after the section 3.1 commands.
+
+### Default-operator sentence
+
+Printed page 9, physical page 14, section 2.2.3 item 1: "The default operator may repeat the command up to three times." The same item says ASR with the default operator has no score reduction. `GPSR-GEN-REPEAT` records that sentence. Its result is `not-run`. The acceptance text describes a later repeat count. The door scaffold does not speak a command and does not credit the row. `GPSR-PEN-ASR` still records the sheet value 3×–50 and the section 2.2.3 bands of 20 percent, 30 percent, and up to 30 percent. Printed page 3 gives the contrary test rule higher priority. The row does not compute one combined penalty.
+
+The inventory is 42 rows, all `not-run`, 6 open, 2 hardware. Section 3.1 stays 45 `pass` and 11 `not-run`. There is no field score and no awarded total.
+
+### Red and green
+
+Task 1 red. A compiling `apply` ignored the event, returned `Ok` with effect `None`, set `AtPoint`, and stored stamp 1. `cargo test -p task_3_2 --offline` exited 101. Three library tests failed. The door test was `left: None`, `right: Some(GoToPoint)`. Arrival before the door was `left: Ok(Outcome { effect: None })`, `right: Err(OutOfOrder)`. The doctest failed the same `GoToPoint` assertion. That was the behavior red. A missing crate was not the claim.
+
+Task 1 green. `DoorOpen` from `Outside` emits `GoToPoint` and moves to `GoingToPoint`. The effect carries no coordinate. `Arrived` before the door returns `OutOfOrder` and leaves the phase and the stamp unchanged. `cargo test -p task_3_2 --locked --offline` then passed 3 library tests and 1 doctest.
+
+Task 2 wiring is the harness dependency, the workspace edge, and `mod gpsr`. It is what lets the test compile. The behavior red, before `Tick` stored a stamp, was `cargo test -p harness --lib door_open_uses_the_sim_clock --offline` exiting 101: `called Result::unwrap() on an Err value: OutOfOrder` at `Event::Tick`. `sim_runtime::Clock::advance(Step::from_ms(25))` had already made `clock.now_ms()` 25. The green stores that clock value. The passing assertion is `visit.now_ms() == Some(clock.now_ms())` and `clock.now_ms() == 25`. The phase stays `GoingToPoint`. There is no second clock and no literal 25 stored in the machine.
+
+### This tree
+
+Library tests are 161: domain 8, harness 46, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests are 7: the previous 6 plus one in `task_3_2`. Debug and release match. `SimWorld::from_seed` is unchanged. The GPSR rows stay `not-run`. A door-state enum does not credit a section 3.2 condition. Known limits that remain: the command grammar, the open score rows, the unenforced 5 minute limit, and the physical door. This is not a completed General Purpose Service Robot run, and it does not say that no defect remains.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 46, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, task_3_2 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=9 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+pdfinfo and pdftotext present
+
+python3 artifacts/check_m10_spec.py --self-test
+self-test ok
+
+python3 artifacts/check_m10_spec.py
+ok rows=42 not-run=42 open=6 hardware=2
+```
+
 ## M10 section 3.2 research (2026-11-06)
 
 Design and specification only. Branch `cursor/m10-next-task-research-88f6` from merge `d6d9940820e92c7b8b8e5c290a4a45b703b90a11`. One writer. No crate, workflow, Cargo manifest, or hardware change. The scaffold in the plan was not started. This does not merge. The section 3.1 acceptance table stays 45 `pass` and 11 `not-run`. There is no awarded total.
