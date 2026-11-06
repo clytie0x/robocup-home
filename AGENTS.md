@@ -30,6 +30,7 @@ A simulation result is not a hardware result.
 
 ### Still in force
 
+- Write all repository prose in English: `README.md`, `AGENTS.md`, task docs, `WORKLOG.md`, any necessary code comments, and future commit messages and pull-request titles and bodies.
 - Rust is the primary language.
 - Do not change stack, language, or style unless Teerapat gives an explicit instruction. That change needs the instruction, a rationale, an Issue, and an update to this file.
 - Modules stay separate: perception, navigation, manipulation, HRI, and task.

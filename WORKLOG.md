@@ -15,22 +15,18 @@ Current hardware rule: deploying and flashing are not categorically forbidden. N
 
 Still in force: Rust first; no stack, language, or style change without an explicit Teerapat instruction, a rationale, an Issue, and an `AGENTS.md` update; short names; no redundant comments; TDD and real command evidence; research the rulebook and prior art before implementation; private repository; no registration, competition submission, contact with organizers or another team, or spending. No code, simulation, CI, toolchain pin, or unverified rule is added here.
 
+`AGENTS.md` now requires English for all repository prose. Translating the current files did not by itself lock that rule.
+
 Pull request: https://github.com/clytie0x/robocup-home/pull/1
 Branch: `cursor/docs-conventions-bootstrap-546a`
 
 ### Merge readiness
 
-Merging pull request 1 is authorized after this review when a sanctioned merge tool exists and required checks are not pending or failing.
-The sanctioned pull-request tool exposes `create_pr`, `update_pr`, `post_comment`, `resolve_comment`, `get_ci_status`, and `set_pr_status`. `set_pr_status` opens or closes a pull request and does not merge it. A search of available tools found no GitHub merge action. `gh` is not a sanctioned write route, so it is not used to merge.
+Pull request 1 is authorized for merge. This cloud agent does not merge it and does not touch hardware, code, or CI.
 
-After English commit `f8ee395008c95e985b83ce33547aa9b8680755a7` was pushed, the sanctioned tool was called with action `merge` on pull request 1. It refused before any merge:
+Historical evidence from this cloud-agent environment only: after `f8ee395008c95e985b83ce33547aa9b8680755a7` was pushed, this agent's pull-request tool was called with action `merge` and refused. Its actions were `create_pr`, `update_pr`, `post_comment`, `resolve_comment`, `get_ci_status`, and `set_pr_status`. Its check read reported no CI, which is not a green result. The pull request stayed open and `main` stayed `338dd0b70568dbf6a9d7e065f97e3e035f03f15b`. That refusal does not mean no sanctioned merge tool exists.
 
-```text
-Invalid arguments: action: Invalid option: expected one of "create_pr"|"update_pr"|"post_comment"|"resolve_comment"|"get_ci_status"|"set_pr_status"
-```
-
-`get_ci_status` for https://github.com/clytie0x/robocup-home/pull/1 returned: CI status is unavailable or no checks were reported. That is not a green result.
-The pull request stayed `OPEN` with `mergedAt` null. `main` stayed `338dd0b70568dbf6a9d7e065f97e3e035f03f15b`. No unsupported write route was used.
+Current status: the coordinator has found first-party `cursor-github.merge_pull_request`. This pull request is ready for the coordinator to check GitHub mergeability and checks, then attempt that sanctioned merge. Do not bypass branch protection or a pending or failing required check.
 
 Checks read before the English commit, on the previous head `452dc4b`:
 
