@@ -64,3 +64,10 @@ dependencies = [
  "navigation",
  "perception",
 ]
+
+[[package]]
+name = "task_3_2"
+version = "0.1.0"
+dependencies = [
+ "domain",
+]

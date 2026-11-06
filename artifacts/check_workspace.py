@@ -27,6 +27,7 @@ EXPECTED = {
     "perception": {"domain"},
     "sim_runtime": {"domain"},
     "task_3_1": {"domain", "hri", "manipulation", "navigation", "perception"},
+    "task_3_2": {"domain"},
 }
 
 
