@@ -246,16 +246,38 @@ def check_sources(spec):
     return problems
 
 
-def professor_pdf_path():
-    env = os.environ.get("PROFESSOR_PDF")
-    if env:
-        return Path(env)
-    candidate = Path(
-        "/home/ubuntu/.cursor/projects/agent-repos-robocup-home/uploads/at-home-robocup-my-2025-1_763a.pdf"
-    )
-    if candidate.exists():
-        return candidate
+FALLBACK_PDF = Path(
+    "/home/ubuntu/.cursor/projects/agent-repos-robocup-home/uploads/at-home-robocup-my-2025-1_763a.pdf"
+)
+
+
+def resolve_professor_pdf(env_value, fallback):
+    if env_value:
+        return Path(env_value)
+    if fallback is not None and Path(fallback).is_file():
+        return Path(fallback)
     return None
+
+
+def professor_pdf_path():
+    return resolve_professor_pdf(os.environ.get("PROFESSOR_PDF"), FALLBACK_PDF)
+
+
+def admit_pdf(path, requested):
+    if path is None:
+        return [], False
+    path = Path(path)
+    if not path.exists():
+        if requested:
+            return ["professor PDF missing"], False
+        return [], False
+    if not path.is_file():
+        return ["professor PDF is not a file"], False
+    try:
+        problems = check_pdf(path)
+    except OSError:
+        return ["professor PDF unreadable"], False
+    return problems, not problems
 
 
 def check_pdf(path):
@@ -355,11 +377,14 @@ def collect(spec=None, pdf=None):
     problems.extend(check_readme_and_log())
     problems.extend(relative_links(ROOT))
     problems.extend(thai_hits(ROOT))
-    pdf_path = professor_pdf_path() if pdf is None else pdf
-    if pdf_path is not None and Path(pdf_path).exists():
-        problems.extend(check_pdf(Path(pdf_path)))
-    elif pdf is not None:
-        problems.append("professor PDF missing")
+    if pdf is None:
+        pdf_path = professor_pdf_path()
+        requested = bool(os.environ.get("PROFESSOR_PDF"))
+    else:
+        pdf_path = pdf
+        requested = True
+    pdf_problems, _verified = admit_pdf(pdf_path, requested)
+    problems.extend(pdf_problems)
     return problems
 
 
@@ -400,6 +425,138 @@ def self_test():
     broken[-1] = (broken[-1][0], 999)
     if not check_math(broken, "self"):
         failures.append("broken excerpt math should fail")
+    failures.extend(pdf_cli_failures())
+    failures.extend(pdf_fallback_failures())
+    return failures
+
+
+def checker_env(**updates):
+    env = os.environ.copy()
+    env.pop("PROFESSOR_PDF", None)
+    for key, value in updates.items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
+    return env
+
+
+def run_checker(env):
+    return subprocess.run(
+        [sys.executable, str(ROOT / "artifacts" / "check_m1_spec.py")],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+
+def find_exact_pdf():
+    candidates = []
+    current = os.environ.get("PROFESSOR_PDF")
+    if current:
+        candidates.append(Path(current))
+    candidates.append(FALLBACK_PDF)
+    upload_dir = Path("/home/ubuntu/.cursor/projects/agent-repos-robocup-home/uploads")
+    if upload_dir.is_dir():
+        candidates.extend(sorted(upload_dir.glob("*.pdf")))
+    seen = set()
+    for path in candidates:
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() == EXPECTED_HASH and len(data) == EXPECTED_SIZE:
+            return path
+    return None
+
+
+def pdf_cli_failures():
+    failures = []
+    missing = Path("/tmp/robocup-home-missing-professor.pdf")
+    if missing.exists():
+        failures.append("missing-pdf fixture exists")
+        return failures
+    proc = run_checker(checker_env(PROFESSOR_PDF=str(missing)))
+    if proc.returncode == 0 or "pdf=True" in proc.stdout or "professor PDF missing" not in proc.stdout:
+        failures.append(
+            f"missing PROFESSOR_PDF should fail: code={proc.returncode} out={proc.stdout!r}"
+        )
+    proc = run_checker(checker_env())
+    if not FALLBACK_PDF.is_file():
+        if proc.returncode != 0 or proc.stdout.strip() != "ok rows=56 pdf=False":
+            failures.append(f"unset PDF should be pdf=False: code={proc.returncode} out={proc.stdout!r}")
+    wrong = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-wrong.pdf"))
+    wrong.write_bytes(b"not-a-pdf")
+    try:
+        proc = run_checker(checker_env(PROFESSOR_PDF=str(wrong)))
+        if (
+            proc.returncode == 0
+            or "pdf=True" in proc.stdout
+            or "professor PDF hash" not in proc.stdout
+            or "professor PDF size 9" not in proc.stdout
+        ):
+            failures.append(f"wrong PDF should fail closed: code={proc.returncode} out={proc.stdout!r}")
+    finally:
+        wrong.unlink(missing_ok=True)
+    directory = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-pdf-dir"))
+    directory.mkdir(exist_ok=True)
+    try:
+        proc = run_checker(checker_env(PROFESSOR_PDF=str(directory)))
+        if proc.returncode == 0 or "pdf=True" in proc.stdout or "professor PDF is not a file" not in proc.stdout:
+            failures.append(f"PDF directory should fail: code={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}")
+    finally:
+        directory.rmdir()
+    blocked = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-unreadable.pdf"))
+    blocked.write_bytes(b"secret")
+    os.chmod(blocked, 0)
+    try:
+        proc = run_checker(checker_env(PROFESSOR_PDF=str(blocked)))
+        if proc.returncode == 0 or "pdf=True" in proc.stdout or "professor PDF unreadable" not in proc.stdout:
+            failures.append(
+                f"unreadable PDF should fail: code={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}"
+            )
+    finally:
+        os.chmod(blocked, 0o644)
+        blocked.unlink(missing_ok=True)
+    exact = find_exact_pdf()
+    if exact is not None:
+        proc = run_checker(checker_env(PROFESSOR_PDF=str(exact)))
+        if proc.returncode != 0 or proc.stdout.strip() != "ok rows=56 pdf=True":
+            failures.append(f"exact PDF should verify: code={proc.returncode} out={proc.stdout!r} err={proc.stderr!r}")
+    return failures
+
+
+def pdf_fallback_failures():
+    failures = []
+    fallback = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-fallback.pdf"))
+    fallback.write_bytes(b"fallback!")
+    directory = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-fallback-dir"))
+    directory.mkdir(exist_ok=True)
+    try:
+        if resolve_professor_pdf(None, fallback) != fallback:
+            failures.append("unset resolver should use a fallback file")
+        requested = "/tmp/robocup-home-missing-professor.pdf"
+        if resolve_professor_pdf(requested, fallback) != Path(requested):
+            failures.append("a set path should not use the fallback")
+        problems, verified = admit_pdf(requested, True)
+        if verified or problems != ["professor PDF missing"]:
+            failures.append(f"requested missing path admitted: {problems} {verified}")
+        problems, verified = admit_pdf(None, False)
+        if problems or verified:
+            failures.append(f"unset absent source admitted: {problems} {verified}")
+        problems, verified = admit_pdf(fallback, False)
+        if verified or not any("professor PDF hash" in item for item in problems):
+            failures.append(f"wrong fallback should not verify: {problems} {verified}")
+        if resolve_professor_pdf(None, Path("/tmp/robocup-home-no-fallback.pdf")) is not None:
+            failures.append("absent fallback should stay unset")
+        if resolve_professor_pdf("", directory) is not None:
+            failures.append("empty PROFESSOR_PDF should stay unset")
+        if resolve_professor_pdf(None, directory) is not None:
+            failures.append("directory fallback should stay unset")
+    finally:
+        fallback.unlink(missing_ok=True)
+        directory.rmdir()
     return failures
 
 
@@ -419,8 +576,14 @@ def main(argv):
     if problems:
         print("\n".join(problems))
         return 1
+    pdf_problems, verified = admit_pdf(
+        professor_pdf_path(), bool(os.environ.get("PROFESSOR_PDF"))
+    )
+    if pdf_problems:
+        print("\n".join(pdf_problems))
+        return 1
     spec = SPEC.read_text(encoding="utf-8")
-    print(f"ok rows={len(requirement_rows(spec))} pdf={professor_pdf_path() is not None}")
+    print(f"ok rows={len(requirement_rows(spec))} pdf={verified}")
     return 0
 
 

@@ -34,6 +34,12 @@ const GATE_MM: i32 = 1_500;
 const STAY_STEPS: u32 = 3;
 const ENTRANCE_X: i32 = 2_500;
 const INSIDE_X: i32 = 800;
+/// Abreast window along x. Not a printed measurement.
+const ENCOUNTER_WINDOW_MM: i32 = 340;
+/// Band outside the grown disk that still counts as facing it. Not a printed clearance.
+const CLOSE_BAND_MM: i32 = 280;
+/// Route point just outside the grown disk, inside the close band. Not a printed clearance.
+const ROUTE_PASS_MM: i32 = 40;
 
 /// What the episode should attempt. The car point is scenario data.
 #[derive(Clone, Copy, Debug)]
@@ -213,7 +219,7 @@ impl EpisodeReport {
     pub fn summary(&self) -> String {
         let fail = self.fail.unwrap_or("-");
         format!(
-            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\nstop {}\nencounter {:?}\nseen {:?} threatened {:?} hit {:?}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption encounter-window-mm 340\nassumption close-clearance-mm 280\nassumption clock-start begin\nassumption obstacle-order faced-sequence\norder-not-required\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\npost-main accompany after the limit keeps Complete and does not move\nbudget-exhaustion-is-not-time-up\n{}\n{}\ntrace_len {}\n",
+            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\nstop {}\nencounter {:?}\nseen {:?} threatened {:?} hit {:?}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption encounter-window-mm {ENCOUNTER_WINDOW_MM}\nassumption close-clearance-mm {CLOSE_BAND_MM}\nassumption route-pass-mm {ROUTE_PASS_MM}\nassumption clock-start begin\nassumption obstacle-order faced-sequence\norder-not-required\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\npost-main accompany after the limit keeps Complete and does not move\nbudget-exhaustion-is-not-time-up\n{}\n{}\ntrace_len {}\n",
             self.seed,
             self.scenario,
             self.car.0,
@@ -1212,10 +1218,10 @@ impl Episode {
                 SENSOR_MM
             };
             for disk in &obstacle.bodies {
-                let abreast = (robot.x().get() - disk.center.x().get()).saturating_abs() <= 340;
+                let facing = abreast(robot.x().get(), disk.center.x().get());
                 let in_sight = within_reach(robot, disk.center, range)
                     && bodies.iter().any(|body| body.center == disk.center);
-                if !abreast || !in_sight {
+                if !facing || !in_sight {
                     continue;
                 }
                 let grown = ROBOT_RADIUS_MM.saturating_add(disk.radius.get());
@@ -1229,7 +1235,7 @@ impl Episode {
                     self.hit[index] = true;
                     continue;
                 }
-                if dist > grown.saturating_add(280) {
+                if past_close_band(dist, grown) {
                     continue;
                 }
                 if !self.seen[index] {
@@ -1860,6 +1866,14 @@ fn crowd_ids(world: &SimWorld) -> Vec<Id> {
         .collect()
 }
 
+fn abreast(robot_x: i32, disk_x: i32) -> bool {
+    (robot_x - disk_x).saturating_abs() <= ENCOUNTER_WINDOW_MM
+}
+
+fn past_close_band(dist: i32, grown: i32) -> bool {
+    dist > grown.saturating_add(CLOSE_BAND_MM)
+}
+
 fn class_index(class: ObstacleClass) -> usize {
     match class {
         ObstacleClass::SmallGround => 0,
@@ -1893,13 +1907,12 @@ fn route_to(
             continue;
         };
         let grown = ROBOT_RADIUS_MM.saturating_add(top.radius.get());
-        // Just outside the grown disk, still inside the close-clearance band.
         let pass_y = top
             .center
             .y()
             .get()
             .saturating_add(grown)
-            .saturating_add(40);
+            .saturating_add(ROUTE_PASS_MM);
         extend_mark(
             &mut points,
             &mut holds,
@@ -2014,19 +2027,8 @@ fn body_hits(from: Point, to: Point, obstacles: &[Obstacle]) -> [bool; 4] {
 }
 
 fn extend(points: &mut Vec<Point>, goal: Point) {
-    for _ in 0..20_000 {
-        let Some(from) = points.last().copied() else {
-            return;
-        };
-        if from == goal {
-            return;
-        }
-        let next = toward(from, goal);
-        if next == from {
-            return;
-        }
-        points.push(next);
-    }
+    let mut holds = vec![None; points.len()];
+    extend_mark(points, &mut holds, goal, None);
 }
 
 fn toward(from: Point, to: Point) -> Point {
@@ -2151,6 +2153,69 @@ mod tests {
         let dx = i64::from(a.0) - i64::from(b.0);
         let dy = i64::from(a.1) - i64::from(b.1);
         dx * dx + dy * dy <= i64::from(ARRIVE_MM) * i64::from(ARRIVE_MM)
+    }
+
+    #[test]
+    fn encounter_assumptions_are_the_numbers_the_report_names() {
+        assert!(abreast(0, ENCOUNTER_WINDOW_MM));
+        assert!(!abreast(0, ENCOUNTER_WINDOW_MM + 1));
+        assert!(abreast(10, 10 - ENCOUNTER_WINDOW_MM));
+        assert!(!abreast(10, 10 - ENCOUNTER_WINDOW_MM - 1));
+        let grown = 100;
+        assert!(!past_close_band(grown + CLOSE_BAND_MM, grown));
+        assert!(past_close_band(grown + CLOSE_BAND_MM + 1, grown));
+        assert_eq!(ENCOUNTER_WINDOW_MM, 340);
+        assert_eq!(CLOSE_BAND_MM, 280);
+        assert_eq!(ROUTE_PASS_MM, 40);
+        let summary = run(Script::Overflow).summary();
+        assert!(summary.contains("assumption encounter-window-mm 340"));
+        assert!(summary.contains("assumption close-clearance-mm 280"));
+        assert!(summary.contains("assumption route-pass-mm 40"));
+    }
+
+    #[test]
+    fn a_return_walk_matches_the_marked_route_walk() {
+        let starts = [point(0, 0), point(100, -40), point(-20, 800)];
+        let goals = [
+            point(0, 0),
+            point(200, 0),
+            point(0, 500),
+            point(50, 0),
+            point(-400, 0),
+            point(0, -200),
+            point(300, 300),
+            point(10_000, 0),
+            point(0, 3_000),
+        ];
+        for start in starts {
+            for goal in goals {
+                let mut marked = vec![start];
+                let mut holds = vec![None];
+                extend_mark(
+                    &mut marked,
+                    &mut holds,
+                    goal,
+                    Some(ObstacleClass::SmallGround),
+                );
+                let mut plain = vec![start];
+                extend(&mut plain, goal);
+                assert_eq!(plain, marked);
+                if plain.last() == Some(&goal) {
+                    assert_eq!(
+                        holds.last().copied(),
+                        Some(Some(ObstacleClass::SmallGround))
+                    );
+                    assert!(holds[..holds.len() - 1].iter().all(|hold| hold.is_none()));
+                }
+            }
+        }
+        let mut empty_marked = Vec::new();
+        let mut empty_holds = Vec::new();
+        extend_mark(&mut empty_marked, &mut empty_holds, point(10, 0), None);
+        let mut empty_plain = Vec::new();
+        extend(&mut empty_plain, point(10, 0));
+        assert!(empty_marked.is_empty());
+        assert!(empty_plain.is_empty());
     }
 
     #[test]

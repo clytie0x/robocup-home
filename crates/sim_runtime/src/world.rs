@@ -217,14 +217,31 @@ impl SimWorld {
 
     /// Guard fault for one class. The bodies stay in [`Self::observe`].
     ///
-    /// Slides skip that class, and [`collision_fault`](Self::collision_fault) tells
-    /// the follower not to treat those disks as a sight. This is not deletion.
+    /// The default is `None`. A set value stays until another call changes it.
+    /// [`Self::try_slide`] and [`Self::obstacles_for_planner`] omit that one class.
+    /// This is not deletion.
     pub const fn set_collision_fault(&mut self, class: Option<ObstacleClass>) {
         self.collision_fault = class;
     }
 
     pub const fn collision_fault(&self) -> Option<ObstacleClass> {
         self.collision_fault
+    }
+
+    /// Obstacles offered to a planner before that planner's own sensor.
+    ///
+    /// The default fault is `None`, and this list matches `observe`. `Some(class)`
+    /// omits that class only. A live hit test reads `observe`, not this list.
+    pub fn obstacles_for_planner(&self) -> Vec<Obstacle> {
+        self.obstacles
+            .iter()
+            .filter(|obstacle| !self.fault_omits(obstacle.class))
+            .cloned()
+            .collect()
+    }
+
+    fn fault_omits(&self, class: ObstacleClass) -> bool {
+        self.collision_fault == Some(class)
     }
 
     /// Changes the setup fact `visible`. This is not a detector.
@@ -285,7 +302,7 @@ impl SimWorld {
 
     fn blocked(&self, from: Point, to: Point, robot_radius_mm: i32) -> bool {
         self.obstacles.iter().any(|obstacle| {
-            if self.collision_fault == Some(obstacle.class) {
+            if self.fault_omits(obstacle.class) {
                 return false;
             }
             obstacle.bodies.iter().any(|disk| {
@@ -1475,5 +1492,78 @@ mod tests {
         world.set_car(point(2_600, -4_000));
         assert_eq!(world.revealed_car(), None);
         assert_eq!(world.observe().robot, before.robot);
+    }
+
+    fn legacy_planner_list(fault: Option<ObstacleClass>, obstacles: &[Obstacle]) -> Vec<Obstacle> {
+        match fault {
+            Some(class) => obstacles
+                .iter()
+                .filter(|obstacle| obstacle.class != class)
+                .cloned()
+                .collect(),
+            None => obstacles.to_vec(),
+        }
+    }
+
+    #[test]
+    fn a_collision_fault_omits_one_class_from_the_planner_and_the_slide() {
+        let mut world = SimWorld::from_seed(1);
+        assert_eq!(world.collision_fault(), None);
+        let seeded = world.observe().obstacles;
+        assert_eq!(
+            world.obstacles_for_planner(),
+            legacy_planner_list(None, &seeded)
+        );
+        assert_eq!(world.obstacles_for_planner(), seeded);
+
+        world.set_obstacles(vec![
+            disk_obstacle(ObstacleClass::SmallGround, 500, 0, 100),
+            disk_obstacle(ObstacleClass::Crowd, 1_000, 400, 100),
+        ]);
+        let full = world.observe().obstacles;
+        assert_eq!(world.obstacles_for_planner(), full);
+        assert_eq!(
+            world.try_slide(point(1_000, 0), 50),
+            Err(SlideError::Blocked)
+        );
+        assert_eq!(world.observe().robot.pose.point(), point(0, 0));
+
+        world.set_collision_fault(Some(ObstacleClass::SmallGround));
+        assert_eq!(world.observe().obstacles, full);
+        let planned = world.obstacles_for_planner();
+        assert_eq!(
+            planned,
+            legacy_planner_list(Some(ObstacleClass::SmallGround), &full)
+        );
+        assert!(
+            planned
+                .iter()
+                .all(|obstacle| obstacle.class != ObstacleClass::SmallGround)
+        );
+        assert!(
+            planned
+                .iter()
+                .any(|obstacle| obstacle.class == ObstacleClass::Crowd)
+        );
+        world.try_slide(point(1_000, 0), 50).unwrap();
+        assert_eq!(world.observe().robot.pose.point(), point(1_000, 0));
+        assert_eq!(world.collision_fault(), Some(ObstacleClass::SmallGround));
+        assert_eq!(
+            world.try_slide(point(1_000, 1_000), 50),
+            Err(SlideError::Blocked)
+        );
+        assert_eq!(world.observe().robot.pose.point(), point(1_000, 0));
+        assert!(
+            world
+                .observe()
+                .obstacles
+                .iter()
+                .any(|obstacle| obstacle.class == ObstacleClass::SmallGround)
+        );
+
+        world.set_collision_fault(None);
+        assert_eq!(world.obstacles_for_planner(), world.observe().obstacles);
+        assert_eq!(world.try_slide(point(0, 0), 50), Err(SlideError::Blocked));
+        assert_eq!(world.observe().robot.pose.point(), point(1_000, 0));
     }
 }

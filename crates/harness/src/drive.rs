@@ -160,7 +160,7 @@ fn follow(
         return Err(FeedError::Trip(Reject::WrongId));
     }
     let observed = world.observe();
-    let planner = planner_obstacles(world, &observed.obstacles);
+    let planner = world.obstacles_for_planner();
     let (people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
     let sight = Sight {
         robot: observed.robot.pose.point(),
@@ -351,7 +351,7 @@ fn approach(
     if !target.visible {
         return Err(FeedError::Arm(manipulation::GripError::Invisible));
     }
-    let planner = planner_obstacles(world, &observed.obstacles);
+    let planner = world.obstacles_for_planner();
     let (_people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
     let before = *follower;
     match plan_approach(
@@ -527,19 +527,6 @@ fn commit_event(
     }
 }
 
-/// Disks the follower is shown. A collision fault keeps those bodies in the world
-/// and out of this slice, so a later live hit test can still meet them.
-fn planner_obstacles(world: &SimWorld, obstacles: &[domain::Obstacle]) -> Vec<domain::Obstacle> {
-    match world.collision_fault() {
-        Some(class) => obstacles
-            .iter()
-            .filter(|obstacle| obstacle.class != class)
-            .cloned()
-            .collect(),
-        None => obstacles.to_vec(),
-    }
-}
-
 fn accompany(
     world: &mut SimWorld,
     trip: &mut Trip,
@@ -565,7 +552,7 @@ fn accompany(
         return Err(FeedError::Trip(Reject::WrongId));
     }
     let observed = world.observe();
-    let planner = planner_obstacles(world, &observed.obstacles);
+    let planner = world.obstacles_for_planner();
     let (people, bodies) = look(observed.robot.pose.point(), observed.operator, &planner);
     let sight = Sight {
         robot: observed.robot.pose.point(),
