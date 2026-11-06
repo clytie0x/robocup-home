@@ -1,5 +1,99 @@
 # WORKLOG
 
+## M9.3 interrogate verdict (2026-11-06)
+
+Documentation only. No production code changed after `2e8619159ccafc17f1dd53e52cf53c67f34b9484`. This does not merge and does not start M10. The acceptance table stays 45 `pass` and 11 `not-run`. There is no awarded total. No verified finding remains from this audit. That is not full acceptance, and it does not say that no defect remains.
+
+### Intent
+
+A reusable laptop simulation faithful to professor task 3.1, not a scripted success report. M9 may remove only justified duplication. Paths, negative evidence, the local-only navigator, the shared episode clock, honest acceptance limits, and rerunnable verification stay. Green CI and a row id in a test body are not task acceptance. The 45 `pass` rows and 11 `not-run` rows stay model, catalog, or labeled-assumption evidence. The professor PDF is the rule. Cover 2024 Rev-1, revision 2024-07-09. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2024.2 and public 2025.1 are not the baseline. The raw PDF was not committed.
+
+### Findings
+
+Audited head `298104e381a4fc101394446bd4e3e0fa581a3cb2`. Fix head `2e8619159ccafc17f1dd53e52cf53c67f34b9484`. Base `b446ae9b59cd9543c1c321dcbd461f2dc1586de9`.
+
+One finding was fixed. On `298104e`, `PROFESSOR_PDF` set to a missing path printed `ok rows=56 pdf=True` and exited 0. An independent rerun reproduced that. On `2e861915`, the same command prints `professor PDF missing` and exits 1. Unset and empty print `ok rows=56 pdf=False` and exit 0. The exact file, and a byte copy, print `pdf=True` and exit 0. A 9-byte file, a directory, and a mode `000` file exit 1 with no `pdf=True`. `--self-test` prints `self-test ok`. `crates/harness` and `crates/sim_runtime` are unchanged in that commit. The fix note is the section below.
+
+One finding was dropped. A SmallGround disk at `(2000, i32::MAX - 50)` with radius 80 makes `center + grown + 40` equal `2147483967`, and `saturating_add` clamps the pass segment to `i32::MAX`. The independent rerun of real `route_to` reported `sat arithmetic=2147483967 pass_y=2147483647 dy=50 grown=330 covers=true n_pass=14` and `ordinary pass_y=1370 dy=370 grown=330 covers=true inside=true`, with `1 passed` and `45 filtered out`. The measurement is real. It does not break the M9 intent. The M8 walker already used `saturating_add(grown).saturating_add(40)`. This branch only names that 40. `episode.rs` is identical on `2e861915`. The seeded margin is the labeled assumption. A disk within 50 mm of `i32::MAX` is not a Carry My Luggage route and is not an acceptance-row claim. The probe kept going on saturation and reported the seeded paths unchanged. This is not a denial of the clamp.
+
+### Counts
+
+Clock and claims, `grok-4.7-xhigh-fast`: 1 proposed, 0 dropped. That one is the PDF flag fixed on `2e861915`. The inverted `CML-TASK` sentence and the 632 mm assist gap were not filed. The first is the accepted id-presence limit of the checker. The second matches the M8 base.
+
+Fault and route, `grok-4.7-xhigh`: 1 proposed, 1 dropped, for the saturated pass segment above.
+
+Two proposals. One fixed. One dropped. None remain verified.
+
+### Limits
+
+`~/.cursor/rules/pstack-models.mdc` is absent. `claude-opus-5-5-xhigh` and `claude-sonnet-5-5-xhigh` were rejected because they are not included in weekly usage. The seats that ran were `grok-4.7-xhigh` for fault, live hit, and route, and `grok-4.7-xhigh-fast` for clock, custody, source, and verification. Both were separate worktrees on exact head `298104e`.
+
+The clock seat ran the workspace tests, 157 library tests and 6 doctests, debug and release, plus the checker with and without the PDF. Its causal probe reported the shared clock, custody negatives, the local navigator, and the live hit cases holding. The coordinator did not re-execute those passes except the PDF cases.
+
+The fault seat's full include-suite was not re-executed by the coordinator. It is not adopted as proof. The coordinator reran the saturated and ordinary `route_to` cases only. The fault report says the shared fault predicate, the drive list, the live remove, move, reclass, and inject cases, and the car at `(2501, 1000)` passed, and that 29 script traces match the base. Those statements stay in that report. They were not filed as findings.
+
+The auditor did not have `pdfinfo` or `pdftotext`, so that pass did not check page count or page text. Hash and size still ran. CI does not set `PROFESSOR_PDF`. CI run `42238785579` succeeded at `298104e` with 157 library tests, 6 doctests, and `pdf=False`: https://github.com/clytie0x/robocup-home/actions/runs/42238785579. CI run `42243746431` succeeded at `2e861915`. Its checkout merge `284cba6b40c811c829b8b4ba42543dec8d824908` has the same tree. The log has `self-test ok`, `ok rows=56 pdf=False`, and the same test counts: https://github.com/clytie0x/robocup-home/actions/runs/42243746431.
+
+The fault worktree still had uncommitted `include!` lines. They were not committed.
+
+### This tree
+
+`command -v pdfinfo` and `command -v pdftotext` are absent here too, so this pass did not run the page or text checks. No package was installed to add them. The attached file is 1129757 bytes and its SHA-256 is `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. With that path set, the checker prints `ok rows=56 pdf=True` from the hash and the size. Unset, it prints `ok rows=56 pdf=False`.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 45, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+unset_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+hash_size_only_exit:0
+```
+
 ## M9.3 missing-PDF flag (2026-11-06)
 
 Scope. One verified finding from the M9.3 audit, rerun on `298104e381a4fc101394446bd4e3e0fa581a3cb2`. The rest of that audit is still in progress. This does not close M9.3, does not merge, and does not start M10. The acceptance table stays 45 `pass` and 11 `not-run`. No episode, route, or custody code changed.
