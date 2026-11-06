@@ -519,6 +519,7 @@ struct DeliveryNote {
     sensed_y: Option<i32>,
     truth_x: i32,
     truth_y: i32,
+    custody: &'static str,
 }
 
 struct Held {
@@ -607,6 +608,7 @@ struct Episode {
     mail: Mail,
     last_cue: Cue,
     departing: bool,
+    actions: Vec<(u64, &'static str)>,
     #[cfg(test)]
     posted_orders: Vec<PostedEdge>,
 }
@@ -682,6 +684,7 @@ impl Episode {
             mail: Mail::zero(),
             last_cue: Cue::None,
             departing: false,
+            actions: Vec::new(),
             #[cfg(test)]
             posted_orders: Vec::new(),
         }
@@ -1493,6 +1496,7 @@ impl Episode {
             sensed_y,
             truth_x: truth.x().get(),
             truth_y: truth.y().get(),
+            custody: custody_name(&self.world.observe(), self.pointed),
         });
     }
 
@@ -1999,6 +2003,17 @@ impl Episode {
             &posted,
             &mut self.mail.history,
         );
+        let action = match &result {
+            Ok(end) => end_name(end),
+            Err(FeedError::TimeUp) => "time-up",
+            Err(FeedError::Split) => "split",
+            Err(FeedError::Terminal) => "terminal",
+            Err(FeedError::NotAReport) => "report",
+            Err(FeedError::NotACommand) => "command",
+            Err(FeedError::Trip(_)) => "trip",
+            Err(FeedError::Arm(_)) => "arm",
+        };
+        self.actions.push((self.world.now_ms(), action));
         match result {
             Ok(end) => {
                 if self.trip.now_ms() != Some(self.world.now_ms()) {
@@ -2390,6 +2405,118 @@ fn phase_name(phase: Phase) -> &'static str {
         Phase::Dropped => "dropped",
         Phase::Complete => "complete",
         Phase::TimeUp => "time-up",
+    }
+}
+
+fn end_name(end: &NavEnd) -> &'static str {
+    match end {
+        NavEnd::Moved { .. } => "moved",
+        NavEnd::Waiting => "waiting",
+        NavEnd::NeedFresh => "need-fresh",
+        NavEnd::Blocked => "blocked",
+        NavEnd::Stuck => "stuck",
+        NavEnd::Lost => "lost",
+        NavEnd::WrongPerson => "wrong-person",
+        NavEnd::Refound => "refound",
+        NavEnd::Arrived { .. } => "arrived",
+        NavEnd::Cancelled => "cancelled",
+        NavEnd::InReach => "in-reach",
+        NavEnd::SameStamp => "same-stamp",
+    }
+}
+
+fn kind_name(kind: SampleKind) -> &'static str {
+    match kind {
+        SampleKind::Ready => "ready",
+        SampleKind::Missing => "missing",
+        SampleKind::Stale => "stale",
+        SampleKind::Duplicate => "duplicate",
+        SampleKind::Reversed => "reversed",
+        SampleKind::Future => "future",
+    }
+}
+
+pub(crate) fn replay_picture(case: crate::ReplayCase) -> crate::replay::Picture {
+    let script = match case {
+        crate::ReplayCase::Success | crate::ReplayCase::Delay200 | crate::ReplayCase::Missing => {
+            Script::Main {
+                seed: 1,
+                car: None,
+                then_return: false,
+                far_bag: false,
+            }
+        }
+        crate::ReplayCase::Loss => Script::Loss { seed: 1 },
+    };
+    let mut episode = Episode::prepare(options(script));
+    match case {
+        crate::ReplayCase::Delay200 => episode.mail.delay_ms = 200,
+        crate::ReplayCase::Missing => episode.mail.miss_one = true,
+        crate::ReplayCase::Loss => episode.opt.loss_stay = true,
+        crate::ReplayCase::Success => {}
+    }
+    episode.execute();
+    episode.picture(case)
+}
+
+impl Episode {
+    fn picture(&self, case: crate::ReplayCase) -> crate::replay::Picture {
+        let profile = match case {
+            crate::ReplayCase::Success => "delay 0",
+            crate::ReplayCase::Delay200 => "delay 200",
+            crate::ReplayCase::Missing => "one missing delivery",
+            crate::ReplayCase::Loss => "walk away",
+        };
+        let marks = self
+            .mail
+            .log
+            .iter()
+            .map(|note| {
+                let action = self
+                    .actions
+                    .iter()
+                    .rev()
+                    .find(|(ms, _)| *ms <= note.decision_ms)
+                    .map(|(_, name)| *name)
+                    .unwrap_or("-");
+                let fresh = note.kind == SampleKind::Ready;
+                crate::replay::Mark {
+                    captured_ms: note.captured_ms,
+                    delivered_ms: note.delivered_ms,
+                    decision_ms: note.decision_ms,
+                    age_ms: note.age_ms,
+                    kind: kind_name(note.kind),
+                    fresh,
+                    sensed_x: if fresh { note.sensed_x } else { None },
+                    sensed_y: if fresh { note.sensed_y } else { None },
+                    truth_x: note.truth_x,
+                    truth_y: note.truth_y,
+                    action,
+                    custody: note.custody,
+                }
+            })
+            .collect();
+        crate::replay::Picture {
+            seed: self.opt.seed,
+            profile,
+            phase: phase_name(self.trip.phase()),
+            fail: self.fail.unwrap_or("-"),
+            custody: custody_name(&self.world.observe(), self.pointed),
+            truth: self
+                .trace
+                .iter()
+                .map(|sample| {
+                    (
+                        sample.ms,
+                        sample.robot_x,
+                        sample.robot_y,
+                        sample.operator_x,
+                        sample.operator_y,
+                    )
+                })
+                .collect(),
+            marks,
+        }
     }
 }
 

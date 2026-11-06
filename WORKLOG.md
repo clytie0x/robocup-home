@@ -1,5 +1,25 @@
 # WORKLOG
 
+## R5 SVG replay (2026-11-07)
+
+R4 is merged at `4c1bd111fb0d5c7a203b8243a1c7f3897e56746f`. The picture is drawn from the episode log: the world trace and the delivery notes. A sensor circle is emitted only for a ready sample. Missing, stale, duplicate, reversed, and future samples are labels and are not drawn as a fresh observation. The file says it is a 2D simulation, not hardware and not a score. It does not award a field total.
+
+Command: `cargo test -p harness --lib recorded_replays_are_deterministic_and_not_the_same_picture --locked`. Hash algorithm: SHA-256, from `sha256sum`.
+
+Red. `a_success_replay_is_a_labeled_svg` exited 101 because the stub picture did not contain `2D simulation`.
+
+Green. The same success picture is byte-identical on a second call. The three exemplars differ. Delay 200 shows posted sensor `0,1000` against truth operator `200,1000`. The loss picture says phase `lost`, custody `gripper`, fail `lost`. A stale mark with a stored sensed point does not emit `class="sensor"`.
+
+| file | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | `d4185a05a7e4a8f4291584904a9dfe564770d4d655643c40bcaef2a3844c62ea` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | `c48db0c522252ee4b70c7fd7a8e040b263e037db53a637369a4aa7801d457d3d` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | `e27972139c79b0b67f11db395d34466f50133e397376a43b20fec445adf95ebd` |
+
+The sixteen-row manifest, held-out seeds 8 and 11, and the posted-list permutation stay as they were. Independent review of this picture, then the multi-challenger interrogate, are still required. This entry does not say the plan is complete.
+
+This run's library count is 193: domain 8, harness 71, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757. Page text was not read.
+
 ## R4 manifest, expectations locked before the matrix (2026-11-07)
 
 R3 is merged at `61d694fd9523eae64796daef2d69dc7e67d4460e`. The sixteen rows are `S01` through `S16` in `crates/harness/src/manifest.rs`. `Basis::Prior` repeats an outcome already measured. `Basis::Hypothesis` is not edited after the run. `Expect::Record` does not claim task success.
