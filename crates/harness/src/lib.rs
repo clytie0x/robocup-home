@@ -93,7 +93,7 @@ mod tests {
         let dx = i64::from(dx);
         let dy = i64::from(dy);
         let squared = dx * dx + dy * dy;
-(400 * 400..=2_000 * 2_000).contains(&squared)
+        (400 * 400..=2_000 * 2_000).contains(&squared)
     }
 
     fn begin() -> Trip {
