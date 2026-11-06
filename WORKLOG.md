@@ -1,5 +1,81 @@
 # WORKLOG
 
+## M5 review fixes (2026-11-06)
+
+Scope. Pull request 11, reviewed head `1e28b3024cdfe63df98f5e46a4f4a85a5c5a6b85`. Two harness defects. No selector defect was verified. No merge, and M6 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+The reviewed head's CI run `42204708843` completed with conclusion success: https://github.com/clytie0x/robocup-home/actions/runs/42204708843. That run is not this follow-up.
+
+Code commits before this note: `a17a499` and `abcf916`.
+
+### Findings
+
+`Trip::apply` stores `TimeUp` and returns `Ok` with no effect when the stamp is past 300000 ms. The payload is not applied. `confirm_with_mock` treated that `Ok` as a named bag. Seed 1, operator id 2, bag id 3, `Begin` at 0, `stage_report` at 1, `confirm_with_mock` at 300001 returned `Ok(Id(3))` with phase `TimeUp`, `named` false, and an empty gripper. A stamp at 300000 still names and moves to `Picking`.
+
+`stage_report` dropped that same `Ok` because the effect was missing, and it returned `Impossible` without storing `TimeUp`. `Begin` at 10 and `stage_report` at 300011 left the trip at `AwaitPoint` with `now_ms` 10. A later `stage_report` at 60 then posted the bag. Direct `Trip::apply` of the late point stores `TimeUp`.
+
+The floor corridor was already the implementation. Every committed direction had an integer length, so `cross² <= 150² * (dx² + dy²)` still passed those tests. Direction `(2, 1)` has floor length 2. Cross 299 is inside that tube and cross 301 is outside. The exact width accepts 301. Direction `(1, 1)` rejects the point `(0, 180)`, about 127 mm from the ray. Direction `(100, 100)` accepts that same point. The floor length is not scale-invariant. It is not a physical width.
+
+### Contract
+
+`Ok` from `stage_report` is `Effect::ReportBag` and the phase is `Naming`. `Ok` from `confirm_with_mock` means the trip named that bag: phase `Picking`, `named` true, and the machine effect is `Pick` for that id. `FeedError::TimeUp` means the deadline was stored, `now_ms` is the late stamp, and the payload was not applied. `FeedError::Trip` leaves the trip equal to the value before the call. A stamp at 300000 ms is inside the budget. One millisecond later is `TimeUp`. An earlier stamp after that is `Regressed` and does not restore the trip. A repeated call on `TimeUp` is `Stale` and leaves the stored deadline in place.
+
+### Tests
+
+Red, on `1e28b30`, before the wrapper change. `a_late_confirmation_does_not_name_and_keeps_time_up` got `Ok(Id(3))` instead of `Err(TimeUp)`. `a_late_report_keeps_time_up_and_an_earlier_stamp_cannot_repost` got `Err(Trip(Impossible))` instead of `Err(TimeUp)`. `a_start_near_u64_max_names_inside_the_budget_and_latches_just_outside_it` got `Ok(Id(3))` instead of `Err(TimeUp)`. The exact-width scratch, `cross * cross` compared with `150² * (dx² + dy²)`, failed the two new perception tests: direction `(1, 1)` returned `Ok(Id(5))` instead of `Err(NoHit)`, and cross 301 returned `Ok(Id(4))` instead of `Err(NoHit)`. The scratch was removed. The floor test was not replaced.
+
+Green on the tree that contains `a17a499` and `abcf916`. Debug and release match. They do not close an acceptance row.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 6, harness 12, hri 1, manipulation 0, navigation 0, perception 20, sim_runtime 17, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+domain 6, harness 12, hri 1, manipulation 0, navigation 0, perception 20, sim_runtime 17, task_3_1 30
+0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+domain 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+### Limits
+
+The deadline rule is the existing trip rule. The wrappers no longer disagree with it. The corridor is still the floor length, so a short direction is stricter than a longer writing of the same ray. A passing test does not mean an acceptance row passed. No statement here says the software has no remaining defects. M6, M7, M8, and M9.3 were not started.
+
 ## M5 pointed-bag selection (2026-11-06)
 
 Scope. Issue 10. One writer. Branch `cursor/m5-pointed-bag-1f1e` from `44b502ddac19cce65952c2503bbb508b875b9704`. Perception selects one visible bag from a pointing sample. The harness posts that bag on the M4 trip and confirms the report through a mock. No grasp, ready signal, follow, handoff, navigation, scorer, hardware, deploy, registration, contact, or spending. M6, M7, and M8 were not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
