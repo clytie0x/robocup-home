@@ -1,5 +1,26 @@
 # WORKLOG
 
+## Visibility instruction (2026-11-06)
+
+On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction.
+
+Before the change, the tracked tree and history were scanned for private keys, GitHub tokens, cloud access-key ids, PDF files, and `.env` files. None were found. The laptop path and the professor excerpts remain intentional source notes. The sentence about an arena SSID/password in the professor excerpt is rule text, not a stored password.
+
+The repository was still private. Both documented writes were refused. CI was not rerun, because the visibility did not become public.
+
+```text
+gh repo edit clytie0x/robocup-home --visibility public --accept-visibility-change-consequences
+HTTP 403: Resource not accessible by integration
+
+gh api -X PATCH repos/clytie0x/robocup-home -f visibility=public
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/repos/repos#update-a-repository","status":"403"}
+
+gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,html_url:.html_url,permissions:.permissions}'
+{"html_url":"https://github.com/clytie0x/robocup-home","permissions":{"admin":false,"maintain":false,"pull":false,"push":false,"triage":false},"private":true,"visibility":"private"}
+```
+
+The active `gh` account is `cursor`. Its token is an integration token, and the repository permission read shows `admin: false`.
+
 ## M2 workspace and CI (2026-11-06)
 
 Scope. Issue 4, opened before this branch. One writer. Laptop skeleton only. No task behavior, world, clock, state machine, scoring choice, hardware, deploy, registration, contact, or spending. M3 was not started. M9.3 was not run. The specification file is unchanged from `77e801b5ae5645af07cf8bb3f19725711dd491b8`. The seven open rows stay open, and every acceptance result stays `not-run`. Public 2025.1 is not the baseline. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`, cover 2024 Rev-1, revision 2024-07-09.

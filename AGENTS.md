@@ -4,7 +4,7 @@ Long-term conventions for Teerapat Vatpitak and the team, for people and agents.
 This file is the only conventions document, so there is no `docs/conventions.md`.
 The repository has a Rust workspace skeleton. There is no task behavior and no simulated world.
 
-`clytie0x/robocup-home` is private. Leave visibility unchanged. Do not make the repository public.
+On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That instruction replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction. The attempt and the live visibility are in [WORKLOG.md](WORKLOG.md).
 
 ## Current rules
 

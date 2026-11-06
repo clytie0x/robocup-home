@@ -3,7 +3,7 @@ RoboCup@Home sim-first software (start 3.1 Carry My Luggage) — Rust modules, l
 
 The repository has a Rust workspace skeleton. There is no task behavior, no simulated world, and no hardware procedure.
 
-`clytie0x/robocup-home` is private. Do not change its visibility.
+On 2026-11-06 the owner instructed that `clytie0x/robocup-home` be made public. That applies to this repository only. The live visibility is in [WORKLOG.md](WORKLOG.md).
 The toolchain pin is stable 1.99.1 in [rust-toolchain.toml](rust-toolchain.toml). The edition is 2024. `rust-version` matches that pin. CI is [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 Crates live under `crates/`. `domain` is the one shared contract between task logic and adapters. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. No crate depends on `sim_runtime`.
