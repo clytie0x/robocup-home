@@ -91,6 +91,7 @@ impl Visit {
         let (phase, effect) = match (self.phase, event) {
             (Phase::Outside, Event::DoorOpen) => (Phase::GoingToPoint, Some(Effect::GoToPoint)),
             (Phase::GoingToPoint, Event::Arrived) => (Phase::AtPoint, None),
+            (_, Event::Tick) => (self.phase, None),
             (Phase::GoingToPoint, Event::DoorOpen) | (Phase::AtPoint, Event::Arrived) => {
                 return Err(Reject::Duplicate);
             }

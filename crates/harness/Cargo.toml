@@ -13,3 +13,4 @@ navigation.workspace = true
 perception.workspace = true
 sim_runtime.workspace = true
 task_3_1.workspace = true
+task_3_2.workspace = true
