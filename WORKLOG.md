@@ -1,5 +1,111 @@
 # WORKLOG
 
+## M4 task state machine (2026-11-06)
+
+Scope. Issue 8. One writer. Branch `cursor/m4-task-state-machine-0c9f` from `1aead3bb8b49937e5fb89d2b0ce43711f9b4abaf`. Pure `task_3_1` orchestration only. No perception algorithm, grasp model, follower, end-to-end run, scorer, hardware, deploy, registration, contact, or spending. M5 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+### M3 independent review
+
+Reviewed pull request 7 at head `c7cfe59ede792ddd9c6af06201642f7af75418d4`. `git diff c7cfe59ede792ddd9c6af06201642f7af75418d4 1aead3bb8b49937e5fb89d2b0ce43711f9b4abaf` was empty. The pull request had no review comments and no issue comments. CI run `42195311283` completed with conclusion success on that head: https://github.com/clytie0x/robocup-home/actions/runs/42195311283. No merge blocker was verified.
+
+Re-ran the merged tree in debug and release before the M4 edits. Both profiles: domain 6 passed, `sim_runtime` 14 passed, other crates 0, doctests 2 passed (domain 1, `sim_runtime` 1). Zero failures.
+
+An independent splitmix64 (2015) plus xoshiro256** 1.0 `next` matched the crate's first draw for seeds 0 through 306, including seed 0 `0x99ec5f36cb75f2b4`. Seeds 0 through 19999 each kept at least two bags, all four obstacle classes, `revealed_car() == None`, the car point out of the observation, and the car id off the visible ids. A 6 ms step from `u64::MAX - 5` returned overflow and left the observation unchanged. `uniform` on span `2^63 + 7`, 64 draws from seed 1, matched a mirrored rejection loop that rejected 69 draws. The committed M3 tests still do not enter that rejection branch. The probe found no mismatch, so no M3 code change was made. The M3 log's spec check was `pdf=False`. This review hashed the attached professor PDF and did not commit it: the same baseline hash, 1129757 bytes, 52 pages, creation 2024-07-09. This review does not say that no defect remains.
+
+### Plan
+
+Add one explicit trip in `task_3_1`. `apply(now_ms, event)` returns one command effect or a rejection. The trip is copied and replaced only after `Ok`, so a rejection leaves it unchanged. Effects ask a later module to report, pick, signal, follow, or release. Confirmations are separate events. `sim_runtime` stays out of the crate. The capability crates stay empty of algorithms. `Cargo.lock` did not change.
+
+### Decisions
+
+Phase order for the main trip is `Idle`, `AwaitPoint`, `Naming`, `Picking`, `Signaling`, `Following`, `Releasing`, `Complete`. Failure phases are `PickFailed`, `WrongBag`, `Dropped`, `Lost`, `HandoffFailed`, and `TimeUp`. `main_complete` is set only in the transition to `Complete`, which requires a confirmed arrival and a confirmed receipt of the pointed bag by the operator, and it clears the carried bag.
+
+`Begin` arms a 300000 ms budget. The millisecond unit and `Begin` are assumption `CML-ASM-CLOCK`, stored as `CLOCK_START = "begin"`. They are not a printed start signal. `ALT_START` stays `"unresolved"`. Elapsed time is `now_ms.checked_sub(start_ms)`. A stamp with elapsed equal to 300000 is inside the budget. A larger stamp moves an unfinished trip to `TimeUp` and does not apply the payload. `Complete` stays complete, including after a later stamp. `Reenter` and `JoinQueue` are `Reject::OutOfScope` before the clock is read. There is no optional-goal timer and no score.
+
+A loss of the operator can return to `Following` when that same id is found. That resume emits no follow command and decides no points. A second drop is not given a price: dropping with an empty gripper is `Reject::Impossible`.
+
+### Sources
+
+Used for the shape. Not taken as dependencies.
+
+- Enumerations: https://doc.rust-lang.org/reference/items/enumerations.html
+- `Result` for a rejected event: https://doc.rust-lang.org/std/result/enum.Result.html
+- Typestate was read and not used. External events have to be rejected at runtime: https://docs.rust-embedded.org/book/static-guarantees/typestate-programming.html
+- `u64::checked_sub`: https://doc.rust-lang.org/std/primitive.u64.html#method.checked_sub
+- The local clock and point already leave their value unchanged when the operation fails.
+
+### Tests
+
+Red, against a stub that marked every `apply` complete. `cargo test -p task_3_1 --all-targets --locked` was 1 passed (`new_trip_is_idle`) and 27 failed. `cargo test -p task_3_1 --doc --locked` was 1 failed, assertion `!trip.main_complete()`. The first transition body left `ready` and `arrived` unset, and the suite was then 14 failed, including `trip.ready()` and the complete-state check. Those flags are set only on `ReadyTold` and `Arrived`. The next run was 28 passed and the doctest passed.
+
+Green counts below are the workspace commands on this tree. Debug and release match. They do not close an acceptance row. Unit mapping: [docs/tasks/m4-unit-coverage.md](docs/tasks/m4-unit-coverage.md).
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 6 passed, sim_runtime 14 passed, task_3_1 28 passed, other crates 0 passed
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1 passed, sim_runtime 1 passed, task_3_1 1 passed, other crates 0 passed
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+domain 6 passed, sim_runtime 14 passed, task_3_1 28 passed, other crates 0 passed
+0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+domain 1 passed, sim_runtime 1 passed, task_3_1 1 passed, other crates 0 passed
+0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=7 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+`Cargo.lock` had no diff.
+
+### Adversarial notes
+
+A stamp earlier than the last accepted stamp is `Regressed` and the trip compares equal. The same stamp is accepted. `Begin` at `u64::MAX - 10` still treats a stamp at `u64::MAX` as inside the budget, which is the case `wrapping_add(300000)` would misread. A stamp at `u64::MAX` after `Begin` at 0 ends in `TimeUp` and does not wrap into the budget. Ticks at 100000, 200000, and 300000 ms after the start stay open; the next millisecond is `TimeUp`. Receipt at exactly `start + 300000` completes. Receipt or arrival one millisecond later does not, and an earlier stamp after that is `Regressed`. A tick at 400000 ms after completion stays `Complete`, with an empty gripper. A 30000 ms tick returns without a two-second wall wait. The wall clock is not the simulation time.
+
+Swapped and repeated ids do not advance the phase. Naming or grasping the operator id is `Role`. Finding or paying the bag id as a person is `Role`. A different bag is `WrongId` on the name and `WrongBag` on a grasp, with no ready command. `GraspFailed` for the pointed bag ends in `PickFailed` and a later grasp is `Stale`. A drop clears the carried id and does not complete, including after arrival. A second drop is `Impossible`. Loss blocks arrival until the same operator id returns, with no new follow effect. `HandoffFailed` keeps the bag; only a later receipt by the operator completes and clears it. Optional events at a late stamp leave the trip equal, including after completion. The matrix of events from idle, naming, picking, following, releasing, lost, and pick-failed prefixes keeps the previous value whenever `apply` returns `Err`. One script that includes a regression, a loss, a failed handoff, and an optional event replays equal.
+
+### Limits
+
+No perception, manipulation, navigation, or HRI algorithm is in this milestone. The car coordinate is not an input. Optional re-entry and the queue are not implemented. The machine does not decide partial credit, the drop cap, a second drop's price, follow points after a loss, the absent-team numbers, or the alternative start. A passing unit test does not mean an acceptance row passed. No statement here says the software has no remaining defects.
+
 ## M3 clock and seeded world (2026-11-06)
 
 Scope. Issue 6. One writer. Branch `cursor/m3-sim-clock-world-e955` from `58cfa9de29c033a0061dc7e654d84b20fb69e6f6`. Code commits before this note: `acf444a` and `fedf5ab`. No task state machine, perception, grasp, path planning, scorer, hardware, deploy, registration, contact, or spending. M4 was not started. M9.3 was not run. This self-review does not replace that interrogation. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline.
