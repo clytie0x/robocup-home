@@ -33,9 +33,11 @@ mod episode;
 mod gpsr;
 #[cfg(test)]
 mod manifest;
+mod replay;
 
 pub use drive::{Drive, NavEnd, step_drive};
 pub use episode::{EpisodeReport, Script, run};
+pub use replay::{ReplayCase, replay_svg};
 
 /// The trip rejected the event, the effect was not a report, or the budget ended.
 ///

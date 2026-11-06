@@ -28,7 +28,7 @@ PROFESSOR_PDF=/path/to/the/professor.pdf python3 artifacts/check_m1_spec.py
 cargo test -p harness --lib --locked
 ```
 
-The last command is the seeded episode set. The counts from the latest run are in [WORKLOG.md](WORKLOG.md). Abreast 340 mm, the 280 mm close band, the 40 mm route margin, the 800 mm and 2500 mm sensors, the disk radii, the 250 mm robot disk, the arena half-plane, and the three-step stay are assumptions, not official measurements.
+The last command is the seeded episode set. A replay picture is `cargo test -p harness --lib recorded_replays_are_deterministic_and_not_the_same_picture --locked`. It writes three SVG files from the episode log. The picture is a 2D simulation, not hardware and not a score. The counts from the latest run are in [WORKLOG.md](WORKLOG.md). Abreast 340 mm, the 280 mm close band, the 40 mm route margin, the 800 mm and 2500 mm sensors, the disk radii, the 250 mm robot disk, the arena half-plane, and the three-step stay are assumptions, not official measurements.
 
 Crates live under `crates/`. `domain` is the one shared contract between task logic and adapters. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `task_3_2` depends on `domain`. `sim_runtime` depends on `domain`. `harness` may depend on `sim_runtime`. `task_3_1` does not. `task_3_2` does not. No other crate depends on `sim_runtime`.
 

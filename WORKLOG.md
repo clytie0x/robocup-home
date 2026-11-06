@@ -1,5 +1,89 @@
 # WORKLOG
 
+## R1 through R5 interrogate fix (2026-11-07)
+
+The interrogate covered the approved R1 through R5 plan. The Rust candidate was `08e85403f78ccbcdb025f62d110bdebfb68c528c`. The intent stays a bounded laptop simulation of Carry My Luggage in two dimensions: posted sensing with real delivery boundaries, causal world events, frozen scenarios judged apart from the script, and an SVG drawn from the recorded log. It is not a hardware result, a field score, or complete acceptance. Section 3.1 stays 45 `pass` and 11 `not-run`. No hardware row is closed. GPSR is unchanged. Public 2024.2 and public 2025.1 are not the baseline. The professor PDF remains SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`.
+
+Seat A filed 0 and dropped 13. Seat B filed 1 and dropped 15. Seat A first dropped the loss caption. The coordinator overruled that drop: a ready sample is a fresh observation even when the operator is outside the sensor, so the caption was an honest-meaning defect. The two seat counts overlap on that one caption. They merge to one root cause. Speculation and the exclusions already named in the plan stay dropped. Cross-judge, pick, and graft were not used.
+
+The coordinator reproduced it on a detached worktree of `08e85403` with the scratch probe applied and not committed. Command: `cargo test -p harness --lib seat_b_reads_the_candidate --offline -- --nocapture`. Exit 101. The log had exactly two `VIOLATION` lines, both `kind ready`, `fresh 1`, capture equal to the decision, age 0, action `lost`, base stationary at `(-56, 370)`, caption `Not a fresh observation.` Decisions 5400 and 7400.
+
+The permanent test `a_ready_loss_without_an_operator_stays_fresh` then failed the same way on the primary tree, exit 101, before the caption change. After the change it passes. A ready sample with no posted operator says `ready. No posted operator.` The orange circle stays omitted. Missing, stale, duplicate, reversed, and future samples still say they are not a fresh observation. Kind, fresh, age, action, and the before and after poses are unchanged. The loss SVG differs in those two caption lines only. Success and delay 200 are byte-identical to the previous exemplars. A second render of each picture matches the first. The same scratch probe, pointed at the fixed renderer and still not committed, exited 0 with no `VIOLATION` line.
+
+Hash algorithm remains SHA-256 from `sha256sum`.
+
+| file | bytes | sha256 |
+| --- | --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | 27448 | `f49f467a29421b35dd31b2f047974ca87f7631151246aea5bfd68a1ca15abd0e` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | 5567 | `e812a390b97acfe0c855004fafb670150bb54ca71ec52d9a60e136e37f277a92` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | 28746 | `2f4a0709561451491cc8b8a06a248c249e07dc925d28083e01e756f5eb28a4ea` |
+
+This run's library count is 195: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Format, clippy, and `cargo doc` passed. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. This entry does not merge. Independent review of the corrected head, and visual QA of the three pictures, are still required. This entry does not say the plan is complete.
+
+## R1 through R5 interrogate plan (2026-11-07)
+
+Documentation only. No code change. Pull request 25 stays open and is not merged. The code candidate is `08e85403f78ccbcdb025f62d110bdebfb68c528c`. Independent review of that head was safe: 194 library tests and 7 doctests, debug and release. CI run `42284519561` succeeded on that SHA. This entry does not start a fix and does not say the plan is complete.
+
+### Intent
+
+A bounded, reproducible laptop simulation of Carry My Luggage in two dimensions: posted sensing with real delivery boundaries, causal world events, frozen scenarios judged apart from the script, and an SVG drawn from the recorded log. It is a 2D model. It is not a hardware result, a field score, or complete acceptance. Section 3.1 stays 45 `pass` and 11 `not-run`. No hardware row is closed. GPSR is unchanged. The professor PDF remains the rule: cover 2024 Rev-1, revision 2024-07-09, SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2024.2 and public 2025.1 are not the baseline.
+
+### Seats
+
+Two independent read-only cloud workspaces inspect R1 through R5 up to that candidate. Seat A is the existing reviewer. Seat B is a fresh adversary. Neither seat makes a tracked edit or pushes a shared branch. Each failure is proved against the real code, with the exact command, the actual output, and the required output, in that seat's own scratch artifacts.
+
+The coordinator is the only writer. A finding is adopted only after the coordinator reproduces it. Root causes that are the same defect are merged. Speculation is dropped. A defect the approved plan already excludes stays excluded. An in-scope defect that survives that filter is fixed, then that exact new head gets the full regression, an independent check, and CI.
+
+Cross-judge, pick, and graft are not part of this interrogate.
+
+### Read
+
+Sensor timing, identity, and cause. Replay provenance, time, and meaning. Tests that would still pass if the behavior were wrong. Claims set against the professor source.
+
+One residual is a probe, not a decided defect: a ready sample with no operator is drawn with the words `Not a fresh observation`.
+
+This entry does not implement the interrogate. No further milestone starts from this commit.
+
+## R5 action alignment (2026-11-07)
+
+The picture joined each delivery to the latest recorded action whose end stamp was at or before the decision clock. That end stamp is the previous command. On the seed-1 success log, the mark at decision 1000 was labeled `in-reach` while the command issued there moved the base from `(0, 0)` to `(39, 195)` and ended at 1200. The mark at decision 14400 was labeled `moved` while the base stayed at `(7997, -488)`.
+
+Each base command is now stored with the delivery note that issued it, the decision stamp, the end stamp, and the base before and after that command. The picture reads that record. It does not choose the label by subtracting neighboring poses. A sample with no base command says `no base command`. Capture time that was not recorded says `absent`. The header says `stop reason: none` or `stop reason: lost`. Capture, delivery, and decision are on separate lines from the action line.
+
+The success picture now carries `data-decision="1000" data-end="1200" data-action="moved" data-before="0,0" data-after="39,195"`. The next command is decision 1200, end 1400, `moved`, base `(39, 195)` to `(-56, 370)`. `moved` always changes the base. `in-reach`, `waiting`, `need-fresh`, and `same-stamp` do not. The same check covers the delay-200 run and the stay-away loss. The zero-delay trace is unchanged.
+
+Hash algorithm remains SHA-256 from `sha256sum`.
+
+| file | bytes | sha256 |
+| --- | --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | 27448 | `f49f467a29421b35dd31b2f047974ca87f7631151246aea5bfd68a1ca15abd0e` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | 5577 | `2365d26fa2b9f2c0065890b4ca255cdcbffeb1ef39d3850cc402864dbaff3725` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | 28746 | `2f4a0709561451491cc8b8a06a248c249e07dc925d28083e01e756f5eb28a4ea` |
+
+Independent review of this head, then the multi-challenger interrogate, are still required. This entry does not say the plan is complete.
+
+This run's library count is 194: domain 8, harness 72, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware.
+
+## R5 SVG replay (2026-11-07)
+
+R4 is merged at `4c1bd111fb0d5c7a203b8243a1c7f3897e56746f`. The picture is drawn from the episode log: the world trace and the delivery notes. A sensor circle is emitted only for a ready sample. Missing, stale, duplicate, reversed, and future samples are labels and are not drawn as a fresh observation. The file says it is a 2D simulation, not hardware and not a score. It does not award a field total.
+
+Command: `cargo test -p harness --lib recorded_replays_are_deterministic_and_not_the_same_picture --locked`. Hash algorithm: SHA-256, from `sha256sum`.
+
+Red. `a_success_replay_is_a_labeled_svg` exited 101 because the stub picture did not contain `2D simulation`.
+
+Green. The same success picture is byte-identical on a second call. The three exemplars differ. Delay 200 shows posted sensor `0,1000` against truth operator `200,1000`. The loss picture says phase `lost`, custody `gripper`, fail `lost`. A stale mark with a stored sensed point does not emit `class="sensor"`.
+
+| file | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | `d4185a05a7e4a8f4291584904a9dfe564770d4d655643c40bcaef2a3844c62ea` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | `c48db0c522252ee4b70c7fd7a8e040b263e037db53a637369a4aa7801d457d3d` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | `e27972139c79b0b67f11db395d34466f50133e397376a43b20fec445adf95ebd` |
+
+The sixteen-row manifest, held-out seeds 8 and 11, and the posted-list permutation stay as they were. Independent review of this picture, then the multi-challenger interrogate, are still required. This entry does not say the plan is complete.
+
+This run's library count is 193: domain 8, harness 71, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757. Page text was not read.
+
 ## R4 manifest, expectations locked before the matrix (2026-11-07)
 
 R3 is merged at `61d694fd9523eae64796daef2d69dc7e67d4460e`. The sixteen rows are `S01` through `S16` in `crates/harness/src/manifest.rs`. `Basis::Prior` repeats an outcome already measured. `Basis::Hypothesis` is not edited after the run. `Expect::Record` does not claim task success.
