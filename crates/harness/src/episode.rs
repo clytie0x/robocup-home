@@ -295,6 +295,10 @@ struct Options {
     budget: bool,
     overflow: bool,
     loss: bool,
+    loss_stay: bool,
+    block_approach: bool,
+    hide_block: bool,
+    reach_fail: bool,
     blocked_handoff: bool,
     help: bool,
     different_queue: bool,
@@ -334,6 +338,10 @@ impl Options {
             budget: false,
             overflow: false,
             loss: false,
+            loss_stay: false,
+            block_approach: false,
+            hide_block: false,
+            reach_fail: false,
             blocked_handoff: false,
             help: false,
             different_queue: false,
@@ -590,6 +598,7 @@ struct Episode {
     outbound: bool,
     mail: Mail,
     last_cue: Cue,
+    departing: bool,
 }
 
 pub fn run(script: Script) -> EpisodeReport {
@@ -662,6 +671,7 @@ impl Episode {
             outbound: true,
             mail: Mail::zero(),
             last_cue: Cue::None,
+            departing: false,
         }
     }
 
@@ -872,6 +882,20 @@ impl Episode {
             self.fail = Some("wrong-bag");
             return Err(());
         }
+        if self.opt.reach_fail {
+            let robot = self.world.observe().robot.pose.point();
+            let far = point(
+                robot.x().get(),
+                robot
+                    .y()
+                    .get()
+                    .saturating_add(manipulation::assume::REACH_MM + 1),
+            );
+            if self.world.place_free(self.pointed, far).is_err() {
+                self.fail = Some("reach");
+                return Err(());
+            }
+        }
         let stamp = self.must_stamp()?;
         let pointed = self.pointed;
         let end = self
@@ -907,6 +931,9 @@ impl Episode {
     }
 
     fn approach(&mut self) -> Result<(), ()> {
+        if self.opt.block_approach {
+            self.plant_approach_block();
+        }
         self.follower = Follower::follow(self.operator);
         let start = xy(self.world.observe().robot.pose.point());
         for _ in 0..800 {
@@ -1123,28 +1150,24 @@ impl Episode {
         for _ in 0..4_000 {
             if self.opt.loss && !loss_done && self.follow_moves >= 2 {
                 loss_done = true;
-                let back = self
-                    .route
-                    .get(self.route_i)
-                    .copied()
-                    .unwrap_or(self.world.observe().operator.pose.point());
-                let robot = xy(self.world.observe().robot.pose.point());
-                self.world
-                    .place_operator(point(robot.0, robot.1.saturating_add(3_000)));
+                if !self.walk_person(16, STEP_MM) {
+                    return;
+                }
                 let Some(stamp) = self.legal_stamp() else {
                     self.fail = Some("budget");
                     self.stop = "budget";
                     break;
                 };
                 let _ = self.drive(stamp, Drive::Follow { person });
-                self.world.place_operator(back);
-                let Some(stamp) = self.legal_stamp() else {
-                    self.fail = Some("budget");
-                    self.stop = "budget";
-                    break;
-                };
-                let _ = self.drive(stamp, Drive::Follow { person });
+                if self.opt.loss_stay {
+                    self.departing = true;
+                } else if !self.walk_person(16, -STEP_MM) {
+                    return;
+                }
                 continue;
+            }
+            if self.departing && !self.walk_person(1, STEP_MM) {
+                return;
             }
             if self.opt.cancel && self.follow_moves >= 2 {
                 let Some(stamp) = self.legal_stamp() else {
@@ -1158,7 +1181,7 @@ impl Episode {
                 }
                 break;
             }
-            if !self.opt.hold {
+            if !self.opt.hold && !self.departing {
                 self.advance_operator();
             }
             self.note_encounter();
@@ -1218,6 +1241,84 @@ impl Episode {
         }
         if self.fail.is_none() && !self.trip.main_complete() && !self.opt.then_return {
             self.fail = Some("not at the car");
+        }
+    }
+
+    fn walk_person(&mut self, steps: i32, dy: i32) -> bool {
+        let step = dy.clamp(-STEP_MM, STEP_MM);
+        for _ in 0..steps {
+            let at = self.world.observe().operator.pose.point();
+            self.world
+                .place_operator(point(at.x().get(), at.y().get().saturating_add(step)));
+            if !self.tick_still() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn tick_still(&mut self) -> bool {
+        let Some(at) = self.legal_stamp() else {
+            self.fail = Some("budget");
+            self.stop = "budget";
+            return false;
+        };
+        let delta = at.saturating_sub(self.world.now_ms());
+        if self.world.advance(Step::from_ms(delta)).is_err() {
+            self.fail = Some("overflow");
+            return false;
+        }
+        if self.trip.apply(at, Event::Tick).is_err() {
+            self.fail = Some("clock");
+            return false;
+        }
+        self.sample();
+        true
+    }
+
+    fn plant_approach_block(&mut self) {
+        let robot = self.world.observe().robot.pose.point();
+        let Some(bag) = self
+            .world
+            .observe()
+            .bags
+            .iter()
+            .find(|item| item.id == self.pointed)
+            .map(|item| item.pose.point())
+        else {
+            return;
+        };
+        let dx = i64::from(bag.x().get()) - i64::from(robot.x().get());
+        let dy = i64::from(bag.y().get()) - i64::from(robot.y().get());
+        let dist = i64::try_from(isqrt((dx * dx + dy * dy) as u128))
+            .unwrap_or(1)
+            .max(1);
+        let center = point(
+            robot
+                .x()
+                .get()
+                .saturating_add(i32::try_from(dx * 350 / dist).unwrap_or(0)),
+            robot
+                .y()
+                .get()
+                .saturating_add(i32::try_from(dy * 350 / dist).unwrap_or(0)),
+        );
+        let id = Id::new(91).unwrap_or(self.operator);
+        let mut obstacles = self.world.observe().obstacles;
+        obstacles.push(Obstacle {
+            id,
+            pose: Pose::new(center),
+            class: ObstacleClass::SmallGround,
+            clearance: Mm::new(CLEARANCE_MM),
+            bodies: vec![Disk {
+                id,
+                center,
+                radius: Mm::new(100),
+            }],
+        });
+        self.world.set_obstacles(obstacles);
+        if self.opt.hide_block {
+            self.world.hide_from_planner(Some(id));
         }
     }
 
@@ -2530,6 +2631,141 @@ mod tests {
     }
 
     #[test]
+    fn causal_cases_read_the_world_and_the_ablation_removes_the_cause() {
+        let sensor2 = i64::from(SENSOR_MM) * i64::from(SENSOR_MM);
+        let step2 = i64::from(STEP_MM) * i64::from(STEP_MM);
+        let outside = |sample: &Sample| {
+            let dx = i64::from(sample.operator_x) - i64::from(sample.robot_x);
+            let dy = i64::from(sample.operator_y) - i64::from(sample.robot_y);
+            dx * dx + dy * dy > sensor2
+        };
+
+        let mut stay = Episode::prepare(options(Script::Loss { seed: 1 }));
+        stay.opt.loss_stay = true;
+        stay.execute();
+        let away = stay.trace.clone();
+        let stay_report = stay.report();
+        for pair in away.windows(2) {
+            let dx = i64::from(pair[1].operator_x) - i64::from(pair[0].operator_x);
+            let dy = i64::from(pair[1].operator_y) - i64::from(pair[0].operator_y);
+            assert!(dx * dx + dy * dy <= step2, "stay jump {dx},{dy}");
+        }
+        assert!(away.iter().any(outside), "walk did not leave the sensor");
+        assert!(!stay_report.main_passed);
+        assert_eq!(stay_report.fail, Some("lost"));
+        assert_eq!(stay_report.phase, "lost");
+        assert_eq!(stay_report.custody, "gripper");
+        assert_eq!(stay_report.clock_ms, 7_600);
+        assert_eq!(stay_report.robot, (-56, 370));
+        assert_eq!(stay_report.operator, (400, 5_600));
+
+        let followed = run(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        });
+        assert!(followed.main_passed);
+        assert_eq!(followed.custody, "operator");
+        assert_eq!(followed.phase, "complete");
+
+        let loss = run(Script::Loss { seed: 1 });
+        assert!(loss.main_passed);
+        let left_at = loss
+            .trace
+            .iter()
+            .position(outside)
+            .expect("loss never left");
+        assert!(
+            loss.trace
+                .iter()
+                .skip(left_at + 1)
+                .any(|sample| !outside(sample)),
+            "the walk never came back into sensor range"
+        );
+
+        let far = run(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: true,
+        });
+        assert!(far.main_passed);
+        assert_eq!(far.clock_ms, 15_400);
+        assert_eq!(far.robot, (7_997, -488));
+        assert_eq!(far.custody, "operator");
+
+        let mut blocked = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: true,
+        }));
+        blocked.opt.block_approach = true;
+        blocked.opt.hide_block = true;
+        blocked.execute();
+        let blocked_report = blocked.report();
+        assert!(!blocked_report.main_passed);
+        assert_eq!(blocked_report.fail, Some("stuck"));
+        assert_eq!(blocked_report.phase, "picking");
+        assert_eq!(blocked_report.custody, "free");
+        assert_eq!(blocked_report.robot, (0, 0));
+        assert!(!blocked_report.grasped_pointed);
+        assert_eq!(blocked_report.clock_ms, 2_000);
+
+        let mut seen = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: true,
+        }));
+        seen.opt.block_approach = true;
+        seen.execute();
+        let seen_report = seen.report();
+        assert!(seen_report.main_passed);
+        assert_eq!(seen_report.custody, "operator");
+        assert_eq!(seen_report.clock_ms, 15_600);
+        assert_eq!(seen_report.robot, (7_999, -461));
+        assert_ne!(seen_report.clock_ms, far.clock_ms);
+
+        let mut reach = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        }));
+        reach.opt.reach_fail = true;
+        reach.execute();
+        let reach_report = reach.report();
+        assert!(!reach_report.main_passed);
+        assert_eq!(reach_report.fail, Some("reach"));
+        assert_eq!(reach_report.phase, "picking");
+        assert_eq!(reach_report.custody, "free");
+        assert_eq!(reach_report.robot, (0, 0));
+        assert_eq!(reach_report.clock_ms, 600);
+
+        let mut dropped = Episode::prepare(options(Script::Drop { seed: 1 }));
+        dropped.execute();
+        assert!(
+            dropped
+                .world
+                .events()
+                .iter()
+                .any(|event| { matches!(event.kind, domain::EventKind::Dropped { .. }) })
+        );
+        let dropped_report = dropped.report();
+        assert_eq!(dropped_report.custody, "free");
+        assert_eq!(dropped_report.fail, Some("dropped"));
+        assert!(!dropped_report.main_passed);
+
+        let disk = run(Script::BlockedHandoff { seed: 1 });
+        assert!(!disk.main_passed);
+        assert_eq!(disk.custody, "gripper");
+        assert_eq!(disk.phase, "releasing");
+        assert_eq!(followed.custody, "operator");
+    }
+
+    #[test]
     fn the_zero_profile_matches_the_r1_main_trace() {
         let report = main_at(1, None);
         let mut lines = String::new();
@@ -2907,6 +3143,16 @@ mod tests {
         assert_ne!(cancel.operator, cancel.car, "CML-SET-CAR");
         let loss = run(Script::Loss { seed: 1 });
         assert!(loss.main_passed, "CML-OPEN-FOLLOW {}", loss.summary());
+        let cap = i64::from(STEP_MM) * i64::from(STEP_MM);
+        for pair in loss.trace.windows(2) {
+            let dx = i64::from(pair[1].operator_x) - i64::from(pair[0].operator_x);
+            let dy = i64::from(pair[1].operator_y) - i64::from(pair[0].operator_y);
+            assert!(
+                dx * dx + dy * dy <= cap,
+                "operator jump {dx},{dy} at {}",
+                pair[1].ms
+            );
+        }
         assert_eq!(follow_after_recovery(), Award::Undecided, "CML-OPEN-FOLLOW");
         let far = run(Script::Main {
             seed: 2,
