@@ -33,8 +33,9 @@ pub mod assume {
     /// Proximity for a component take-bag cue. Not a printed distance and not the car.
     ///
     /// Leaving the start poses and a clear observed segment are fixture gates.
-    /// They do not mean the robot reached the unknown car. That destination
-    /// observation is M8, and it must not hand the car coordinate to the navigator.
+    /// They can still set the trip flag after one short step. That flag is not
+    /// arrival at the unknown car. The episode runner checks the operator's
+    /// designated place separately and does not pass that place here.
     pub const ARRIVE_MM: i32 = 1200;
     /// Longest geometric step one plan may propose.
     pub const STEP_MM: i32 = 200;

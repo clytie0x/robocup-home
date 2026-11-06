@@ -223,6 +223,13 @@ impl SimWorld {
         self.obstacles = obstacles;
     }
 
+    /// Moves the hidden car. The observation, the trace, and [`World::revealed_car`] stay unchanged.
+    ///
+    /// The navigator is not given this point. A scenario may read it when it moves the operator.
+    pub fn set_car(&mut self, at: Point) {
+        self.car = at;
+    }
+
     /// Fixture motion for the operator. The navigator does not receive this path.
     ///
     /// A bag in operator custody moves with the operator. A free bag stays where it is.
@@ -1407,5 +1414,22 @@ mod tests {
             empty.hand_to(empty_bag, empty_operator, ROBOT_MM),
             Err(ArmError::Empty)
         );
+    }
+
+    #[test]
+    fn a_varied_car_stays_out_of_the_observation() {
+        let mut world = SimWorld::from_seed(3);
+        let before = world.observe();
+        let events = world.events().to_vec();
+        let moved = point(12_000, 4_000);
+        world.set_car(moved);
+        assert_eq!(world.truth().car(), moved);
+        assert_eq!(world.observe(), before);
+        assert_eq!(world.events(), events.as_slice());
+        assert_eq!(world.revealed_car(), None);
+        assert!(before.points().all(|item| item != moved));
+        world.set_car(point(2_600, -4_000));
+        assert_eq!(world.revealed_car(), None);
+        assert_eq!(world.observe().robot, before.robot);
     }
 }

@@ -21,9 +21,20 @@ use crate::FeedError;
 /// What the base was asked to do. The request is not motion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Drive {
-    Follow { person: Id },
-    Approach { bag: Id },
+    Follow {
+        person: Id,
+    },
+    Approach {
+        bag: Id,
+    },
     Cancel,
+    /// Follow one visible person after the main trip is complete.
+    ///
+    /// The car coordinate is not a field. A late stamp does not move the base
+    /// and does not rewrite [`Phase::Complete`].
+    Accompany {
+        person: Id,
+    },
 }
 
 /// A committed navigation step. Arrival is a trip release command, not a handoff.
@@ -67,6 +78,11 @@ pub fn step_drive(
 ) -> Result<NavEnd, FeedError> {
     let now = shared(world, trip)?;
     if matches!(trip.phase(), Phase::Complete | Phase::TimeUp) {
+        if let Drive::Accompany { person } = drive
+            && trip.phase() == Phase::Complete
+        {
+            return accompany(world, trip, follower, at_ms, person);
+        }
         return Err(FeedError::Terminal);
     }
     if at_ms < now {
@@ -104,6 +120,7 @@ pub fn step_drive(
         Drive::Cancel => unreachable!(),
         Drive::Follow { person } => follow(world, trip, follower, at_ms, person, cue),
         Drive::Approach { bag } => approach(world, trip, follower, at_ms, bag),
+        Drive::Accompany { .. } => Err(FeedError::Trip(Reject::OutOfOrder)),
     }
 }
 
@@ -425,11 +442,12 @@ fn move_or_block(
                 next,
                 Event::Tick,
                 |next_trip, outcome| {
-                    outcome
-                        .effect
-                        .is_none()
-                        .then_some(end)
-                        .filter(|_| matches!(next_trip.phase(), Phase::Following | Phase::Picking))
+                    outcome.effect.is_none().then_some(end).filter(|_| {
+                        matches!(
+                            next_trip.phase(),
+                            Phase::Following | Phase::Picking | Phase::Complete
+                        )
+                    })
                 },
             )
         }
@@ -460,7 +478,10 @@ fn commit_slide(
             outcome,
         } if outcome.effect.is_none()
             && next_world.observe().robot.pose.point() == to
-            && matches!(next_trip.phase(), Phase::Following | Phase::Picking) =>
+            && matches!(
+                next_trip.phase(),
+                Phase::Following | Phase::Picking | Phase::Complete
+            ) =>
         {
             *world = next_world;
             *trip = next_trip;
@@ -509,6 +530,105 @@ fn commit_event(
             *follower = planned;
             Ok(end)
         }
+    }
+}
+
+fn accompany(
+    world: &mut SimWorld,
+    trip: &mut Trip,
+    follower: &mut Follower,
+    at_ms: u64,
+    person: Id,
+) -> Result<NavEnd, FeedError> {
+    let now = world.now_ms();
+    if at_ms < now {
+        return Err(FeedError::Trip(Reject::Regressed));
+    }
+    if at_ms == now {
+        return Ok(NavEnd::SameStamp);
+    }
+    let start = trip.start_ms().ok_or(FeedError::Trip(Reject::OutOfOrder))?;
+    let elapsed = at_ms
+        .checked_sub(start)
+        .ok_or(FeedError::Trip(Reject::Regressed))?;
+    if elapsed > LIMIT_MS {
+        return Err(FeedError::TimeUp);
+    }
+    if follower.person() != person {
+        return Err(FeedError::Trip(Reject::WrongId));
+    }
+    let observed = world.observe();
+    let (people, bodies) = look(
+        observed.robot.pose.point(),
+        observed.operator,
+        &observed.obstacles,
+    );
+    let sight = Sight {
+        robot: observed.robot.pose.point(),
+        people: &people,
+        bodies: &bodies,
+    };
+    let before = *follower;
+    let (planned, intent) = plan_follow(&before, &sight, Cue::None);
+    let done = |next: &Trip, outcome: Outcome, end: NavEnd| {
+        (next.phase() == Phase::Complete && outcome.effect.is_none()).then_some(end)
+    };
+    match intent {
+        Intent::Move(to) => move_or_block(world, trip, follower, at_ms, before, planned, to),
+        Intent::Stay | Intent::Arrived | Intent::InReach => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::Waiting),
+        ),
+        Intent::Blocked => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::Blocked),
+        ),
+        Intent::Stuck => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::Stuck),
+        ),
+        Intent::Lost => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::Lost),
+        ),
+        Intent::WrongPerson => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::WrongPerson),
+        ),
+        Intent::Cancelled => commit_event(
+            world,
+            trip,
+            follower,
+            at_ms,
+            planned,
+            Event::Tick,
+            |next, outcome| done(next, outcome, NavEnd::Cancelled),
+        ),
     }
 }
 
