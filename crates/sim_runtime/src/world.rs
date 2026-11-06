@@ -1,6 +1,6 @@
 use domain::{
-    Actor, Arm, Bag, BagKind, Base, Custody, Event, EventKind, Id, Mm, Observation, Obstacle,
-    ObstacleClass, Point, Pose, Step, TimeError, World, within_reach,
+    Actor, Arm, Bag, BagKind, Base, Custody, Disk, Event, EventKind, Id, Mm, Observation, Obstacle,
+    ObstacleClass, Point, Pose, Step, TimeError, World, segment_within, within_reach,
 };
 
 use crate::aim::{AimError, AimSample, direction_mm};
@@ -43,6 +43,38 @@ pub struct SimWorld {
 
 fn id(raw: u32) -> Id {
     Id::new(raw).expect("nonzero id")
+}
+
+fn bodies_for(class: ObstacleClass, x: i32, y: i32, crowd_n: usize) -> Vec<Disk> {
+    match class {
+        ObstacleClass::SmallGround => vec![disk(5, x, y, assume::SMALL_RADIUS_MM)],
+        ObstacleClass::HardToSee => vec![disk(6, x, y, assume::HARD_RADIUS_MM)],
+        ObstacleClass::Barriers => vec![disk(8, x, y, assume::BARRIER_RADIUS_MM)],
+        ObstacleClass::Crowd => {
+            let count = crowd_n.clamp(3, 4);
+            let pitch = assume::CROWD_PITCH_MM;
+            let span = i32::try_from(count - 1).expect("count") * pitch;
+            (0..count)
+                .map(|index| {
+                    let offset = i32::try_from(index).expect("index") * pitch - span / 2;
+                    disk(
+                        10 + u32::try_from(index).expect("index"),
+                        x,
+                        y + offset,
+                        assume::PERSON_RADIUS_MM,
+                    )
+                })
+                .collect()
+        }
+    }
+}
+
+fn disk(raw: u32, x: i32, y: i32, radius: i32) -> Disk {
+    Disk {
+        id: id(raw),
+        center: Point::new(Mm::new(x), Mm::new(y)),
+        radius: Mm::new(radius),
+    }
 }
 
 fn class_id(class: ObstacleClass) -> Id {
@@ -101,6 +133,7 @@ impl SimWorld {
                 custody: domain::Custody::Free,
             },
         ];
+        let crowd_n = 3 + usize::try_from(seed % 2).expect("bit");
         let obstacles = order
             .iter()
             .enumerate()
@@ -112,6 +145,7 @@ impl SimWorld {
                     pose: Pose::new(Point::new(Mm::new(x), Mm::new(assume::OBSTACLE_Y_MM))),
                     class: *class,
                     clearance: Mm::new(assume::CLEARANCE_MM),
+                    bodies: bodies_for(*class, x, assume::OBSTACLE_Y_MM, crowd_n),
                 }
             })
             .collect();
@@ -182,6 +216,58 @@ impl SimWorld {
         let index = self.locate(bag)?;
         self.bags[index].visible = visible;
         Ok(())
+    }
+
+    /// Replaces the obstacle list. This does not reveal the car and does not move the robot.
+    pub fn set_obstacles(&mut self, obstacles: Vec<Obstacle>) {
+        self.obstacles = obstacles;
+    }
+
+    /// Fixture motion for the operator. The navigator does not receive this path.
+    ///
+    /// A bag in operator custody moves with the operator. A free bag stays where it is.
+    pub fn place_operator(&mut self, at: Point) {
+        self.operator.pose = Pose::new(at);
+        for bag in &mut self.bags {
+            if bag.custody == Custody::Operator {
+                bag.pose = Pose::new(at);
+            }
+        }
+    }
+
+    /// Slides the base to `to` when the whole segment clears every body.
+    ///
+    /// A held bag moves with the base. A refusal leaves the pose, the bags, and the trace unchanged.
+    /// The clock does not move.
+    pub fn try_slide(&mut self, to: Point, robot_radius_mm: i32) -> Result<(), SlideError> {
+        let from = self.robot.pose.point();
+        if self.blocked(from, to, robot_radius_mm) {
+            return Err(SlideError::Blocked);
+        }
+        let pose = Pose::new(to);
+        if let Some(carried) = self.carried {
+            let index = self.locate(carried).expect("carried bag");
+            self.bags[index].pose = pose;
+        }
+        self.robot.pose = pose;
+        self.events.push(Event {
+            at_ms: self.clock.now_ms(),
+            kind: EventKind::Slid {
+                x_mm: to.x().get(),
+                y_mm: to.y().get(),
+            },
+        });
+        Ok(())
+    }
+
+    fn blocked(&self, from: Point, to: Point, robot_radius_mm: i32) -> bool {
+        self.obstacles
+            .iter()
+            .flat_map(|obstacle| &obstacle.bodies)
+            .any(|disk| {
+                let limit = robot_radius_mm.saturating_add(disk.radius.get());
+                segment_within(from, to, disk.center, limit)
+            })
     }
 
     /// Moves a free bag. This does not move the robot and does not pick the bag.
@@ -358,6 +444,22 @@ impl std::fmt::Display for ArmError {
 }
 
 impl std::error::Error for ArmError {}
+
+/// The base did not move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlideError {
+    Blocked,
+}
+
+impl std::fmt::Display for SlideError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            SlideError::Blocked => "blocked",
+        })
+    }
+}
+
+impl std::error::Error for SlideError {}
 
 impl World for SimWorld {
     fn now_ms(&self) -> u64 {
@@ -1020,5 +1122,114 @@ mod tests {
         assert_eq!(world.pick(bag, 2500), Err(ArmError::Duplicate));
         assert_eq!(snap(&world), before);
         assert_eq!(world.carried(), None);
+    }
+
+    #[test]
+    fn seeded_obstacles_are_disks_and_the_crowd_is_three_or_four_people() {
+        let mut saw_three = false;
+        let mut saw_four = false;
+        for seed in 0..8 {
+            let world = SimWorld::from_seed(seed);
+            let obs = world.observe();
+            for obstacle in &obs.obstacles {
+                match obstacle.class {
+                    ObstacleClass::Crowd => {
+                        let count = obstacle.bodies.len();
+                        assert!((3..=4).contains(&count), "seed {seed} {count}");
+                        saw_three |= count == 3;
+                        saw_four |= count == 4;
+                        assert!(obstacle.bodies.windows(2).all(|pair| {
+                            let dx = i64::from(pair[1].center.x().get() - pair[0].center.x().get());
+                            let dy = i64::from(pair[1].center.y().get() - pair[0].center.y().get());
+                            dx * dx + dy * dy > 0
+                        }));
+                        assert!(
+                            obstacle
+                                .bodies
+                                .iter()
+                                .all(|disk| { disk.radius == Mm::new(assume::PERSON_RADIUS_MM) })
+                        );
+                    }
+                    ObstacleClass::SmallGround => {
+                        assert_eq!(obstacle.bodies.len(), 1);
+                        assert_eq!(obstacle.bodies[0].radius, Mm::new(assume::SMALL_RADIUS_MM));
+                    }
+                    ObstacleClass::HardToSee => {
+                        assert_eq!(obstacle.bodies.len(), 1);
+                        assert_eq!(obstacle.bodies[0].radius, Mm::new(assume::HARD_RADIUS_MM));
+                    }
+                    ObstacleClass::Barriers => {
+                        assert_eq!(obstacle.bodies.len(), 1);
+                        assert_eq!(
+                            obstacle.bodies[0].radius,
+                            Mm::new(assume::BARRIER_RADIUS_MM)
+                        );
+                    }
+                }
+            }
+            assert_eq!(world.revealed_car(), None);
+            assert!(obs.points().all(|point| point != world.truth().car()));
+        }
+        assert!(saw_three);
+        assert!(saw_four);
+    }
+
+    #[test]
+    fn a_jump_through_a_disk_is_rejected_and_a_clear_step_moves_the_held_bag() {
+        let mut world = SimWorld::from_seed(1);
+        let bag = world.observe().bags[0].id;
+        let other = world.observe().bags[1].pose.point();
+        world.pick(bag, 2500).unwrap();
+        world.set_obstacles(vec![Obstacle {
+            id: Id::new(8).unwrap(),
+            pose: Pose::new(point(0, 0)),
+            class: ObstacleClass::Barriers,
+            clearance: Mm::new(assume::CLEARANCE_MM),
+            bodies: vec![Disk {
+                id: Id::new(8).unwrap(),
+                center: point(500, 0),
+                radius: Mm::new(100),
+            }],
+        }]);
+        let before = snap(&world);
+        assert_eq!(
+            world.try_slide(point(1000, 0), 50),
+            Err(SlideError::Blocked)
+        );
+        assert_eq!(snap(&world), before);
+        assert_eq!(world.observe().robot.pose.point(), point(0, 0));
+        world.try_slide(point(200, 0), 50).unwrap();
+        let moved = world.observe();
+        assert_eq!(moved.robot.pose.point(), point(200, 0));
+        let held = moved.bags.iter().find(|item| item.id == bag).expect("held");
+        assert_eq!(held.pose.point(), point(200, 0));
+        assert_eq!(held.custody, Custody::Gripper);
+        let left = moved.bags.iter().find(|item| item.id != bag).expect("free");
+        assert_eq!(left.pose.point(), other);
+        assert_eq!(left.custody, Custody::Free);
+        assert_eq!(world.revealed_car(), None);
+        world.place_operator(point(0, 1800));
+        let shifted = world.observe();
+        assert_eq!(shifted.operator.pose.point(), point(0, 1800));
+        assert_eq!(
+            shifted
+                .bags
+                .iter()
+                .find(|item| item.id != bag)
+                .expect("free")
+                .pose
+                .point(),
+            other
+        );
+        world.hand_to(bag, shifted.operator.id).unwrap();
+        let taken = world.observe();
+        let handed = taken.bags.iter().find(|item| item.id == bag).unwrap();
+        assert_eq!(handed.custody, Custody::Operator);
+        assert_eq!(handed.pose.point(), point(0, 1800));
+        world.place_operator(point(300, 1800));
+        let followed = world.observe();
+        let handed = followed.bags.iter().find(|item| item.id == bag).unwrap();
+        assert_eq!(handed.pose.point(), point(300, 1800));
+        assert_eq!(followed.robot.pose.point(), point(200, 0));
     }
 }

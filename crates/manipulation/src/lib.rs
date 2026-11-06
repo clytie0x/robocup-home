@@ -55,8 +55,8 @@ pub mod assume {
     /// points are inside 2500 mm of the robot at the origin. It does not cover
     /// every bag inside the printed 2 m of the operator. A bag at `(0, 3000)`
     /// is 2000 mm from that operator and 3000 mm from the robot, so it is
-    /// outside this disk. Picking it means moving the base, which is later
-    /// navigation. This is not an arm length.
+    /// outside this disk. Closing that gap means moving the base. This decision
+    /// does not move it, and this number is not an arm length.
     pub const REACH_MM: i32 = 2500;
 
     /// A dropped or held bag is recorded at the robot base. There is no gripper frame.
