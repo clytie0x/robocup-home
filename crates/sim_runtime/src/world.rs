@@ -1,6 +1,6 @@
 use domain::{
-    Actor, Arm, Bag, BagKind, Base, Event, EventKind, Id, Mm, Observation, Obstacle, ObstacleClass,
-    Point, Pose, Step, TimeError, World,
+    Actor, Arm, Bag, BagKind, Base, Custody, Event, EventKind, Id, Mm, Observation, Obstacle,
+    ObstacleClass, Point, Pose, Step, TimeError, World, within_reach,
 };
 
 use crate::aim::{AimError, AimSample, direction_mm};
@@ -34,6 +34,8 @@ pub struct SimWorld {
     bags: Vec<Bag>,
     obstacles: Vec<Obstacle>,
     carried: Option<Id>,
+    grasp_fault: bool,
+    handoff_fault: bool,
     car: Point,
     car_id: Id,
     events: Vec<Event>,
@@ -89,12 +91,14 @@ impl SimWorld {
                 pose: Pose::new(Point::new(Mm::new(east), Mm::new(assume::OPERATOR_Y_MM))),
                 kind: BagKind::LightweightStiffVerticalHandles,
                 visible: true,
+                custody: domain::Custody::Free,
             },
             Bag {
                 id: id(4),
                 pose: Pose::new(Point::new(Mm::new(-west), Mm::new(assume::OPERATOR_Y_MM))),
                 kind: BagKind::LightweightStiffVerticalHandles,
                 visible: true,
+                custody: domain::Custody::Free,
             },
         ];
         let obstacles = order
@@ -118,6 +122,8 @@ impl SimWorld {
             bags,
             obstacles,
             carried: None,
+            grasp_fault: false,
+            handoff_fault: false,
             car: Point::new(Mm::new(assume::CAR_X_MM), Mm::new(assume::CAR_Y_MM)),
             car_id: id(9),
             events: vec![Event {
@@ -150,7 +156,208 @@ impl SimWorld {
         let (dx, dy) = direction_mm(origin, target.pose.point())?;
         Ok(AimSample::new(origin, dx, dy))
     }
+
+    pub const fn carried(&self) -> Option<Id> {
+        self.carried
+    }
+
+    pub const fn grasp_fault(&self) -> bool {
+        self.grasp_fault
+    }
+
+    pub const fn handoff_fault(&self) -> bool {
+        self.handoff_fault
+    }
+
+    pub const fn set_grasp_fault(&mut self, on: bool) {
+        self.grasp_fault = on;
+    }
+
+    pub const fn set_handoff_fault(&mut self, on: bool) {
+        self.handoff_fault = on;
+    }
+
+    /// Changes the setup fact `visible`. This is not a detector.
+    pub fn set_visible(&mut self, bag: Id, visible: bool) -> Result<(), ArmError> {
+        let index = self.locate(bag)?;
+        self.bags[index].visible = visible;
+        Ok(())
+    }
+
+    /// Moves a free bag. This does not move the robot and does not pick the bag.
+    pub fn place_free(&mut self, bag: Id, at: Point) -> Result<(), ArmError> {
+        if bag == self.operator.id {
+            return Err(ArmError::Role);
+        }
+        let index = self.locate(bag)?;
+        if self.bags[index].custody != Custody::Free {
+            return Err(ArmError::NotFree);
+        }
+        self.bags[index].pose = Pose::new(at);
+        self.events.push(Event {
+            at_ms: self.clock.now_ms(),
+            kind: EventKind::Placed { bag },
+        });
+        Ok(())
+    }
+
+    /// Closes the gripper on `bag` when it is free, visible, and inside `reach_mm`.
+    ///
+    /// The held bag is recorded at the robot base. There is no gripper frame.
+    /// A refusal leaves every bag, the gripper, and the trace unchanged.
+    pub fn pick(&mut self, bag: Id, reach_mm: i32) -> Result<(), ArmError> {
+        if bag == self.operator.id {
+            return Err(ArmError::Role);
+        }
+        if self.carried.is_some() {
+            return Err(ArmError::Occupied);
+        }
+        let index = self.locate(bag)?;
+        let visible = self.bags[index].visible;
+        let custody = self.bags[index].custody;
+        let at = self.bags[index].pose.point();
+        if custody != Custody::Free {
+            return Err(ArmError::NotFree);
+        }
+        if !visible {
+            return Err(ArmError::Invisible);
+        }
+        if !within_reach(self.robot.pose.point(), at, reach_mm) {
+            return Err(ArmError::OutOfReach);
+        }
+        if self
+            .bags
+            .iter()
+            .any(|other| other.custody == Custody::Gripper)
+        {
+            return Err(ArmError::Occupied);
+        }
+        if self.grasp_fault {
+            return Err(ArmError::FailedGrasp);
+        }
+        let pose = self.robot.pose;
+        let at_ms = self.clock.now_ms();
+        self.bags[index].custody = Custody::Gripper;
+        self.bags[index].pose = pose;
+        self.carried = Some(bag);
+        self.events.push(Event {
+            at_ms,
+            kind: EventKind::Grasped { bag },
+        });
+        Ok(())
+    }
+
+    /// Opens the gripper and records the bag at the robot base.
+    pub fn drop_held(&mut self, bag: Id) -> Result<Point, ArmError> {
+        if bag == self.operator.id {
+            return Err(ArmError::Role);
+        }
+        let Some(carried) = self.carried else {
+            return Err(ArmError::Empty);
+        };
+        if carried != bag {
+            return Err(ArmError::WrongId);
+        }
+        let index = self.locate(bag)?;
+        if self.bags[index].custody != Custody::Gripper {
+            return Err(ArmError::NotFree);
+        }
+        let at = self.robot.pose.point();
+        let at_ms = self.clock.now_ms();
+        self.bags[index].custody = Custody::Free;
+        self.bags[index].pose = Pose::new(at);
+        self.carried = None;
+        self.events.push(Event {
+            at_ms,
+            kind: EventKind::Dropped { bag },
+        });
+        Ok(at)
+    }
+
+    /// Gives the held bag to the operator. The bag stays in the world, unheld.
+    pub fn hand_to(&mut self, bag: Id, to: Id) -> Result<(), ArmError> {
+        if to == bag || self.bags.iter().any(|item| item.id == to) {
+            return Err(ArmError::Role);
+        }
+        if to != self.operator.id {
+            return Err(ArmError::WrongRecipient);
+        }
+        let Some(carried) = self.carried else {
+            return Err(ArmError::Empty);
+        };
+        if carried != bag {
+            return Err(ArmError::WrongId);
+        }
+        let index = self.locate(bag)?;
+        if self.bags[index].custody != Custody::Gripper {
+            return Err(ArmError::NotFree);
+        }
+        if self.handoff_fault {
+            return Err(ArmError::HandoffFailed);
+        }
+        let pose = self.operator.pose;
+        let at_ms = self.clock.now_ms();
+        self.bags[index].custody = Custody::Operator;
+        self.bags[index].pose = pose;
+        self.carried = None;
+        self.events.push(Event {
+            at_ms,
+            kind: EventKind::Handed { bag, to },
+        });
+        Ok(())
+    }
+
+    fn locate(&self, id: Id) -> Result<usize, ArmError> {
+        let mut found = None;
+        for (index, bag) in self.bags.iter().enumerate() {
+            if bag.id == id {
+                if found.is_some() {
+                    return Err(ArmError::Duplicate);
+                }
+                found = Some(index);
+            }
+        }
+        found.ok_or(ArmError::Missing)
+    }
 }
+
+/// Why the simulated gripper did not change the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArmError {
+    Missing,
+    Invisible,
+    OutOfReach,
+    Occupied,
+    Empty,
+    WrongId,
+    Role,
+    NotFree,
+    WrongRecipient,
+    Duplicate,
+    FailedGrasp,
+    HandoffFailed,
+}
+
+impl std::fmt::Display for ArmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ArmError::Missing => "missing bag",
+            ArmError::Invisible => "invisible bag",
+            ArmError::OutOfReach => "out of reach",
+            ArmError::Occupied => "gripper occupied",
+            ArmError::Empty => "gripper empty",
+            ArmError::WrongId => "wrong id",
+            ArmError::Role => "id role",
+            ArmError::NotFree => "bag not free",
+            ArmError::WrongRecipient => "wrong recipient",
+            ArmError::Duplicate => "duplicate bag",
+            ArmError::FailedGrasp => "grasp failed",
+            ArmError::HandoffFailed => "handoff failed",
+        })
+    }
+}
+
+impl std::error::Error for ArmError {}
 
 impl World for SimWorld {
     fn now_ms(&self) -> u64 {
@@ -505,5 +712,313 @@ mod tests {
                 assert_eq!((sample.dx(), sample.dy()), delta, "seed {seed}");
             }
         }
+    }
+
+    fn snap(world: &SimWorld) -> (Observation, Vec<Event>, Truth, Option<Id>) {
+        (
+            world.observe(),
+            world.events().to_vec(),
+            world.truth(),
+            world.carried(),
+        )
+    }
+
+    fn conserved(world: &SimWorld) {
+        let obs = world.observe();
+        let mut ids: Vec<u32> = obs.bags.iter().map(|bag| bag.id.get()).collect();
+        let count = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), count);
+        let held: Vec<Id> = obs
+            .bags
+            .iter()
+            .filter(|bag| bag.custody == domain::Custody::Gripper)
+            .map(|bag| bag.id)
+            .collect();
+        match world.carried() {
+            Some(id) => {
+                assert_eq!(held, vec![id]);
+                let bag = obs.bags.iter().find(|bag| bag.id == id).unwrap();
+                assert_eq!(bag.pose, obs.robot.pose);
+            }
+            None => assert!(held.is_empty()),
+        }
+        for bag in &obs.bags {
+            if bag.custody == domain::Custody::Operator {
+                assert_eq!(bag.pose, obs.operator.pose);
+            }
+        }
+        assert_eq!(obs.robot.pose.point(), point(0, 0));
+    }
+
+    #[test]
+    fn each_fixture_bag_is_held_once_and_leaves_the_other_bag_in_place() {
+        let mut seeds: Vec<u64> = (0..32).collect();
+        seeds.push(u64::MAX);
+        for seed in seeds {
+            let probe = SimWorld::from_seed(seed);
+            assert!(probe.observe().bags.len() >= 2, "seed {seed}");
+            for index in 0..probe.observe().bags.len() {
+                let mut world = SimWorld::from_seed(seed);
+                let before = world.observe();
+                let target = before.bags[index].clone();
+                let other = before.bags[1 - index].clone();
+                assert_eq!(target.custody, domain::Custody::Free);
+                assert_ne!(target.pose.point(), before.robot.pose.point());
+                assert!(domain::within_reach(
+                    before.robot.pose.point(),
+                    target.pose.point(),
+                    2500
+                ));
+                world.pick(target.id, 2500).unwrap();
+                conserved(&world);
+                let held = world
+                    .observe()
+                    .bags
+                    .into_iter()
+                    .find(|bag| bag.id == target.id)
+                    .unwrap();
+                assert_eq!(world.carried(), Some(target.id));
+                assert_eq!(held.custody, domain::Custody::Gripper);
+                assert_eq!(held.pose, before.robot.pose);
+                assert_ne!(held.pose.point(), target.pose.point());
+                assert_eq!(
+                    world
+                        .observe()
+                        .bags
+                        .iter()
+                        .filter(|bag| bag.id == target.id)
+                        .count(),
+                    1
+                );
+                let stayed = world
+                    .observe()
+                    .bags
+                    .into_iter()
+                    .find(|bag| bag.id == other.id)
+                    .unwrap();
+                assert_eq!(stayed, other);
+                assert_eq!(world.observe().robot.pose, before.robot.pose);
+                assert_eq!(world.now_ms(), before.now_ms);
+                assert_eq!(world.revealed_car(), None);
+                assert!(matches!(
+                    world.events().last().map(|event| &event.kind),
+                    Some(EventKind::Grasped { bag }) if *bag == target.id
+                ));
+                let occupied = snap(&world);
+                assert_eq!(world.pick(other.id, 2500), Err(ArmError::Occupied));
+                assert_eq!(snap(&world), occupied);
+                assert_eq!(world.pick(target.id, 2500), Err(ArmError::Occupied));
+                assert_eq!(snap(&world), occupied);
+            }
+        }
+    }
+
+    #[test]
+    fn refusals_do_not_move_a_bag_or_invent_a_gripper_id() {
+        let mut world = SimWorld::from_seed(1);
+        let bag = world.observe().bags[0].id;
+        let operator = world.observe().operator.id;
+        let missing = Id::new(99).unwrap();
+        let before = snap(&world);
+        assert_eq!(world.pick(bag, 0), Err(ArmError::OutOfReach));
+        assert_eq!(snap(&world), before);
+        assert_eq!(world.pick(missing, 2500), Err(ArmError::Missing));
+        assert_eq!(snap(&world), before);
+        assert_ne!(world.carried(), Some(missing));
+        assert_eq!(world.pick(operator, 2500), Err(ArmError::Role));
+        assert_eq!(snap(&world), before);
+        world.bags[0].visible = false;
+        let hidden = snap(&world);
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::Invisible));
+        assert_eq!(snap(&world), hidden);
+        world.set_grasp_fault(true);
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::Invisible));
+        assert_eq!(snap(&world), hidden);
+        world.bags[0].visible = true;
+        world.place_free(bag, point(2501, 0)).unwrap();
+        let far = snap(&world);
+        world.set_grasp_fault(true);
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::OutOfReach));
+        assert_eq!(snap(&world), far);
+        assert_eq!(world.carried(), None);
+    }
+
+    #[test]
+    fn the_reach_edge_holds_and_one_millimeter_past_it_does_not() {
+        let mut world = SimWorld::from_seed(2);
+        let bag = world.observe().bags[0].id;
+        world.place_free(bag, point(2500, 0)).unwrap();
+        let robot = world.observe().robot.pose;
+        world.pick(bag, 2500).unwrap();
+        let held = world
+            .observe()
+            .bags
+            .into_iter()
+            .find(|item| item.id == bag)
+            .unwrap();
+        assert_eq!(held.custody, domain::Custody::Gripper);
+        assert_eq!(held.pose, robot);
+        assert_eq!(world.carried(), Some(bag));
+        let mut outside = SimWorld::from_seed(2);
+        let bag = outside.observe().bags[0].id;
+        outside.place_free(bag, point(2501, 0)).unwrap();
+        let before = snap(&outside);
+        assert_eq!(outside.pick(bag, 2500), Err(ArmError::OutOfReach));
+        assert_eq!(snap(&outside), before);
+        let mut negative = SimWorld::from_seed(2);
+        let bag = negative.observe().bags[1].id;
+        negative.place_free(bag, point(-2500, 0)).unwrap();
+        negative.pick(bag, 2500).unwrap();
+        assert_eq!(negative.carried(), Some(bag));
+        conserved(&negative);
+    }
+
+    #[test]
+    fn an_injected_grasp_failure_does_not_hold_the_legal_bag() {
+        let mut world = SimWorld::from_seed(4);
+        let bag = world.observe().bags[1].id;
+        let old = world.observe().bags[1].pose.point();
+        world.set_grasp_fault(true);
+        let before = snap(&world);
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::FailedGrasp));
+        assert_eq!(snap(&world), before);
+        assert_eq!(
+            world
+                .observe()
+                .bags
+                .iter()
+                .find(|item| item.id == bag)
+                .unwrap()
+                .pose
+                .point(),
+            old
+        );
+        world.set_grasp_fault(false);
+        world.pick(bag, 2500).unwrap();
+        assert_eq!(world.carried(), Some(bag));
+        conserved(&world);
+    }
+
+    #[test]
+    fn drop_clears_the_gripper_at_the_robot_and_a_second_drop_does_not() {
+        let mut world = SimWorld::from_seed(5);
+        let bag = world.observe().bags[0].id;
+        let operator = world.observe().operator.id;
+        let old = world.observe().bags[0].pose.point();
+        let empty = snap(&world);
+        assert_eq!(world.drop_held(bag), Err(ArmError::Empty));
+        assert_eq!(snap(&world), empty);
+        world.pick(bag, 2500).unwrap();
+        let other = world.observe().bags[1].id;
+        let held = snap(&world);
+        assert_eq!(world.drop_held(operator), Err(ArmError::Role));
+        assert_eq!(world.drop_held(other), Err(ArmError::WrongId));
+        assert_eq!(snap(&world), held);
+        let at = world.drop_held(bag).unwrap();
+        assert_eq!(at, point(0, 0));
+        assert_eq!(world.carried(), None);
+        let dropped = world
+            .observe()
+            .bags
+            .into_iter()
+            .find(|item| item.id == bag)
+            .unwrap();
+        assert_eq!(dropped.custody, domain::Custody::Free);
+        assert_eq!(dropped.pose.point(), at);
+        assert_ne!(dropped.pose.point(), old);
+        conserved(&world);
+        let after = snap(&world);
+        assert_eq!(world.drop_held(bag), Err(ArmError::Empty));
+        assert_eq!(snap(&world), after);
+        assert!(matches!(
+            world.events().last().map(|event| &event.kind),
+            Some(EventKind::Dropped { bag: dropped_id }) if *dropped_id == bag
+        ));
+    }
+
+    #[test]
+    fn handoff_gives_the_bag_to_the_operator_and_keeps_one_copy() {
+        let mut world = SimWorld::from_seed(6);
+        let bag = world.observe().bags[0].id;
+        let other = world.observe().bags[1].id;
+        let operator = world.observe().operator.id;
+        world.pick(bag, 2500).unwrap();
+        let held = snap(&world);
+        assert_eq!(world.hand_to(bag, other), Err(ArmError::Role));
+        assert_eq!(
+            world.hand_to(bag, Id::new(8).unwrap()),
+            Err(ArmError::WrongRecipient)
+        );
+        assert_eq!(world.hand_to(other, operator), Err(ArmError::WrongId));
+        assert_eq!(snap(&world), held);
+        world.set_handoff_fault(true);
+        assert_eq!(world.hand_to(bag, operator), Err(ArmError::HandoffFailed));
+        assert_eq!(snap(&world), held);
+        world.set_handoff_fault(false);
+        world.hand_to(bag, operator).unwrap();
+        assert_eq!(world.carried(), None);
+        let given = world
+            .observe()
+            .bags
+            .into_iter()
+            .find(|item| item.id == bag)
+            .unwrap();
+        assert_eq!(given.custody, domain::Custody::Operator);
+        assert_eq!(given.pose, world.observe().operator.pose);
+        assert_eq!(
+            world
+                .observe()
+                .bags
+                .iter()
+                .filter(|item| item.id == bag)
+                .count(),
+            1
+        );
+        conserved(&world);
+        let after = snap(&world);
+        assert_eq!(world.hand_to(bag, operator), Err(ArmError::Empty));
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::NotFree));
+        assert_eq!(snap(&world), after);
+        assert_eq!(world.observe().robot.pose.point(), point(0, 0));
+        assert_eq!(world.revealed_car(), None);
+    }
+
+    #[test]
+    fn a_held_bag_survives_the_clock_and_cannot_be_replaced_by_placement() {
+        let mut world = SimWorld::from_seed(7);
+        let bag = world.observe().bags[0].id;
+        world.pick(bag, 2500).unwrap();
+        world.advance(Step::from_ms(1000)).unwrap();
+        assert_eq!(world.now_ms(), 1000);
+        assert_eq!(world.carried(), Some(bag));
+        conserved(&world);
+        let held = snap(&world);
+        assert_eq!(
+            world.place_free(bag, point(100, 100)),
+            Err(ArmError::NotFree)
+        );
+        assert_eq!(snap(&world), held);
+        let mut far = SimWorld::from_seed(8);
+        let bag = far.observe().bags[0].id;
+        far.place_free(bag, point(i32::MAX, i32::MIN)).unwrap();
+        let before = snap(&far);
+        assert_eq!(far.pick(bag, 2500), Err(ArmError::OutOfReach));
+        assert_eq!(snap(&far), before);
+        assert_eq!(far.pick(bag, i32::MAX), Err(ArmError::OutOfReach));
+        assert_eq!(snap(&far), before);
+    }
+
+    #[test]
+    fn a_duplicate_id_is_not_taken() {
+        let mut world = SimWorld::from_seed(9);
+        let extra = world.bags[0].clone();
+        world.bags.push(extra);
+        let bag = world.bags[0].id;
+        let before = snap(&world);
+        assert_eq!(world.pick(bag, 2500), Err(ArmError::Duplicate));
+        assert_eq!(snap(&world), before);
+        assert_eq!(world.carried(), None);
     }
 }

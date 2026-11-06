@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 domain.workspace = true
 hri.workspace = true
+manipulation.workspace = true
 perception.workspace = true
 sim_runtime.workspace = true
 task_3_1.workspace = true
