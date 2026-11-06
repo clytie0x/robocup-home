@@ -1,5 +1,59 @@
 # WORKLOG
 
+## M7 physical handoff guard (2026-11-06)
+
+Scope. Re-review of `bf211cbd4f899548b8d4247f742c6e24fdfd35db` kept the overflow and cancel fixes. One blocker remained: a hard-to-see disk outside the 800 mm sight still let the bag cross the world segment. Same pull request 15. No merge. M8 was not started. M9.3 was not run. The 56 acceptance rows stay `not-run`. The seven open scoring rows stay open.
+
+Red. `hand_to` returned `HandoffFailed` for a disk between clear ends while the fault flag was set. The review case is robot `(0, 200)`, operator `(0, 1400)`, hard-to-see disk radius 60 at `(0, 1060)`. Endpoints sit outside the grown radius 310. The segment meets the disk. `cargo test -p sim_runtime --lib a_handoff_rejects_a_disk --offline` failed: `left: Err(HandoffFailed)` `right: Err(Blocked)`.
+
+Green. `hand_to` checks that segment against every world disk after custody and before an injected fault. The radius argument is the same 250 mm disk a slide uses. The navigator is not given the hidden disk. A refusal leaves custody, pose, the trace, the fault flag, the clock, and the trip unchanged. `execute_handoff` calls that guard, so a direct call cannot skip it. A stamp after 300000 ms still stores `TimeUp` and does not transfer the bag. A tangent at exactly the grown radius is allowed. One millimeter closer is refused. Disk order does not matter. A disk at `(0, 500000)` on a long segment is refused. An empty gripper is still `Empty` when a disk is present.
+
+The component cue is unchanged. Both leaving the first-sight poses, plus a clear observed segment, plus `TakeBag`, can set `main_complete` after handoff. One follow step to `(0, 200)` and an operator at `(0, 1001)` can do that while the car stays at `(8000, -1500)`. That flag is not rulebook arrival and not a score. M8 is mandatory: the scenario must reach the unknown car by following the operator, and the destination observation must not pass the car coordinate to the navigator. No distance quota is invented to stand in for that. M9.3 remains mandatory. This does not say that no defect remains.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 35, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 28, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
 ## M7 review fixes (2026-11-06)
 
 Scope. Independent review of `818a52e0fa764a0012072ba5f1baf19157038833` reproduced three blockers. Same pull request 15. No merge. M8 was not started. M9.3 was not run. The 56 acceptance rows stay `not-run`. The seven open scoring rows stay open. This note does not say that no defect remains.

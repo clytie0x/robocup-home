@@ -96,6 +96,7 @@ pub enum GripError {
     Duplicate,
     FailedGrasp,
     HandoffFailed,
+    Blocked,
 }
 
 impl std::fmt::Display for GripError {
@@ -113,6 +114,7 @@ impl std::fmt::Display for GripError {
             GripError::Duplicate => "duplicate bag",
             GripError::FailedGrasp => "grasp failed",
             GripError::HandoffFailed => "handoff failed",
+            GripError::Blocked => "blocked transfer",
         })
     }
 }

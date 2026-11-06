@@ -566,8 +566,9 @@ fn stage(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PickEnd, confirm_ready, execute_pick};
+    use crate::{PickEnd, confirm_ready, execute_handoff, execute_pick};
     use domain::{Id, Mm, Obstacle, ObstacleClass, Pose, Step, World, within_reach};
+    use manipulation::GripError;
     use navigation::assume::{SENSOR_MM, STUCK_LIMIT};
     use sim_runtime::SimWorld;
     use task_3_1::{Effect, Event, Phase, Reject, Trip};
@@ -1150,6 +1151,124 @@ mod tests {
             assert_eq!(free.pose.point(), point(x, 0));
             assert_eq!(free.custody, domain::Custody::Free);
         }
+    }
+
+    fn one_disk(class: ObstacleClass, x: i32, y: i32, radius: i32) -> Obstacle {
+        Obstacle {
+            id: Id::new(6).unwrap(),
+            pose: Pose::new(point(x, y)),
+            class,
+            clearance: Mm::new(400),
+            bodies: vec![domain::Disk {
+                id: Id::new(6).unwrap(),
+                center: point(x, y),
+                radius: Mm::new(radius),
+            }],
+        }
+    }
+
+    #[test]
+    fn an_unseen_disk_blocks_the_handoff_and_a_visible_disk_blocks_arrival() {
+        let (mut world, mut trip, operator, bag) = ready();
+        let mut follower = Follower::follow(operator);
+        let moved = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            200,
+            Drive::Follow { person: operator },
+            Cue::None,
+        )
+        .unwrap();
+        assert_eq!(moved, NavEnd::Moved { to: point(0, 200) });
+        world.place_operator(point(0, 1400));
+        world.set_obstacles(vec![one_disk(ObstacleClass::HardToSee, 0, 1060, 60)]);
+        let cued = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            400,
+            Drive::Follow { person: operator },
+            Cue::TakeBag,
+        )
+        .unwrap();
+        assert!(matches!(cued, NavEnd::Arrived { .. }));
+        assert!(trip.arrived());
+        assert!(!trip.main_complete());
+        let before = (
+            world.observe(),
+            world.events().to_vec(),
+            trip,
+            world.now_ms(),
+        );
+        assert_eq!(
+            execute_handoff(&mut world, &mut trip, 400, operator),
+            Err(FeedError::Arm(GripError::Blocked))
+        );
+        assert_eq!(world.observe().robot, before.0.robot);
+        assert_eq!(world.observe().bags, before.0.bags);
+        assert_eq!(world.events(), before.1.as_slice());
+        assert_eq!(trip.phase(), Phase::Releasing);
+        assert!(!trip.main_complete());
+        assert_eq!(trip.carried(), Some(bag));
+        assert_eq!(world.carried(), Some(bag));
+        assert_eq!(world.now_ms(), before.3);
+        assert!(!world.handoff_fault());
+        let held = world
+            .observe()
+            .bags
+            .into_iter()
+            .find(|item| item.id == bag)
+            .unwrap();
+        assert_eq!(held.custody, domain::Custody::Gripper);
+        assert_eq!(held.pose.point(), point(0, 200));
+        assert_ne!(held.pose.point(), point(0, 1400));
+
+        let (mut seen, mut seen_trip, seen_operator, seen_bag) = ready();
+        let mut seen_follower = Follower::follow(seen_operator);
+        step_drive(
+            &mut seen,
+            &mut seen_trip,
+            &mut seen_follower,
+            200,
+            Drive::Follow {
+                person: seen_operator,
+            },
+            Cue::None,
+        )
+        .unwrap();
+        seen.place_operator(point(0, 1400));
+        seen.set_obstacles(vec![one_disk(ObstacleClass::SmallGround, 0, 1060, 60)]);
+        let refused = step_drive(
+            &mut seen,
+            &mut seen_trip,
+            &mut seen_follower,
+            400,
+            Drive::Follow {
+                person: seen_operator,
+            },
+            Cue::TakeBag,
+        )
+        .unwrap();
+        assert!(!matches!(refused, NavEnd::Arrived { .. }));
+        assert!(!seen_trip.arrived());
+        assert!(execute_handoff(&mut seen, &mut seen_trip, 400, seen_operator).is_err());
+        assert!(!seen_trip.main_complete());
+        assert_eq!(seen.carried(), Some(seen_bag));
+
+        let (mut late, mut late_trip, late_operator, late_bag) = ready();
+        late_trip.apply(10, Event::Arrived).unwrap();
+        late.set_obstacles(vec![one_disk(ObstacleClass::HardToSee, 0, 500, 60)]);
+        let mark = late.observe();
+        assert_eq!(
+            execute_handoff(&mut late, &mut late_trip, LIMIT_MS + 1, late_operator),
+            Err(FeedError::TimeUp)
+        );
+        assert_eq!(late_trip.phase(), Phase::TimeUp);
+        assert!(!late_trip.main_complete());
+        assert_eq!(late.carried(), Some(late_bag));
+        assert_eq!(late.observe().bags, mark.bags);
+        assert_eq!(late.observe().robot, mark.robot);
     }
 
     #[test]

@@ -291,6 +291,9 @@ pub fn execute_drop(
 /// Hands the carried bag to `to`.
 ///
 /// Arrival is not applied here. A late stamp stores `TimeUp` and does not transfer the bag.
+/// A world disk on the transfer segment refuses the handoff and leaves the trip and the
+/// world unchanged. That refusal is the simulator's geometry, not a sight the navigator receives.
+/// `main_complete` after a clear component handoff is the trip flag, not a car arrival and not a score.
 pub fn execute_handoff(
     world: &mut SimWorld,
     trip: &mut Trip,
@@ -308,9 +311,6 @@ pub fn execute_handoff(
         return Err(FeedError::Arm(GripError::Empty));
     };
     let (next, outcome) = admit(trip, now_ms, Event::Received { bag, by: to })?;
-    if world.handoff_fault() {
-        return failed_handoff(world, trip, now_ms, bag, to);
-    }
     if next.phase() != Phase::Complete
         || !next.main_complete()
         || next.carried().is_some()
@@ -319,15 +319,14 @@ pub fn execute_handoff(
     {
         return Err(FeedError::NotACommand);
     }
-    match decision(world, Command::Release { bag, to }) {
-        Err(error) => Err(FeedError::Arm(error)),
-        Ok(Act::Released { bag: got, to: dest }) if got == bag && dest == to => {
-            world.hand_to(bag, to).map_err(map_arm)?;
+    match world.hand_to(bag, to, navigation::assume::ROBOT_RADIUS_MM) {
+        Ok(()) => {
             debug_assert!(world.carried().is_none());
             *trip = next;
             Ok(HandoffEnd::Released { bag, to })
         }
-        Ok(_) => Err(FeedError::NotACommand),
+        Err(sim_runtime::ArmError::HandoffFailed) => failed_handoff(world, trip, now_ms, bag, to),
+        Err(error) => Err(map_arm(error)),
     }
 }
 
@@ -401,6 +400,7 @@ fn map_arm(error: ArmError) -> FeedError {
         ArmError::Duplicate => GripError::Duplicate,
         ArmError::FailedGrasp => GripError::FailedGrasp,
         ArmError::HandoffFailed => GripError::HandoffFailed,
+        ArmError::Blocked => GripError::Blocked,
     })
 }
 

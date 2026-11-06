@@ -30,10 +30,11 @@ pub mod assume {
     pub const ROBOT_RADIUS_MM: i32 = 250;
     /// Preferred gap from the operator, on the side opposite their last step.
     pub const FOLLOW_MM: i32 = 800;
-    /// Proximity for a take-bag cue. Not a printed arrival distance and not the car.
+    /// Proximity for a component take-bag cue. Not a printed distance and not the car.
     ///
-    /// The cue is also refused at the pose where following started, and when an
-    /// observed disk meets the segment to the person.
+    /// Leaving the start poses and a clear observed segment are fixture gates.
+    /// They do not mean the robot reached the unknown car. That destination
+    /// observation is M8, and it must not hand the car coordinate to the navigator.
     pub const ARRIVE_MM: i32 = 1200;
     /// Longest geometric step one plan may propose.
     pub const STEP_MM: i32 = 200;
