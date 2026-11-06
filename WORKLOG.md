@@ -1,5 +1,19 @@
 # WORKLOG
 
+## R1 review fix, unseen-operator bag halo (2026-11-07)
+
+Reviewer `bc-0faa` reproduced a blocker on `3c6cab12`. Robot `(0, 0)`, operator `(0, 20000)`, visible free bag `(0, 19000)`, other bag `(50000, 50000)`, gesture offered. People were empty and the cue was `None`, but the view still contained bag 3 at `(0, 19000)`. `point_from_sample` could select it, and `step_drive` Approach moved the base to `(0, 200)` at clock 100 in `Picking`. Bag `(0, 18000)` was inside that halo and `(0, 17999)` was outside. Moving the unseen operator to `(20000, 0)` dropped the bag. The 2 m disk was tracking an unseen true person.
+
+The printed 2 m rule is the setup disk. It applies only while the operator is inside the robot sensor. `executor_guard` is the world-truth check for a command the trip already named. It is not the selector and it does not move the base. `world.pick` still returns `OutOfReach` for that far bag.
+
+Red. `cargo test -p navigation --lib an_unseen_operator_does_not_pull_a_nearby_bag_into_view --offline` exited 101: `assertion failed: view.bags.is_empty()`. `cargo test -p harness --lib an_unseen_operator_halo_is_not_selected_or_chased --offline` exited 101: `unwrap_err()` on `Ok(Moved { to: Point { x: Mm(0), y: Mm(200) } })`.
+
+Green. Those two tests pass. The halo bag is absent, `point_from_sample` errs, Approach returns `GripError::Missing`, and the base stays at `(0, 0)` with clock 0. `world.pick` on that same bag returns `ArmError::OutOfReach`. `a_fixed_gesture_keeps_the_plan_when_the_car_moves` compares `step_drive` for `Cue::None` and `Cue::TakeBag` after `set_car`. `hidden_far_missing_and_role_ids_leave_the_world_and_the_trip` and `a_legal_bag_behind_the_operator_is_reached_by_moving_the_base` still pass.
+
+This run's library count is 168: domain 8, harness 50, hri 2, manipulation 8, navigation 15, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. `pdfinfo` and `pdftotext` are absent. The attached PDF hash and size still match.
+
+R1 through R5 stay authorized in order. R1 is active until this review gate passes. Later milestones do not need a new owner approval. They still stop for review. No contact drop is added.
+
 ## R1 sensor boundary, approved plan recorded (2026-11-07)
 
 Teerapat approved the revised five-milestone plan at 2026-11-07 00:36 Asia/Bangkok, including the replay picture, and said to follow the plan. The record is [docs/tasks/r1-r5-realism-plan.md](docs/tasks/r1-r5-realism-plan.md). This pull request implements R1 only. It does not merge and it does not start R2. There is no sanctioned Issue tool in this run, so no Issue was opened.
@@ -10,7 +24,7 @@ The controller type is `navigation::SensorView`. It has robot pose, in-range peo
 
 World `try_slide`, `pick`, and `hand_to` keep using truth for collisions, reach, and custody. `collision_fault` stays a legacy omission on the obstacle slice the harness passes into `sense` for planning. The sensor function itself does not drop a class. `decide` for a named pick still classifies invisible, out of reach, and missing on the world bag, so those existing refusals stay distinct.
 
-A visible bag enters the view when it is inside `SENSOR_MM` of the robot or inside the printed 2 m of the operator. The second clause keeps the legal far-bag approach. A bag outside both, and an obstacle disk outside the class sensor, stay in the world and stay out of the view.
+A visible bag enters the view when it is inside `SENSOR_MM` of the robot. The printed 2 m disk is added only when that operator is already inside the robot sensor. That keeps the legal far-bag approach and does not follow an unseen person. A bag outside both, and an obstacle disk outside the class sensor, stay in the world and stay out of the view. `executor_guard` classifies a command the trip already named against world truth. Follow, approach, and selection do not call it.
 
 Rejected shapes. A car field zeroed inside the same snapshot still types the leak. Filtering `observe` would hide truth from the scorer. A new crate adds a package the workspace does not need.
 

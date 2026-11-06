@@ -2848,6 +2848,49 @@ mod tests {
                 .iter()
                 .all(|person| person.id != obs.operator.id)
         );
+        let origin = SimWorld::from_seed(1);
+        let mut moved_car = origin.clone();
+        moved_car.set_car(point(12_000, 4_000));
+        assert_ne!(origin.truth().car(), moved_car.truth().car());
+        assert_eq!(
+            stepped(origin.clone(), Cue::None),
+            stepped(moved_car.clone(), Cue::None)
+        );
+        assert_eq!(
+            stepped(origin, Cue::TakeBag),
+            stepped(moved_car, Cue::TakeBag)
+        );
+    }
+
+    fn stepped(mut world: SimWorld, cue: Cue) -> (crate::NavEnd, (i32, i32), u64, &'static str) {
+        use crate::{Drive, step_drive};
+        use navigation::Follower;
+        use task_3_1::{Event, Trip};
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        trip.apply(0, Event::Grasped { bag }).unwrap();
+        trip.apply(0, Event::ReadyTold).unwrap();
+        let mut follower = Follower::follow(operator);
+        let end = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            100,
+            Drive::Follow { person: operator },
+            cue,
+        )
+        .unwrap();
+        let at = world.observe().robot.pose.point();
+        (
+            end,
+            (at.x().get(), at.y().get()),
+            world.now_ms(),
+            super::phase_name(trip.phase()),
+        )
     }
 
     #[test]

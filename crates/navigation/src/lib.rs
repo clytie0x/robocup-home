@@ -52,6 +52,9 @@ pub mod assume {
     /// Sixteen headings. Not a search framework.
     pub const MODEL: &str = "standoff-headings-v1";
     /// Printed "within 2 m" of the operator. Not a measured sensor.
+    ///
+    /// Used only when that operator is already inside [`SENSOR_MM`]. It is the
+    /// setup disk, not a halo around an unseen person.
     pub const TASK_BAG_MM: i32 = 2_000;
 }
 
@@ -99,7 +102,7 @@ pub fn sense(
     let operator_seen = people.iter().any(|person| person.id == operator.id);
     let bags = bags
         .iter()
-        .filter(|bag| bag_in_view(robot, operator.pose.point(), bag))
+        .filter(|bag| bag_in_view(robot, operator.pose.point(), operator_seen, bag))
         .cloned()
         .collect();
     SensorView {
@@ -121,10 +124,10 @@ pub fn cue_from(view: &SensorView) -> Cue {
     }
 }
 
-fn bag_in_view(robot: Point, operator: Point, bag: &domain::Bag) -> bool {
+fn bag_in_view(robot: Point, operator: Point, operator_seen: bool, bag: &domain::Bag) -> bool {
     bag.visible
         && (within_reach(robot, bag.pose.point(), assume::SENSOR_MM)
-            || within_reach(operator, bag.pose.point(), assume::TASK_BAG_MM))
+            || (operator_seen && within_reach(operator, bag.pose.point(), assume::TASK_BAG_MM)))
 }
 
 /// A person the sensor reported.
@@ -1127,5 +1130,41 @@ mod tests {
         assert!(view.bodies.is_empty());
         assert!(view.gesture);
         assert_eq!(cue_from(&view), Cue::TakeBag);
+    }
+
+    #[test]
+    fn an_unseen_operator_does_not_pull_a_nearby_bag_into_view() {
+        let robot = at(0, 0);
+        let north = operator_at(0, 20_000);
+        let halo = bag_at(0, 19_000, true);
+        let other = domain::Bag {
+            id: id(4),
+            pose: Pose::new(at(50_000, 50_000)),
+            ..halo.clone()
+        };
+        let view = sense(robot, north, &[halo.clone(), other], &[], true, 1);
+        assert!(view.people.is_empty());
+        assert!(!view.gesture);
+        assert_eq!(cue_from(&view), Cue::None);
+        assert!(view.bags.is_empty());
+        let edge = bag_at(0, 18_000, true);
+        assert!(sense(robot, north, &[edge], &[], true, 1).bags.is_empty());
+        let outside = bag_at(0, 17_999, true);
+        assert!(
+            sense(robot, north, &[outside], &[], true, 1)
+                .bags
+                .is_empty()
+        );
+        let east = operator_at(20_000, 0);
+        let moved = sense(robot, east, std::slice::from_ref(&halo), &[], true, 1);
+        assert_eq!(moved.bags, view.bags);
+        assert!(moved.people.is_empty());
+        assert!(!moved.gesture);
+        let seen = operator_at(0, 1_000);
+        let legal = bag_at(0, 3_000, true);
+        let kept = sense(robot, seen, &[legal], &[], true, 1);
+        assert_eq!(kept.bags.len(), 1);
+        assert_eq!(kept.bags[0].pose.point(), at(0, 3_000));
+        assert!(kept.gesture);
     }
 }

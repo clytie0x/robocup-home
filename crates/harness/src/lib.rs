@@ -172,7 +172,10 @@ pub enum HandoffEnd {
     Failed { bag: Id },
 }
 
-/// Executes `command` only when it is a pick the trip would accept and the gripper agrees.
+/// Executes `command` only when it is a pick the trip would accept and the arm guard agrees.
+///
+/// The guard reads world truth for a bag the trip already named. It does not
+/// choose the target. Selection and approach read [`navigation::sense`].
 ///
 /// `Ok(Matched)` means the adapter holds that same bag and the trip is asking for a
 /// ready signal. The ready signal has not been confirmed. A late stamp stores
@@ -188,7 +191,7 @@ pub fn execute_pick(
     };
     let (next, outcome) = admit(trip, now_ms, Event::Grasped { bag })?;
     let applied = classify_grasp(&next, &outcome, bag);
-    match decision(world, Command::Pick { bag }) {
+    match executor_guard(world, Command::Pick { bag }) {
         Err(error) => Err(FeedError::Arm(error)),
         Ok(Act::GraspFailed { bag: failed }) if failed == bag => {
             let (failed_trip, failed_outcome) = admit(trip, now_ms, Event::GraspFailed { bag })?;
@@ -279,7 +282,7 @@ pub fn execute_drop(
     if next.phase() != Phase::Dropped || next.carried().is_some() || outcome.effect.is_some() {
         return Err(FeedError::NotACommand);
     }
-    match decision(world, Command::Drop { bag }) {
+    match executor_guard(world, Command::Drop { bag }) {
         Err(error) => Err(FeedError::Arm(error)),
         Ok(Act::Dropped { bag: got, at })
             if got == bag && at == world.observe().robot.pose.point() =>
@@ -361,7 +364,7 @@ fn failed_handoff(
     bag: Id,
     to: Id,
 ) -> Result<HandoffEnd, FeedError> {
-    match decision(world, Command::Release { bag, to }) {
+    match executor_guard(world, Command::Release { bag, to }) {
         Ok(Act::HandoffFailed { bag: failed }) if failed == bag => {}
         Ok(_) => return Err(FeedError::NotACommand),
         Err(error) => return Err(FeedError::Arm(error)),
@@ -379,7 +382,12 @@ fn failed_handoff(
     Ok(HandoffEnd::Failed { bag })
 }
 
-fn decision(world: &SimWorld, command: Command) -> Result<Act, GripError> {
+/// World-truth check for a command the trip already named.
+///
+/// Reach, visibility, and custody here are the physical refusal. The function
+/// is not a planner: [`navigation::sense`] is what follow, approach, and
+/// selection read. An unseen bag is not chosen by this guard.
+fn executor_guard(world: &SimWorld, command: Command) -> Result<Act, GripError> {
     let observed = world.observe();
     let scene = Scene {
         robot: observed.robot.pose.point(),

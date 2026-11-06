@@ -1292,6 +1292,69 @@ mod tests {
         }
     }
 
+    #[test]
+    fn an_unseen_operator_halo_is_not_selected_or_chased() {
+        use crate::point_from_sample;
+        use sim_runtime::ArmError;
+        let mut world = SimWorld::from_seed(1);
+        let operator = world.observe().operator.id;
+        let bag = world.observe().bags[0].id;
+        let other = world.observe().bags[1].id;
+        assert_eq!(bag.get(), 3);
+        world.place_operator(point(0, 20_000));
+        world.place_free(bag, point(0, 19_000)).unwrap();
+        world.place_free(other, point(50_000, 50_000)).unwrap();
+        let obs = world.observe();
+        let view = sense(
+            obs.robot.pose.point(),
+            obs.operator,
+            &obs.bags,
+            &obs.obstacles,
+            true,
+            obs.now_ms,
+        );
+        assert!(view.people.is_empty());
+        assert!(!view.gesture);
+        assert_eq!(cue_from(&view), Cue::None);
+        assert!(view.bags.iter().all(|item| item.id != bag));
+        assert!(point_from_sample(Some(point(0, 20_000)), Some((0, -1_000)), &view.bags).is_err());
+        let mut trip = Trip::new();
+        trip.apply(0, Event::Begin).unwrap();
+        trip.apply(0, Event::Pointed { operator, bag }).unwrap();
+        trip.apply(0, Event::Named { bag }).unwrap();
+        let mut follower = Follower::follow(operator);
+        let err = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            100,
+            Drive::Approach { bag },
+            Cue::None,
+        )
+        .unwrap_err();
+        assert_eq!(err, FeedError::Arm(GripError::Missing));
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(world.now_ms(), 0);
+        assert_eq!(trip.now_ms(), Some(0));
+        assert_eq!(trip.phase(), Phase::Picking);
+        assert_eq!(
+            world.pick(bag, manipulation::assume::REACH_MM),
+            Err(ArmError::OutOfReach)
+        );
+        assert_eq!(pose(&world), point(0, 0));
+        assert_eq!(
+            world
+                .observe()
+                .bags
+                .iter()
+                .find(|item| item.id == bag)
+                .unwrap()
+                .pose
+                .point(),
+            point(0, 19_000)
+        );
+    }
+
     fn one_disk(class: ObstacleClass, x: i32, y: i32, radius: i32) -> Obstacle {
         Obstacle {
             id: Id::new(6).unwrap(),
