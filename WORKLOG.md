@@ -1,5 +1,108 @@
 # WORKLOG
 
+## M10 section 3.2 research (2026-11-06)
+
+Design and specification only. Branch `cursor/m10-next-task-research-88f6` from merge `d6d9940820e92c7b8b8e5c290a4a45b703b90a11`. One writer. No crate, workflow, Cargo manifest, or hardware change. The scaffold in the plan was not started. This does not merge. The section 3.1 acceptance table stays 45 `pass` and 11 `not-run`. There is no awarded total.
+
+No sanctioned issue tool is available in this run. The pull-request tool opens a pull request. The GitHub CLI is read-only. No issue was opened by another route.
+
+### Choice
+
+The next task is section 3.2 General Purpose Service Robot. The contents and the Stage I contents on printed page 13 place it immediately after section 3.1. Printed pages 18, 19, and 20 are physical pages 23, 24, and 25. The main goal is to execute 3 commands. The printed cycle that can be tested without inventing a command is: start outside, move to the Instruction Point when the arena door is open, then return after the first and second command. The maximum time is 5 minutes.
+
+That cycle can reuse `sim_runtime::Clock` from `harness`. The command list is not in the PDF. The footnote prints `https://github.com/johaq/CommandGenerator`. That live repository was not read and is not the baseline. GPSR-OPEN-CMD stays open.
+
+3.3 Receptionist starts on printed page 21, physical page 26. 3.4 Serve Breakfast starts on printed page 24, physical page 29. 3.5 Storing Groceries starts on printed page 27, physical page 32. Each states a 5 minute maximum and its own score sheet. They wait. 3.4 also starts at a door, then requires a bowl, a spoon, a cereal box, and a milk carton. That is a new object catalog. 3.2's first transition does not need one.
+
+### Source
+
+The professor PDF is the rule. Cover 2024 Rev-1, revision 2024-07-09. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`, 1129757 bytes, 52 pages. `pdfinfo` 24.02.0 reports CreationDate Tue Jul 9 14:56:18 2024 UTC. Public 2024.2 and public 2025.1 are not the baseline. The raw PDF was not committed.
+
+`poppler-utils` 24.02.0 was installed in this environment so the pages could be read. It is not a project dependency. `pdftotext -layout` produced [artifacts/sources/professor-3.2.txt](artifacts/sources/professor-3.2.txt). On physical page 25 the score token `3×–400` has the same right edge, xMax 517.0, as the other score tokens. Plain text joins it to the word "penalty" with no space. The label continues on the next line. The inventory keeps `3×–400` as the score-column token.
+
+The positive factors are `3×400` and `3×100`. The products 1200 and 300 are arithmetic. Their sum is the printed total 1500. The sheet prints 150 on the outstanding line. One tenth of 1500 is 150. Section 2.3.3 does not print that multiplication, and the Technical Committee decides whether to award any of it.
+
+### Boundary
+
+Three shapes were compared in [the design](docs/tasks/m10-3.2-design.md). The recommended one is a typed `task_3_2` crate that depends on `domain` only, plus a private harness test that advances `sim_runtime::Clock`. A copied clock inside the task crate would miss the reuse proof. A task trait in `domain` would either edit `task_3_1::Trip` or sit unused. `SimWorld::from_seed` stays the section 3.1 layout. The first machine does not call it.
+
+The inventory is [docs/tasks/3.2-general-purpose-service-robot.md](docs/tasks/3.2-general-purpose-service-robot.md): 41 rows, all `not-run`, 6 open, 2 hardware. The plan is [docs/tasks/m10-3.2-plan.md](docs/tasks/m10-3.2-plan.md). Task 1 is the next implementation step: `DoorOpen` emits `GoToPoint`. Task 2 is the clock import. Both stop before a command body, a score, or a 5 minute clamp. The clamp waits until GPSR-ASM-CLOCK names the arming event.
+
+Open rows: GPSR-OPEN-OUT, GPSR-OPEN-CMD, GPSR-OPEN-RETURN, GPSR-OPEN-HELP, GPSR-OPEN-ABSENT, GPSR-OPEN-START. Assumptions that may later carry a label: GPSR-ASM-RETRY, GPSR-ASM-PAUSE, GPSR-ASM-CLOCK, GPSR-ASM-PLACE.
+
+### Checker
+
+`artifacts/check_m10_spec.py` checks the 41 rows, the open and hardware ids, the printed phrases, and the section 3.1 file hash `b88ea111e77f639c3fe589c10874c222ba087b3c07eb3cf462154ba14411bc06`. CI does not run it. A `pass` result fails the local self-test.
+
+With `pdfinfo` present, `check_pdf` used to raise `CalledProcessError` on the non-PDF self-test fixture. A failed `pdfinfo` or `pdftotext` now adds `professor PDF pdfinfo failed` or `professor PDF pdftotext failed` and still reports the hash and the size. The exact file still prints `pdf=True`, including the 52-page check and the section 3.1 text check. Unset `PROFESSOR_PDF` prints `pdf=False`. A missing requested path prints `professor PDF missing` and exits 1.
+
+### This tree
+
+Section 3.1 is unchanged: 45 `pass`, 11 `not-run`. The 11 are `CML-BAG-DEF`, the seven open scoring rows (`CML-GEN-MAIN`, `CML-SHEET-START`, `CML-OPEN-PARTIAL`, `CML-OPEN-ABSENT`, `CML-OPEN-CAP`, `CML-OPEN-DROP`, `CML-OPEN-FOLLOW`), and the three hardware rows (`CML-HW-OUT`, `CML-HW-HIT`, `CML-HW-SPL`). Library tests remain 157. Doctests remain 6. Debug and release match. This is not full acceptance, and it does not say that no defect remains.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 45, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+unset_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+pdfinfo and pdftotext present
+exact_exit:0
+
+python3 artifacts/check_m10_spec.py --self-test
+self-test ok
+m10_self_test_exit:0
+
+python3 artifacts/check_m10_spec.py
+ok rows=41 not-run=41 open=6 hardware=2
+m10_exit:0
+```
+
 ## M9.3 interrogate verdict (2026-11-06)
 
 Documentation only. No production code changed after `2e8619159ccafc17f1dd53e52cf53c67f34b9484`. This does not merge and does not start M10. The acceptance table stays 45 `pass` and 11 `not-run`. There is no awarded total. No verified finding remains from this audit. That is not full acceptance, and it does not say that no defect remains.
