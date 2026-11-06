@@ -3,6 +3,7 @@ use domain::{
     Point, Pose, Step, TimeError, World,
 };
 
+use crate::aim::{AimError, AimSample, direction_mm};
 use crate::assume;
 use crate::clock::Clock;
 use crate::rng::Rng;
@@ -136,6 +137,19 @@ impl SimWorld {
             car_id: self.car_id,
         }
     }
+
+    /// Pointing sample from the operator toward `bag`.
+    ///
+    /// The sample is the integer offset of that bag. It does not contain the bag
+    /// id. The caller that knows which bag the referee assigned keeps that id.
+    pub fn aim_at(&self, bag: Id) -> Result<AimSample, AimError> {
+        let Some(target) = self.bags.iter().find(|item| item.id == bag) else {
+            return Err(AimError::UnknownBag);
+        };
+        let origin = self.operator.pose.point();
+        let (dx, dy) = direction_mm(origin, target.pose.point())?;
+        Ok(AimSample::new(origin, dx, dy))
+    }
 }
 
 impl World for SimWorld {
@@ -208,6 +222,7 @@ impl Base for SimBase<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aim::{AimError, AimSample, direction_mm};
     use crate::assume;
 
     fn bag_placement_ok(bag: Point, operator: Point) -> bool {
@@ -422,5 +437,73 @@ mod tests {
         assert_eq!(arm.carried(), None);
         assert_eq!(base.pose().point(), point(0, 0));
         assert_eq!(world.observe().robot.pose.point(), point(0, 0));
+    }
+
+    fn length_ok(sample: &AimSample) -> bool {
+        let dx = i64::from(sample.dx());
+        let dy = i64::from(sample.dy());
+        let squared = dx * dx + dy * dy;
+        let near = i64::from(assume::BAG_NEAR_MIN_MM);
+        let far = i64::from(assume::BAG_NEAR_MAX_MM);
+        squared >= near * near && squared <= far * far
+    }
+
+    #[test]
+    fn seed_one_aim_is_the_visible_bag_offset_and_not_the_car() {
+        let world = SimWorld::from_seed(1);
+        let obs = world.observe();
+        let before = obs.clone();
+        let events = world.events().to_vec();
+        let truth = world.truth();
+        let east = world.aim_at(obs.bags[0].id).unwrap();
+        let west = world.aim_at(obs.bags[1].id).unwrap();
+        assert_eq!(east.origin(), point(0, 1000));
+        assert_eq!(west.origin(), point(0, 1000));
+        assert_eq!((east.dx(), east.dy()), (1531, 0));
+        assert_eq!((west.dx(), west.dy()), (-453, 0));
+        assert_ne!((east.dx(), east.dy()), (west.dx(), west.dy()));
+        let car = direction_mm(obs.operator.pose.point(), truth.car()).unwrap();
+        assert_ne!((east.dx(), east.dy()), car);
+        assert_ne!((west.dx(), west.dy()), car);
+        assert_eq!(world.aim_at(truth.car_id()), Err(AimError::UnknownBag));
+        assert_eq!(world.aim_at(obs.robot.id), Err(AimError::UnknownBag));
+        assert_eq!(world.aim_at(obs.operator.id), Err(AimError::UnknownBag));
+        assert_eq!(
+            world.aim_at(Id::new(99).unwrap()),
+            Err(AimError::UnknownBag)
+        );
+        assert_eq!(world.observe(), before);
+        assert_eq!(world.events(), events.as_slice());
+        assert_eq!(world.truth(), truth);
+        assert_eq!(world.revealed_car(), None);
+    }
+
+    #[test]
+    fn both_bags_stay_inside_two_meters_for_every_fixture_seed() {
+        let mut seeds: Vec<u64> = (0..32).collect();
+        seeds.push(u64::MAX);
+        for seed in seeds {
+            let left = SimWorld::from_seed(seed);
+            let right = SimWorld::from_seed(seed);
+            let obs = left.observe();
+            assert!(obs.bags.len() >= 2, "seed {seed}");
+            for bag in &obs.bags {
+                assert!(bag.visible, "seed {seed}");
+                assert!(
+                    bag_placement_ok(bag.pose.point(), obs.operator.pose.point()),
+                    "seed {seed}"
+                );
+                let sample = left.aim_at(bag.id).unwrap();
+                assert_eq!(sample, right.aim_at(bag.id).unwrap(), "seed {seed}");
+                assert_eq!(sample.origin(), obs.operator.pose.point(), "seed {seed}");
+                assert!(
+                    length_ok(&sample),
+                    "seed {seed} {:?}",
+                    (sample.dx(), sample.dy())
+                );
+                let delta = direction_mm(obs.operator.pose.point(), bag.pose.point()).unwrap();
+                assert_eq!((sample.dx(), sample.dy()), delta, "seed {seed}");
+            }
+        }
     }
 }
