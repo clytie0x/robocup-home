@@ -280,25 +280,13 @@ def thai_hits(root):
     for path in root.rglob("*"):
         if not path.is_file() or ".git" in path.parts:
             continue
-        if path.suffix not in {".md", ".py", ".txt"}:
+        if path.suffix not in {".md", ".py", ".txt", ".rs", ".toml", ".yml", ".yaml"}:
             continue
         data = path.read_text(encoding="utf-8", errors="replace")
         for number, line in enumerate(data.splitlines(), 1):
             if any("\u0e00" <= char <= "\u0e7f" for char in line):
                 hits.append(f"thai {path.relative_to(root)}:{number}")
     return hits
-
-
-def unexpected_code(root):
-    found = []
-    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml"):
-        if (root / name).exists():
-            found.append(name)
-    if (root / ".github").exists():
-        found.append(".github")
-    if found:
-        return ["unexpected code or CI: " + ", ".join(found)]
-    return []
 
 
 def check_readme_and_log():
@@ -344,7 +332,6 @@ def collect(spec=None, pdf=None):
     problems.extend(check_readme_and_log())
     problems.extend(relative_links(ROOT))
     problems.extend(thai_hits(ROOT))
-    problems.extend(unexpected_code(ROOT))
     pdf_path = professor_pdf_path() if pdf is None else pdf
     if pdf_path is not None and Path(pdf_path).exists():
         problems.extend(check_pdf(Path(pdf_path)))

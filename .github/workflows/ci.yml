@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned toolchain
+        run: rustup toolchain install --profile minimal --component rustfmt,clippy
+
+      - name: Require the pinned compiler
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess
+          text = pathlib.Path("rust-toolchain.toml").read_text(encoding="utf-8")
+          match = re.search(r'^channel = "([^"]+)"$', text, re.M)
+          if not match:
+              raise SystemExit("channel pin missing")
+          channel = match.group(1)
+          if channel in {"stable", "beta", "nightly"} or channel.startswith(("beta", "nightly")):
+              raise SystemExit(f"refusing channel {channel}")
+          version = subprocess.check_output(["rustc", "--version"], text=True).strip()
+          print(version)
+          if not version.startswith(f"rustc {channel} "):
+              raise SystemExit(f"{version} does not match {channel}")
+          PY
+
+      - name: Spec checker
+        run: |
+          python3 artifacts/check_m1_spec.py --self-test
+          python3 artifacts/check_m1_spec.py
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Build
+        run: cargo build --workspace --all-targets --locked
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --all-targets --locked
+
+      - name: Doc tests
+        run: cargo test --workspace --doc --locked
+
+      - name: Docs
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: Workspace boundaries
+        run: python3 artifacts/check_workspace.py

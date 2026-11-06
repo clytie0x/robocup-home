@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/domain",
+    "crates/hri",
+    "crates/manipulation",
+    "crates/navigation",
+    "crates/perception",
+    "crates/sim_runtime",
+    "crates/task_3_1",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+publish = false
+
+[workspace.dependencies]
+domain = { path = "crates/domain" }
+hri = { path = "crates/hri" }
+manipulation = { path = "crates/manipulation" }
+navigation = { path = "crates/navigation" }
+perception = { path = "crates/perception" }

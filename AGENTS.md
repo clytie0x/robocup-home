@@ -2,9 +2,9 @@
 
 Long-term conventions for Teerapat Vatpitak and the team, for people and agents.
 This file is the only conventions document, so there is no `docs/conventions.md`.
-The repository is documentation only at this milestone. There is no runnable application.
+The repository has a Rust workspace skeleton. There is no task behavior and no simulated world.
 
-`clytie0x/robocup-home` is private. Leave visibility unchanged. Do not make the repository public.
+On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That instruction replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction. The attempt and the live visibility are in [WORKLOG.md](WORKLOG.md).
 
 ## Current rules
 
@@ -25,7 +25,7 @@ Superseded: the first documentation commit said to stop at the pull request and 
 
 The default is a laptop and simulation. Do not assume a physical device is available.
 Deploying and flashing are not categorically forbidden. No hardware is connected, so Jetson, arm, and Pi stay untouched until a task specifically authorizes and connects that device.
-This documentation milestone adds no deploy, flash, or other hardware steps.
+The workspace skeleton adds no deploy, flash, or other hardware steps.
 A simulation result is not a hardware result.
 
 ### Still in force
@@ -34,10 +34,11 @@ A simulation result is not a hardware result.
 - Rust is the primary language.
 - Do not change stack, language, or style unless Teerapat gives an explicit instruction. That change needs the instruction, a rationale, an Issue, and an update to this file.
 - Modules stay separate: perception, navigation, manipulation, HRI, and task.
+- Workspace members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, and `sim_runtime`. `domain` is the one shared contract. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. No crate depends on `sim_runtime`.
 - Adapters keep the simulator out of task logic. Logic must not call a simulator directly.
 - OpenCV and large pretrained models may be direct dependencies.
 - Rewrite any other dependency that is old or unmaintained as Rust code this repository owns.
-- The Rust toolchain version, edition, and CI baseline are undecided. Do not pick or lock a guessed value.
+- The Rust toolchain is pinned to stable 1.99.1 in `rust-toolchain.toml`, with rustfmt and clippy. The edition is 2024. `rust-version` is 1.99.1, the same pin. A channel change needs a new instruction, a rationale, an Issue, and an update to this file. Sources are in [WORKLOG.md](WORKLOG.md).
 - Use short, clear names.
 - Keep diffs small. One commit changes one behavior.
 - Do not add comments that repeat the code. Put a needed rationale in short documentation.

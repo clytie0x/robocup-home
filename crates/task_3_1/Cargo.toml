@@ -1,0 +1,13 @@
+[package]
+name = "task_3_1"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+domain.workspace = true
+hri.workspace = true
+manipulation.workspace = true
+navigation.workspace = true
+perception.workspace = true
