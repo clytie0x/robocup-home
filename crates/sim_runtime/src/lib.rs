@@ -29,6 +29,16 @@ pub mod assume {
     pub const OBSTACLE_Y_MM: i32 = 0;
     /// Not a printed clearance.
     pub const CLEARANCE_MM: i32 = 400;
+    /// One person in a crowd. Not a printed body size.
+    pub const PERSON_RADIUS_MM: i32 = 200;
+    /// Stand-in for the small ground object.
+    pub const SMALL_RADIUS_MM: i32 = 80;
+    /// Stand-in for the hard-to-see object. The shorter sensor is in `navigation`.
+    pub const HARD_RADIUS_MM: i32 = 60;
+    /// Stand-in for the retractable-barrier area.
+    pub const BARRIER_RADIUS_MM: i32 = 350;
+    /// Spacing between crowd persons, center to center.
+    pub const CROWD_PITCH_MM: i32 = 600;
     /// xoshiro256 star-star 1.0 seeded by splitmix64 (2015). Not a cryptographic generator.
     pub const PRNG: &str = "xoshiro256**-1.0+splitmix64-2015";
     /// Layout consumption order for this generator.
@@ -39,4 +49,4 @@ pub mod assume {
 
 pub use aim::{AimError, AimSample, direction_mm};
 pub use clock::Clock;
-pub use world::{ArmError, SimArm, SimBase, SimWorld, Truth};
+pub use world::{ArmError, SimArm, SimBase, SimWorld, SlideError, Truth};

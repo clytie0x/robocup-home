@@ -6,7 +6,7 @@ pub enum BagKind {
     LightweightStiffVerticalHandles,
 }
 
-/// The four obstacle classes in section 3.1. A value is a placeholder, not an avoidance model.
+/// The four obstacle classes in section 3.1. Geometry, when present, is a model, not a printed size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ObstacleClass {
     SmallGround,
@@ -58,13 +58,22 @@ pub struct Bag {
     pub custody: Custody,
 }
 
-/// One obstacle placeholder.
+/// One disk. The radius is a model assumption, not a printed size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Disk {
+    pub id: Id,
+    pub center: Point,
+    pub radius: Mm,
+}
+
+/// One obstacle. `bodies` is the geometry. A crowd has one body per person.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Obstacle {
     pub id: Id,
     pub pose: Pose,
     pub class: ObstacleClass,
     pub clearance: Mm,
+    pub bodies: Vec<Disk>,
 }
 
 /// Task-facing snapshot. The car coordinate is not a field.
@@ -83,6 +92,11 @@ impl Observation {
             .chain(std::iter::once(self.operator.pose.point()))
             .chain(self.bags.iter().map(|bag| bag.pose.point()))
             .chain(self.obstacles.iter().map(|obstacle| obstacle.pose.point()))
+            .chain(
+                self.obstacles
+                    .iter()
+                    .flat_map(|obstacle| obstacle.bodies.iter().map(|body| body.center)),
+            )
     }
 }
 
@@ -116,6 +130,10 @@ pub enum EventKind {
     Handed {
         bag: Id,
         to: Id,
+    },
+    Slid {
+        x_mm: i32,
+        y_mm: i32,
     },
 }
 

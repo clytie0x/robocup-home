@@ -13,10 +13,10 @@
 //! [`execute_handoff`] does not invent arrival. A caller that already applied
 //! `Event::Arrived` has supplied a fixture event, not a navigation result.
 //!
-//! The world clock and the trip stamp are separate counts. Neither is a wall
-//! clock. The five-minute check reads the trip stamp. A world time of 400000 ms
-//! does not by itself make a pick at trip stamp 10 late. Joining the two
-//! clocks is later navigation and end-to-end work.
+//! The pick path still reads the trip stamp on its own. Neither count is a wall
+//! clock. A world time of 400000 ms does not by itself make a pick at trip stamp
+//! 10 late. [`step_drive`] is the navigation path: there the world clock and the
+//! trip stamp are the same count, and a split or a backward stamp changes nothing.
 
 use domain::{Bag, Custody, Id, Point, World};
 use hri::{MockReady, MockReport};
@@ -24,6 +24,10 @@ use manipulation::{Act, Command, GripError, Scene, assume, decide};
 use perception::{Candidate, SelectError, select};
 use sim_runtime::{ArmError, SimWorld};
 use task_3_1::{Effect, Event, Outcome, Phase, Reject, Trip};
+
+mod drive;
+
+pub use drive::{Drive, NavEnd, step_drive};
 
 /// The trip rejected the event, the effect was not a report, or the budget ended.
 ///
@@ -36,6 +40,8 @@ pub enum FeedError {
     NotACommand,
     TimeUp,
     Arm(GripError),
+    Split,
+    Terminal,
 }
 
 impl std::fmt::Display for FeedError {
@@ -46,6 +52,8 @@ impl std::fmt::Display for FeedError {
             FeedError::NotACommand => "not a command",
             FeedError::TimeUp => "time up",
             FeedError::Arm(_) => "gripper refused",
+            FeedError::Split => "clocks differ",
+            FeedError::Terminal => "terminal",
         })
     }
 }
@@ -283,6 +291,9 @@ pub fn execute_drop(
 /// Hands the carried bag to `to`.
 ///
 /// Arrival is not applied here. A late stamp stores `TimeUp` and does not transfer the bag.
+/// A world disk on the transfer segment refuses the handoff and leaves the trip and the
+/// world unchanged. That refusal is the simulator's geometry, not a sight the navigator receives.
+/// `main_complete` after a clear component handoff is the trip flag, not a car arrival and not a score.
 pub fn execute_handoff(
     world: &mut SimWorld,
     trip: &mut Trip,
@@ -300,9 +311,6 @@ pub fn execute_handoff(
         return Err(FeedError::Arm(GripError::Empty));
     };
     let (next, outcome) = admit(trip, now_ms, Event::Received { bag, by: to })?;
-    if world.handoff_fault() {
-        return failed_handoff(world, trip, now_ms, bag, to);
-    }
     if next.phase() != Phase::Complete
         || !next.main_complete()
         || next.carried().is_some()
@@ -311,15 +319,14 @@ pub fn execute_handoff(
     {
         return Err(FeedError::NotACommand);
     }
-    match decision(world, Command::Release { bag, to }) {
-        Err(error) => Err(FeedError::Arm(error)),
-        Ok(Act::Released { bag: got, to: dest }) if got == bag && dest == to => {
-            world.hand_to(bag, to).map_err(map_arm)?;
+    match world.hand_to(bag, to, navigation::assume::ROBOT_RADIUS_MM) {
+        Ok(()) => {
             debug_assert!(world.carried().is_none());
             *trip = next;
             Ok(HandoffEnd::Released { bag, to })
         }
-        Ok(_) => Err(FeedError::NotACommand),
+        Err(sim_runtime::ArmError::HandoffFailed) => failed_handoff(world, trip, now_ms, bag, to),
+        Err(error) => Err(map_arm(error)),
     }
 }
 
@@ -393,6 +400,7 @@ fn map_arm(error: ArmError) -> FeedError {
         ArmError::Duplicate => GripError::Duplicate,
         ArmError::FailedGrasp => GripError::FailedGrasp,
         ArmError::HandoffFailed => GripError::HandoffFailed,
+        ArmError::Blocked => GripError::Blocked,
     })
 }
 

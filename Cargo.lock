@@ -13,6 +13,7 @@ dependencies = [
  "domain",
  "hri",
  "manipulation",
+ "navigation",
  "perception",
  "sim_runtime",
  "task_3_1",

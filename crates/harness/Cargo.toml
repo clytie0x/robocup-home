@@ -9,6 +9,7 @@ publish.workspace = true
 domain.workspace = true
 hri.workspace = true
 manipulation.workspace = true
+navigation.workspace = true
 perception.workspace = true
 sim_runtime.workspace = true
 task_3_1.workspace = true

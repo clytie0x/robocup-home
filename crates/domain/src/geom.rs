@@ -78,6 +78,70 @@ impl Point {
     }
 }
 
+/// True when the open disk of `radius_mm` around `center` meets the segment.
+///
+/// The radius is a caller assumption. A negative radius meets nothing. Equality
+/// with the radius is outside the disk, so a tangent segment is not a hit.
+/// The test is the whole segment: clear endpoints can still hide a hit in the middle.
+pub fn segment_within(from: Point, to: Point, center: Point, radius_mm: i32) -> bool {
+    if radius_mm <= 0 {
+        return false;
+    }
+    let ax = i128::from(from.x().get());
+    let ay = i128::from(from.y().get());
+    let bx = i128::from(to.x().get());
+    let by = i128::from(to.y().get());
+    let cx = i128::from(center.x().get());
+    let cy = i128::from(center.y().get());
+    let abx = bx - ax;
+    let aby = by - ay;
+    let acx = cx - ax;
+    let acy = cy - ay;
+    let ab2 = abx * abx + aby * aby;
+    let limit = i128::from(radius_mm);
+    let limit2 = limit * limit;
+    if ab2 == 0 {
+        return acx * acx + acy * acy < limit2;
+    }
+    let dot = acx * abx + acy * aby;
+    if dot <= 0 {
+        return acx * acx + acy * acy < limit2;
+    }
+    if dot >= ab2 {
+        let bcx = cx - bx;
+        let bcy = cy - by;
+        return bcx * bcx + bcy * bcy < limit2;
+    }
+    let cross = acx * aby - acy * abx;
+    wide_less(
+        cross.unsigned_abs(),
+        u128::try_from(limit2).expect("radius square"),
+        u128::try_from(ab2).expect("length square"),
+    )
+}
+
+/// `left * left < right_a * right_b`, with products that may exceed `u128`.
+fn wide_less(left: u128, right_a: u128, right_b: u128) -> bool {
+    let (lh, ll) = mul_wide(left, left);
+    let (rh, rl) = mul_wide(right_a, right_b);
+    (lh, ll) < (rh, rl)
+}
+
+fn mul_wide(a: u128, b: u128) -> (u128, u128) {
+    let a_lo = a & u128::from(u64::MAX);
+    let a_hi = a >> 64;
+    let b_lo = b & u128::from(u64::MAX);
+    let b_hi = b >> 64;
+    let ll = a_lo * b_lo;
+    let lh = a_lo * b_hi;
+    let hl = a_hi * b_lo;
+    let hh = a_hi * b_hi;
+    let mid = (ll >> 64) + (lh & u128::from(u64::MAX)) + (hl & u128::from(u64::MAX));
+    let lo = (ll & u128::from(u64::MAX)) | ((mid & u128::from(u64::MAX)) << 64);
+    let hi = hh + (lh >> 64) + (hl >> 64) + (mid >> 64);
+    (hi, lo)
+}
+
 /// Inclusive planar disk. A negative radius contains no point.
 ///
 /// The square is computed in `i128`, so the ends of `i32` do not wrap into the disk.
@@ -93,7 +157,7 @@ pub fn within_reach(from: Point, to: Point, radius_mm: i32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{GeomError, Mm, Point, within_reach};
+    use super::{GeomError, Mm, Point, segment_within, within_reach};
 
     #[test]
     fn meters_reject_non_finite_and_out_of_range_values() {
@@ -177,6 +241,86 @@ mod tests {
             Point::new(Mm::new(0), Mm::new(i32::MAX)),
             i32::MAX
         ));
+    }
+
+    fn at(x: i32, y: i32) -> Point {
+        Point::new(Mm::new(x), Mm::new(y))
+    }
+
+    /// Independent of [`segment_within`]. Squared distance from `center` to the
+    /// closest point of the segment, compared with `radius` squared.
+    fn reference_hits(from: Point, to: Point, center: Point, radius_mm: i32) -> bool {
+        if radius_mm <= 0 {
+            return false;
+        }
+        let ax = i64::from(from.x().get());
+        let ay = i64::from(from.y().get());
+        let bx = i64::from(to.x().get());
+        let by = i64::from(to.y().get());
+        let cx = i64::from(center.x().get());
+        let cy = i64::from(center.y().get());
+        let abx = bx - ax;
+        let aby = by - ay;
+        let acx = cx - ax;
+        let acy = cy - ay;
+        let ab2 = abx * abx + aby * aby;
+        let (px, py) = if ab2 == 0 {
+            (ax, ay)
+        } else {
+            let dot = acx * abx + acy * aby;
+            if dot <= 0 {
+                (ax, ay)
+            } else if dot >= ab2 {
+                (bx, by)
+            } else {
+                (ax + abx * dot / ab2, ay + aby * dot / ab2)
+            }
+        };
+        let dx = cx - px;
+        let dy = cy - py;
+        dx * dx + dy * dy < i64::from(radius_mm) * i64::from(radius_mm)
+    }
+
+    #[test]
+    fn a_segment_cannot_tunnel_through_a_disk_between_clear_ends() {
+        let from = at(-1000, 0);
+        let to = at(1000, 0);
+        let center = at(0, 0);
+        assert!(within_reach(from, center, 1000));
+        assert!(!within_reach(from, center, 999));
+        assert!(!within_reach(to, center, 999));
+        assert!(segment_within(from, to, center, 1));
+        assert!(segment_within(from, to, center, 100));
+        assert!(!segment_within(from, to, at(0, 100), 100));
+        assert!(segment_within(from, to, at(0, 100), 101));
+        assert!(!segment_within(from, to, at(0, 100), 0));
+        assert!(!segment_within(from, to, at(0, 100), -5));
+        assert!(segment_within(at(0, 0), at(0, 0), at(0, 0), 1));
+        assert!(!segment_within(at(0, 0), at(0, 0), at(0, 0), 0));
+        let samples = [
+            (from, to, center, 50),
+            (from, to, at(1000, 0), 1),
+            (from, to, at(-1000, 1), 1),
+            (from, to, at(2500, 0), 1499),
+            (from, to, at(2500, 0), 1500),
+            (at(0, 0), at(0, 0), at(3, 4), 5),
+            (at(0, 0), at(0, 0), at(3, 4), 6),
+            (at(-20, 5), at(40, -7), at(10, -1), 4),
+            (at(i32::MAX - 5, 0), at(i32::MAX, 0), at(i32::MAX - 2, 0), 2),
+            (
+                at(i32::MIN, 0),
+                at(i32::MIN + 10, 0),
+                at(i32::MIN + 4, 3),
+                4,
+            ),
+        ];
+        for (start, end, disk, radius) in samples {
+            assert_eq!(
+                segment_within(start, end, disk, radius),
+                reference_hits(start, end, disk, radius),
+                "{start:?} {end:?} {disk:?} {radius}"
+            );
+        }
     }
 
     #[test]
