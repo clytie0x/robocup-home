@@ -10,7 +10,7 @@ Prior art for a local follower, not a dependency and not a substitute rulebook: 
 
 The seeded shuffle is the referee order. The episode spaces those four classes along the outside path. The pitch is an assumption so a local follower can pass each disk; it is not a printed distance. Avoidance credit for a class requires three facts from that run: the robot was abreast of one of its disks, that disk was inside the class sensor (800 mm for hard-to-see, 2500 mm otherwise), and the robot stayed in a 280 mm band outside the grown disk without a motion segment hitting it. Those ranges are assumptions. Credit is not "the disk exists and x is outside the arena."
 
-Removing every obstacle after the route is built clears all four credits. Removing one class clears that class. Driving the operator through a class whose live disk was removed still records a hit against the layout disk and clears that class. A car at `(2501, 1000)` can be a legitimate outside point and does not receive the four credits. `CML-BAG-DEF` stays `not-run`: the fixture stores the bag kind and does not measure stiffness or weight.
+A hit is a motion segment that meets a disk still in the world at that step. Removing every obstacle leaves every hit flag clear. Removing one class clears its credit and is not recorded as contact. A collision fault keeps that class in the world, lets the follower cross it, and the live disk is what the hit flag meets. Moving, reclassing, or injecting a disk changes that same live set. A car at `(2501, 1000)` has all four avoidance credits false. `CML-BAG-DEF` stays `not-run`: the fixture stores the bag kind and does not measure stiffness or weight.
 
 ## Two authorities
 

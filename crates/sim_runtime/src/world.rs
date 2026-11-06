@@ -36,6 +36,9 @@ pub struct SimWorld {
     carried: Option<Id>,
     grasp_fault: bool,
     handoff_fault: bool,
+    /// When set, slides do not block on this class and the follower is not shown it.
+    /// The disks stay in the world, so a later live hit test can still meet them.
+    collision_fault: Option<ObstacleClass>,
     car: Point,
     car_id: Id,
     events: Vec<Event>,
@@ -158,6 +161,7 @@ impl SimWorld {
             carried: None,
             grasp_fault: false,
             handoff_fault: false,
+            collision_fault: None,
             car: Point::new(Mm::new(assume::CAR_X_MM), Mm::new(assume::CAR_Y_MM)),
             car_id: id(9),
             events: vec![Event {
@@ -209,6 +213,18 @@ impl SimWorld {
 
     pub const fn set_handoff_fault(&mut self, on: bool) {
         self.handoff_fault = on;
+    }
+
+    /// Guard fault for one class. The bodies stay in [`Self::observe`].
+    ///
+    /// Slides skip that class, and [`collision_fault`](Self::collision_fault) tells
+    /// the follower not to treat those disks as a sight. This is not deletion.
+    pub const fn set_collision_fault(&mut self, class: Option<ObstacleClass>) {
+        self.collision_fault = class;
+    }
+
+    pub const fn collision_fault(&self) -> Option<ObstacleClass> {
+        self.collision_fault
     }
 
     /// Changes the setup fact `visible`. This is not a detector.
@@ -268,13 +284,15 @@ impl SimWorld {
     }
 
     fn blocked(&self, from: Point, to: Point, robot_radius_mm: i32) -> bool {
-        self.obstacles
-            .iter()
-            .flat_map(|obstacle| &obstacle.bodies)
-            .any(|disk| {
+        self.obstacles.iter().any(|obstacle| {
+            if self.collision_fault == Some(obstacle.class) {
+                return false;
+            }
+            obstacle.bodies.iter().any(|disk| {
                 let limit = robot_radius_mm.saturating_add(disk.radius.get());
                 segment_within(from, to, disk.center, limit)
             })
+        })
     }
 
     /// Moves a free bag. This does not move the robot and does not pick the bag.

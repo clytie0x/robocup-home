@@ -104,6 +104,16 @@ pub enum Script {
         seed: u64,
         class: ObstacleClass,
     },
+    MoveClass {
+        seed: u64,
+        class: ObstacleClass,
+    },
+    ReclassHard {
+        seed: u64,
+    },
+    Inject {
+        seed: u64,
+    },
     BagBeyond {
         seed: u64,
     },
@@ -283,6 +293,9 @@ struct Options {
     strip: bool,
     drop_class: Option<ObstacleClass>,
     collide: Option<ObstacleClass>,
+    move_class: Option<ObstacleClass>,
+    reclass_hard: bool,
+    inject: bool,
     bag_beyond: bool,
     start_outside: bool,
     shift_start: bool,
@@ -319,6 +332,9 @@ impl Options {
             strip: false,
             drop_class: None,
             collide: None,
+            move_class: None,
+            reclass_hard: false,
+            inject: false,
             bag_beyond: false,
             start_outside: false,
             shift_start: false,
@@ -437,6 +453,18 @@ fn options(script: Script) -> Options {
             collide: Some(class),
             ..Options::base(seed, "collide")
         },
+        Script::MoveClass { seed, class } => Options {
+            move_class: Some(class),
+            ..Options::base(seed, "move-class")
+        },
+        Script::ReclassHard { seed } => Options {
+            reclass_hard: true,
+            ..Options::base(seed, "reclass-hard")
+        },
+        Script::Inject { seed } => Options {
+            inject: true,
+            ..Options::base(seed, "inject")
+        },
         Script::BagBeyond { seed } => Options {
             bag_beyond: true,
             ..Options::base(seed, "bag-beyond")
@@ -473,7 +501,6 @@ struct Episode {
     holds: Vec<Option<ObstacleClass>>,
     route_i: usize,
     lane: i32,
-    layout: Vec<Obstacle>,
     car: Point,
     start_pose: (i32, i32),
     local_cue: bool,
@@ -531,7 +558,6 @@ impl Episode {
         let order = layout_order(&world);
         let crowd_ids = crowd_ids(&world);
         let car = world.truth().car();
-        let layout = world.observe().obstacles.clone();
         Self {
             opt,
             world,
@@ -545,7 +571,6 @@ impl Episode {
             holds: Vec::new(),
             route_i: 0,
             lane: 0,
-            layout,
             car,
             start_pose,
             local_cue: false,
@@ -643,6 +668,15 @@ impl Episode {
             let mut obstacles = self.world.observe().obstacles;
             obstacles.retain(|obstacle| obstacle.class != class);
             self.world.set_obstacles(obstacles);
+        }
+        if let Some(class) = self.opt.move_class {
+            self.move_class(class);
+        }
+        if self.opt.reclass_hard {
+            self.reclass_hard();
+        }
+        if self.opt.inject {
+            self.inject_disk();
         }
         if let Some(class) = self.opt.collide {
             self.drive_through(class);
@@ -956,7 +990,6 @@ impl Episode {
         if !self.opt.homeward && !self.opt.jump {
             self.space_obstacles();
         }
-        self.layout = self.world.observe().obstacles.clone();
         let obstacles = self.world.observe().obstacles;
         let (mut route, mut holds, lane) = route_to(from, goal, &obstacles, self.opt.seed);
         self.lane = lane;
@@ -1169,8 +1202,9 @@ impl Episode {
         if robot.x().get() <= INSIDE_X_MAX_MM {
             return;
         }
-        let (_, bodies) = look(robot, observed.operator, &observed.obstacles);
-        for obstacle in &self.layout {
+        let obstacles = observed.obstacles;
+        let (_, bodies) = look(robot, observed.operator, &obstacles);
+        for obstacle in &obstacles {
             let index = class_index(obstacle.class);
             let range = if obstacle.class == ObstacleClass::HardToSee {
                 navigation::assume::HARD_SENSOR_MM
@@ -1309,16 +1343,18 @@ impl Episode {
         }
     }
 
+    /// The class stays in the world. The guard and the follower ignore it so this
+    /// run can cross the live disk. The hit test still uses that live disk.
     fn drive_through(&mut self, class: ObstacleClass) {
-        let saved = self
-            .layout
+        let center = self
+            .world
+            .observe()
+            .obstacles
             .iter()
             .find(|obstacle| obstacle.class == class)
             .and_then(|obstacle| obstacle.bodies.first().map(|disk| disk.center));
-        let mut obstacles = self.world.observe().obstacles;
-        obstacles.retain(|obstacle| obstacle.class != class);
-        self.world.set_obstacles(obstacles);
-        let Some(center) = saved else {
+        self.world.set_collision_fault(Some(class));
+        let Some(center) = center else {
             return;
         };
         for place in &mut self.route {
@@ -1326,6 +1362,64 @@ impl Episode {
                 *place = point(place.x().get(), center.y().get());
             }
         }
+    }
+
+    fn move_class(&mut self, class: ObstacleClass) {
+        let mut obstacles = self.world.observe().obstacles;
+        for obstacle in &mut obstacles {
+            if obstacle.class != class {
+                continue;
+            }
+            let shifted = point(
+                obstacle.pose.point().x().get(),
+                obstacle.pose.point().y().get().saturating_add(20_000),
+            );
+            obstacle.pose = Pose::new(shifted);
+            for body in &mut obstacle.bodies {
+                body.center = point(
+                    body.center.x().get(),
+                    body.center.y().get().saturating_add(20_000),
+                );
+            }
+        }
+        self.world.set_obstacles(obstacles);
+    }
+
+    fn reclass_hard(&mut self) {
+        let mut obstacles = self.world.observe().obstacles;
+        for obstacle in &mut obstacles {
+            if obstacle.class == ObstacleClass::HardToSee {
+                obstacle.class = ObstacleClass::SmallGround;
+            }
+        }
+        self.world.set_obstacles(obstacles);
+    }
+
+    fn inject_disk(&mut self) {
+        let Some(place) = self
+            .route
+            .iter()
+            .copied()
+            .find(|place| place.x().get() > INSIDE_X_MAX_MM)
+        else {
+            return;
+        };
+        let mut obstacles = self.world.observe().obstacles;
+        let id = Id::new(71).unwrap_or(self.operator);
+        obstacles.push(Obstacle {
+            id,
+            pose: Pose::new(place),
+            class: ObstacleClass::SmallGround,
+            clearance: Mm::new(CLEARANCE_MM),
+            bodies: vec![Disk {
+                id,
+                center: place,
+                radius: Mm::new(400),
+            }],
+        });
+        self.world.set_obstacles(obstacles);
+        self.world
+            .set_collision_fault(Some(ObstacleClass::SmallGround));
     }
 
     fn return_with_queue(&mut self) {
@@ -1668,7 +1762,8 @@ impl Episode {
             self.legal_motion = false;
         }
         if avoid {
-            let hits = body_hits(point(from.0, from.1), point(to.0, to.1), &self.layout);
+            let live = self.world.observe().obstacles;
+            let hits = body_hits(point(from.0, from.1), point(to.0, to.1), &live);
             for (hit, slot) in hits.iter().zip(self.hit.iter_mut()) {
                 if *hit {
                     *slot = true;
@@ -2247,9 +2342,9 @@ mod tests {
         assert_ne!(faced[0], faced[1], "CML-ASM-ORDER");
         let near = main_at(1, Some(point(2_501, 1_000)));
         assert!(near.car_outside, "CML-SET-OBST");
-        assert_ne!(
+        assert_eq!(
             near.avoided,
-            [true, true, true, true],
+            [false, false, false, false],
             "CML-SET-OBST {}",
             near.summary()
         );
@@ -2580,6 +2675,12 @@ mod tests {
             stripped.summary()
         );
         assert!(stripped.encounter.is_empty(), "CML-SET-OBST");
+        assert_eq!(
+            stripped.hit,
+            [false, false, false, false],
+            "CML-SET-OBST {}",
+            stripped.summary()
+        );
         for (class, index, label) in [
             (ObstacleClass::SmallGround, 0, "CML-SCORE-SMALL"),
             (ObstacleClass::HardToSee, 1, "CML-SCORE-HARD"),
@@ -2587,10 +2688,28 @@ mod tests {
             (ObstacleClass::Barriers, 3, "CML-SCORE-BAR"),
         ] {
             let dropped = run(Script::DropClass { seed: 1, class });
-            assert!(!dropped.avoided[index], "{label} {}", dropped.summary());
+            assert!(!dropped.hit[index], "{label} {}", dropped.summary());
+            assert!(!dropped.seen[index], "{label}");
+            assert!(!dropped.avoided[index], "{label}");
             let hit = run(Script::Collide { seed: 1, class });
             assert!(hit.hit[index], "{label} {}", hit.summary());
             assert!(!hit.avoided[index], "{label}");
         }
+        let moved = run(Script::MoveClass {
+            seed: 1,
+            class: ObstacleClass::HardToSee,
+        });
+        assert!(!moved.hit[1], "CML-SCORE-HARD {}", moved.summary());
+        assert!(!moved.seen[1], "CML-SCORE-HARD");
+        assert!(!moved.avoided[1], "CML-SCORE-HARD");
+        let reclassed = run(Script::ReclassHard { seed: 1 });
+        assert!(!reclassed.hit[1], "CML-SCORE-HARD {}", reclassed.summary());
+        assert!(!reclassed.seen[1], "CML-SCORE-HARD");
+        let injected = run(Script::Inject { seed: 1 });
+        assert!(injected.hit[0], "CML-SCORE-SMALL {}", injected.summary());
+        assert!(
+            !injected.hit[1] && !injected.hit[2] && !injected.hit[3],
+            "CML-SCORE-SMALL"
+        );
     }
 }

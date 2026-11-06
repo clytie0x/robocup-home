@@ -1,5 +1,59 @@
 # WORKLOG
 
+## M8 live hit geometry (2026-11-06)
+
+Scope. Narrow review of `58d8745e2c5e5fbad59fd4b81b9760e90d23f008`. The abreast encounter credit held. The residual bug was `note_step`: it tested the disks copied when the route was built, not the bodies in the world at the step. No merge. M9 was not started. M9.3 was not run.
+
+Red. `cargo test -p harness --lib obstacle_credit_requires_a_real_encounter --offline` failed after asserting a strip has no hits. Seed 1 with every live obstacle removed still reported `hit [false, true, true, true]`: hard, crowd, and barrier. Those were crossings of the frozen copy. `Script::Collide` deleted the class and expected that phantom hit.
+
+Green. The hit test reads `observe().obstacles` at the step. The encounter test reads that same live set. The copied layout field is gone. A strip now has `hit [false, false, false, false]`. Dropping one class clears its credit and does not set its hit flag. Moving the hard disk 20000 mm off the path, or reclassing it as small, leaves the hard hit and the hard sight clear. An injected small disk on the live path is the disk the small hit meets. The collision negative keeps the class in the world, turns on `set_collision_fault` so the guard and the follower skip it, and routes the operator through that live center. The hit is that crossing, not contact with a deleted object. A car at `(2501, 1000)` has all four avoidance credits false.
+
+45 rows stay `pass`. 11 stay `not-run`. The checker was not loosened.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 43, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 29, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
 ## M8 obstacle credit (2026-11-06)
 
 Scope. Independent review of `b6158a266c0f049b1ae990cd801d460ebec5011b` on pull request 17. The follow to the car, custody, the shared clock, and the negative trip-flag cases held. The merge blocker was the avoidance mark. No merge. M9 was not started. M9.3 was not run. This does not say that no defect remains.
