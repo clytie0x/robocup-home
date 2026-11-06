@@ -1,5 +1,57 @@
 # WORKLOG
 
+## R4 manifest, expectations locked before the matrix (2026-11-07)
+
+R3 is merged at `61d694fd9523eae64796daef2d69dc7e67d4460e`. The sixteen rows are `S01` through `S16` in `crates/harness/src/manifest.rs`. `Basis::Prior` repeats an outcome already measured. `Basis::Hypothesis` is not edited after the run. `Expect::Record` does not claim task success.
+
+| id | covers | expect | basis | seed |
+| --- | --- | --- | --- | --- |
+| S01 | normal, delay 0, crowd 4 | truth pass | prior | 1 |
+| S02 | wrong-place cue | truth fail | prior | 1 |
+| S03 | delay 200 | truth pass | prior | 1 |
+| S04 | delay 1000 | truth pass | prior | 1 |
+| S05 | missing delivery | truth pass | prior | 1 |
+| S06 | reversed stamp | truth pass | hypothesis | 1 |
+| S07 | 8 mm position error | truth pass | prior | 1 |
+| S08 | causal loss, stay away | truth fail | prior | 1 |
+| S09 | blocked approach, sensor omit | truth fail | prior | 1 |
+| S10 | out-of-reach grasp | truth fail | prior | 1 |
+| S11 | blocked handoff | truth fail | prior | 1 |
+| S12 | actual drop | truth fail | prior | 1 |
+| S13 | crowd 3 | truth pass | hypothesis | 2 |
+| S14 | missing obstacle | truth pass | hypothesis | 1 |
+| S15 | unmassaged geometry | record only | hypothesis | 1 |
+| S16 | missing person | truth fail | prior | 1 |
+
+Held-out seeds are 8 and 11. Development seeds are 1 and 2. The judge reads car, custody, robot-to-operator distance, and the clock. It does not read the script name or the trip flag. A wrong car, an early cue, and a false custody string must fail that judge. Replay of seed 1 must match. Reversing the obstacle list before spacing is not a controller permutation, because spacing sorts by x. The operator route does not clip a person radius. Obstacle spacing is a massage. `S15` skips that massage. A coordinate of 21400, if it appears, is reported and is not removed by moving the world.
+
+Observed after that lock. Expectations were not edited. All 16 rows ran. All 12 prior claims agreed. The three hypotheses also agreed and stay hypotheses. `S15` was record-only: the world passed, clock 19800, maximum absolute coordinate 8000, `saw21400` false.
+
+| id | truth | main | phase | fail | custody | clock | crowd | max abs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| S01 | pass | pass | complete | - | operator | 14800 | 4 | 8000 |
+| S02 | fail | fail | complete | not at the car | operator | 1600 | 4 | 1000 |
+| S03 | pass | pass | complete | - | operator | 15200 | 4 | 8000 |
+| S04 | pass | pass | complete | - | operator | 21000 | 4 | 8000 |
+| S05 | pass | pass | complete | - | operator | 15200 | 4 | 8000 |
+| S06 | pass | pass | complete | - | operator | 14800 | 4 | 8000 |
+| S07 | pass | pass | complete | - | operator | 14800 | 4 | 8005 |
+| S08 | fail | fail | lost | lost | gripper | 7600 | 4 | 5600 |
+| S09 | fail | fail | picking | stuck | free | 2000 | 4 | 1000 |
+| S10 | fail | fail | picking | reach | free | 600 | 4 | 1000 |
+| S11 | fail | fail | releasing | blocked-handoff | gripper | 14600 | 4 | 8000 |
+| S12 | fail | fail | dropped | dropped | free | 1200 | 4 | 1000 |
+| S13 | pass | pass | complete | - | operator | 13400 | 3 | 8000 |
+| S14 | pass | pass | complete | - | operator | 14800 | 4 | 8000 |
+| S15 | pass | pass | complete | - | operator | 19800 | 4 | 8000 |
+| S16 | fail | fail | lost | unseen | gripper | 2400 | 4 | 8000 |
+
+Nine of the sixteen were truth-pass. Seven were truth-fail. That split is not a field score. Held-out seed 8 was truth-pass, crowd 3, clock 14600. Held-out seed 11 was truth-pass, crowd 4, clock 14200. Neither is required to pass. Seed 1 replay matched. Reversing the obstacle list kept the same truth outcome and the same robot trace. The wrong-car, false-custody, and early-cue checks all failed the judge. No row showed coordinate 21400. The operator route still does not test a person radius against obstacles.
+
+The obstacle reversal before `space_obstacles` is not the permutation test. That sort puts the disks back into x order, so the posted bag ids stay `[3, 4]`. The controller permutation reverses people, bodies, and bags on the posted view after geometry and the profile shift. Seed 1 shows bag ids `[3, 4]` against `[4, 3]`, people `2,12,13` against `13,12,2`, and bodies `(2600, 0, 350), (5600, 300, 200), (5600, 900, 200)` against `(5600, 900, 200), (5600, 300, 200), (2600, 0, 350)`. Positions, gesture, and the pointing ray stay the same. The selector still names bag 4. The truth judge stays pass. The full trace stays the frozen 75 lines. Equal-score steps now break ties by the candidate point, not by list index, so a later tie does not depend on order. `S06`, `S13`, and `S14` remain hypotheses and do not gate the test. Their agree flag is still printed. `S15` stays record-only.
+
+This run's library count is 191: domain 8, harness 69, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757. Page text was not read.
+
 ## R3 causal motion design (2026-11-07)
 
 R2 is merged at `f7bd274c004d3e8020f1ead05bf0a2c233dfdbfc`. R3 adds causal cases on the existing episode. It does not rewrite the route engine, the mailbox, or the zero-delay trace.

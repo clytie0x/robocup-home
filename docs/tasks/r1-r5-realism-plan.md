@@ -6,7 +6,7 @@ Normative source remains the professor PDF, SHA-256 `da69e2c276836ccb228ab3a9ba4
 
 The table in [3.1 Carry My Luggage](3.1-carry-my-luggage.md) stays 45 `pass` and 11 `not-run` until a later command says otherwise. Those results are model and catalog evidence. They are not a field score. The 11 `not-run` rows, including the seven open scoring rows, stay unresolved. This plan does not award a total.
 
-R1 through R5 are authorized in that order. R1 and R2 are merged. R3 is the active milestone until its review gate passes. R4 and R5 do not need a new owner approval. Each one still stops for independent review before the next starts. No milestone invents a drop from a collision.
+R1 through R5 are authorized in that order. R1, R2, and R3 are merged. R4 is the active milestone until its review gate passes. R5 does not need a new owner approval. It still stops for independent review. No milestone invents a drop from a collision.
 
 ## R1 Sensor boundary
 

@@ -42,7 +42,7 @@ const CLOSE_BAND_MM: i32 = 280;
 const ROUTE_PASS_MM: i32 = 40;
 
 /// What the episode should attempt. The car point is scenario data.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Script {
     Main {
         seed: u64,
@@ -299,6 +299,8 @@ struct Options {
     block_approach: bool,
     hide_block: bool,
     reach_fail: bool,
+    raw_layout: bool,
+    reverse_obstacles: bool,
     blocked_handoff: bool,
     help: bool,
     different_queue: bool,
@@ -342,6 +344,8 @@ impl Options {
             block_approach: false,
             hide_block: false,
             reach_fail: false,
+            raw_layout: false,
+            reverse_obstacles: false,
             blocked_handoff: false,
             help: false,
             different_queue: false,
@@ -527,6 +531,8 @@ struct Mail {
     dx: i32,
     dy: i32,
     miss_one: bool,
+    reverse_once: bool,
+    permute_lists: bool,
     held: Vec<Held>,
     history: SampleHistory,
     log: Vec<DeliveryNote>,
@@ -539,6 +545,8 @@ impl Mail {
             dx: 0,
             dy: 0,
             miss_one: false,
+            reverse_once: false,
+            permute_lists: false,
             held: Vec::new(),
             history: SampleHistory::new(),
             log: Vec::new(),
@@ -599,6 +607,8 @@ struct Episode {
     mail: Mail,
     last_cue: Cue,
     departing: bool,
+    #[cfg(test)]
+    posted_orders: Vec<PostedEdge>,
 }
 
 pub fn run(script: Script) -> EpisodeReport {
@@ -672,6 +682,8 @@ impl Episode {
             mail: Mail::zero(),
             last_cue: Cue::None,
             departing: false,
+            #[cfg(test)]
+            posted_orders: Vec::new(),
         }
     }
 
@@ -1062,7 +1074,12 @@ impl Episode {
         } else {
             self.car
         };
-        if !self.opt.homeward && !self.opt.jump {
+        if self.opt.reverse_obstacles {
+            let mut obstacles = self.world.observe().obstacles;
+            obstacles.reverse();
+            self.world.set_obstacles(obstacles);
+        }
+        if !self.opt.homeward && !self.opt.jump && !self.opt.raw_layout {
             self.space_obstacles();
         }
         let obstacles = self.world.observe().obstacles;
@@ -1418,7 +1435,14 @@ impl Episode {
         if self.mail.dx != 0 || self.mail.dy != 0 {
             view = shift_view(&view, self.mail.dx, self.mail.dy).expect("profile shift");
         }
+        if self.mail.permute_lists {
+            view.people.reverse();
+            view.bodies.reverse();
+            view.bags.reverse();
+        }
         let aim = self.world.aim_at(self.pointed).ok();
+        #[cfg(test)]
+        self.posted_orders.push(PostedEdge::from_view(&view, aim));
         self.mail.held.push(Held { view, aim });
     }
 
@@ -1435,7 +1459,11 @@ impl Episode {
             .iter()
             .position(|held| held.view.captured_ms.saturating_add(self.mail.delay_ms) <= now);
         if let Some(index) = due {
-            let held = self.mail.held.remove(index);
+            let mut held = self.mail.held.remove(index);
+            if self.mail.reverse_once && now >= 2_000 && held.view.captured_ms > 0 {
+                held.view.captured_ms = 0;
+                self.mail.reverse_once = false;
+            }
             (Posted::ready(held.view, now), held.aim)
         } else {
             (Posted::missing(now), None)
@@ -2394,6 +2422,156 @@ fn feed_name(error: FeedError) -> &'static str {
         FeedError::NotAReport => "report",
         FeedError::NotACommand => "command",
     }
+}
+
+/// One manifest row. The fields are the world configuration, not a verdict.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Probe {
+    pub script: Script,
+    pub delay_ms: u64,
+    pub miss_one: bool,
+    pub reverse_once: bool,
+    pub dx: i32,
+    pub dy: i32,
+    pub loss_stay: bool,
+    pub block_approach: bool,
+    pub hide_block: bool,
+    pub reach_fail: bool,
+    pub raw_layout: bool,
+    pub reverse_obstacles: bool,
+    pub permute_lists: bool,
+}
+
+#[cfg(test)]
+impl Probe {
+    pub(crate) const fn main(seed: u64) -> Self {
+        Self::from_script(Script::Main {
+            seed,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        })
+    }
+
+    pub(crate) const fn from_script(script: Script) -> Self {
+        Self {
+            script,
+            delay_ms: 0,
+            miss_one: false,
+            reverse_once: false,
+            dx: 0,
+            dy: 0,
+            loss_stay: false,
+            block_approach: false,
+            hide_block: false,
+            reach_fail: false,
+            raw_layout: false,
+            reverse_obstacles: false,
+            permute_lists: false,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn execute_probe(probe: Probe) -> EpisodeReport {
+    let mut episode = Episode::prepare(options(probe.script));
+    episode.mail.delay_ms = probe.delay_ms;
+    episode.mail.miss_one = probe.miss_one;
+    episode.mail.reverse_once = probe.reverse_once;
+    episode.mail.dx = probe.dx;
+    episode.mail.dy = probe.dy;
+    episode.opt.loss_stay = probe.loss_stay;
+    episode.opt.block_approach = probe.block_approach;
+    episode.opt.hide_block = probe.hide_block;
+    episode.opt.reach_fail = probe.reach_fail;
+    episode.opt.raw_layout = probe.raw_layout;
+    episode.opt.reverse_obstacles = probe.reverse_obstacles;
+    episode.mail.permute_lists = probe.permute_lists;
+    if probe.loss_stay {
+        episode.opt.loss = true;
+    }
+    if probe.block_approach {
+        episode.opt.far_bag = true;
+    }
+    episode.execute();
+    episode.report()
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PostedEdge {
+    pub bag_ids: Vec<u32>,
+    pub bags: Vec<(u32, i32, i32)>,
+    pub bodies: Vec<(i32, i32, i32)>,
+    pub people: Vec<(u32, i32, i32)>,
+    pub gesture: bool,
+    pub aim: Option<(i32, i32, i32, i32)>,
+}
+
+#[cfg(test)]
+impl PostedEdge {
+    fn from_view(view: &navigation::SensorView, aim: Option<AimSample>) -> Self {
+        Self {
+            bag_ids: view.bags.iter().map(|bag| bag.id.get()).collect(),
+            bags: view
+                .bags
+                .iter()
+                .map(|bag| {
+                    (
+                        bag.id.get(),
+                        bag.pose.point().x().get(),
+                        bag.pose.point().y().get(),
+                    )
+                })
+                .collect(),
+            bodies: view
+                .bodies
+                .iter()
+                .map(|body| (body.center.x().get(), body.center.y().get(), body.radius_mm))
+                .collect(),
+            people: view
+                .people
+                .iter()
+                .map(|person| (person.id.get(), person.at.x().get(), person.at.y().get()))
+                .collect(),
+            gesture: view.gesture,
+            aim: aim.map(|sample| {
+                (
+                    sample.origin().x().get(),
+                    sample.origin().y().get(),
+                    sample.dx(),
+                    sample.dy(),
+                )
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn execute_probe_edges(probe: Probe) -> (EpisodeReport, Vec<PostedEdge>) {
+    let mut episode = Episode::prepare(options(probe.script));
+    episode.mail.delay_ms = probe.delay_ms;
+    episode.mail.miss_one = probe.miss_one;
+    episode.mail.reverse_once = probe.reverse_once;
+    episode.mail.dx = probe.dx;
+    episode.mail.dy = probe.dy;
+    episode.mail.permute_lists = probe.permute_lists;
+    episode.opt.loss_stay = probe.loss_stay;
+    episode.opt.block_approach = probe.block_approach;
+    episode.opt.hide_block = probe.hide_block;
+    episode.opt.reach_fail = probe.reach_fail;
+    episode.opt.raw_layout = probe.raw_layout;
+    episode.opt.reverse_obstacles = probe.reverse_obstacles;
+    if probe.loss_stay {
+        episode.opt.loss = true;
+    }
+    if probe.block_approach {
+        episode.opt.far_bag = true;
+    }
+    episode.execute();
+    let orders = episode.posted_orders.clone();
+    (episode.report(), orders)
 }
 
 #[cfg(test)]
