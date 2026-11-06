@@ -1,66 +1,71 @@
-# กติกาการทำงาน — robocup-home
+# Working conventions — robocup-home
 
-กติการะยะยาวของ Teerapat Vatpitak และทีม สำหรับคนและเอเจนต์
-สาระอยู่ไฟล์นี้ไฟล์เดียว จึงไม่แยก `docs/conventions.md`
-ไมล์สโตนปัจจุบันเป็นเอกสารอย่างเดียว ยังไม่มีโค้ดแอปรัน
+Long-term conventions for Teerapat Vatpitak and the team, for people and agents.
+This file is the only conventions document, so there is no `docs/conventions.md`.
+The repository is documentation only at this milestone. There is no runnable application.
 
-คลัง `clytie0x/robocup-home` เป็นส่วนตัว คง visibility ไว้ ห้ามทำให้เป็นสาธารณะ
+`clytie0x/robocup-home` is private. Leave visibility unchanged. Do not make the repository public.
 
-## สถานะที่ล็อก
+## Current rules
 
-- ภาษาหลักคือ Rust
-- ใช้แล็ปท็อปและแบบจำลองเท่านั้น จนกว่า Teerapat จะอนุญาตฮาร์ดแวร์เป็นลายลักษณ์อักษรในงานนั้น
-- แยกโมดูล perception, navigation, manipulation, HRI และ task
-- adapter แยกแบบจำลองออกจากตรรกะ ตรรกะห้ามเรียกตัวจำลองโดยตรง
-- OpenCV และโมเดลพรีเทรนขนาดใหญ่เป็น dependency ตรงได้
-- dependency อื่นที่เก่าหรือไม่มีคนดูแล ให้เขียนใหม่เป็นโค้ด Rust ที่คลังนี้เป็นเจ้าของ
-- รุ่นทูลเชน Rust, edition และเส้นฐาน CI ยังไม่ตัดสิน ห้ามเลือกหรือล็อกค่าที่เดา
+Where an older sentence conflicts with this section, this section wins.
+The older sentence stays in git history and is labelled superseded in [WORKLOG.md](WORKLOG.md).
 
-## สิ่งที่เปลี่ยนได้เมื่อ Teerapat สั่งชัดเท่านั้น
+### Merge
 
-สแตก ภาษา และสไตล์ไม่เปลี่ยนเอง
-การเปลี่ยนต้องมีคำสั่งจาก Teerapat เหตุผล Issue และการอัปเดตไฟล์นี้
+On 2026-11-06 at 13:50 Asia/Bangkok, Teerapat allowed Grok Bot and RoboCup Lab to merge this repository without a fresh confirmation for each merge.
 
-## วิธีเขียน
+The path is still Issue, then branch, then pull request, then `main`.
+Use sanctioned Issue and pull-request tools. If no sanctioned tool can open an Issue, do not open one by another route. Record that limit and continue with the tools that exist.
+A merge still has to go through the sanctioned merge tool. Do not bypass branch protection, a pending or failing required check, or a merge tool that is missing or that refuses the merge.
 
-- ชื่อสั้นและอ่านรู้เรื่อง ไม่ใช้ชื่อที่เดาไม่ออก
-- diff เล็กสุด คอมมิตละหนึ่งพฤติกรรม
-- ไม่ใส่คอมเมนต์ที่ซ้ำกับโค้ด เหตุผลที่จำเป็นเขียนในเอกสารให้สั้น
-- คำอธิบายที่กฎหมายหรือความปลอดภัยกำหนด ให้คงไว้
-- ไม่ลบไฟล์ branch หรือคลังโดยไม่ได้รับอนุมัติจากเจ้าของ
-- ไม่เขียนขั้นตอนลงทะเบียน ส่งผลแข่งขัน ติดต่อผู้จัดหรือทีมอื่น จ่ายเงิน deploy หรือ flash
+Superseded: the first documentation commit said to stop at the pull request and not merge. That was the instruction for that milestone. It is not the current rule.
 
-## ทางสู่ main
+### Hardware
 
-Issue → branch → PR → main แล้วหยุดที่ PR ห้าม merge เอง
-ใช้เครื่องมือ Issue และ PR ที่ได้รับอนุญาต ถ้าเครื่องมือเปิด Issue ใช้ไม่ได้ ห้ามเลี่ยงไปสร้างเอง ให้บันทึกข้อจำกัดแล้วทำเท่าที่เครื่องมือรองรับ
+The default is a laptop and simulation. Do not assume a physical device is available.
+Deploying and flashing are not categorically forbidden. No hardware is connected, so Jetson, arm, and Pi stay untouched until a task specifically authorizes and connects that device.
+This documentation milestone adds no deploy, flash, or other hardware steps.
+A simulation result is not a hardware result.
 
-## การทดสอบเมื่อมีโค้ด
+### Still in force
 
-TDD ลำดับแดง → เขียว → จัดรูป ในสามชั้น: หน่วย, สถานการณ์จำลอง, สัญญาของ adapter
-หลักฐานที่อ้างต้องมาจากคำสั่งจริงของ fmt, build, clippy, test และการจำลอง
-ช่วงที่เป็นเอกสารอย่างเดียวไม่มีผลคอมไพล์ ห้ามแต่งผลการ build
-ตรวจเองก่อนประกาศว่าเสร็จ และอย่าประกาศเกินหลักฐานที่เพิ่งรัน
+- Rust is the primary language.
+- Do not change stack, language, or style unless Teerapat gives an explicit instruction. That change needs the instruction, a rationale, an Issue, and an update to this file.
+- Modules stay separate: perception, navigation, manipulation, HRI, and task.
+- Adapters keep the simulator out of task logic. Logic must not call a simulator directly.
+- OpenCV and large pretrained models may be direct dependencies.
+- Rewrite any other dependency that is old or unmaintained as Rust code this repository owns.
+- The Rust toolchain version, edition, and CI baseline are undecided. Do not pick or lock a guessed value.
+- Use short, clear names.
+- Keep diffs small. One commit changes one behavior.
+- Do not add comments that repeat the code. Put a needed rationale in short documentation.
+- Keep text that law or safety requires.
+- Do not delete a file, branch, or the repository without the owner's approval.
+- Do not register for an event, submit competition results, contact organizers or another team, or spend money.
 
-แต่ละงานมีตารางสอบกลับ คอลัมน์อย่างน้อย requirement, source, test, result
-เติมคอลัมน์ gate เป็น `sim`, `hardware` หรือ `unspecified`
-`unspecified` ใช้ได้เฉพาะเมื่อ requirement ยัง `unverified` และยังไม่รู้ว่าอยู่ชั้นใด
-ผลใช้ได้คือ `unverified`, `not-run`, `pass`, `fail`
-`pass` หรือ `fail` ต้องชี้ไปที่คำสั่งและผลจริง
-ห้ามเขียนว่าผ่านทุกเงื่อนไขถ้าแถวยังไม่ครบ หรือมีแถวที่ไม่มีหลักฐาน
+## Tests, once code exists
 
-## วงรอบเมื่อได้รับอนุญาตให้เขียนโค้ด
+TDD order is red, then green, then refactor, on three layers: unit, scenario simulation, and adapter contract.
+Evidence has to come from a real fmt, build, clippy, test, or simulation command.
+A documentation-only change has no compile result. Do not invent one.
+Missing CI or test infrastructure is not a pass.
+Review the evidence before calling the work complete, and do not claim more than the command that just ran.
 
-plan → implement → compile → test ทีละเงื่อนไขที่มีแหล่ง → tighten → verify
+Each task keeps a traceability table with the columns requirement, source, test, and result.
+Add a gate column: `sim`, `hardware`, or `unspecified`.
+`unspecified` is allowed only while the requirement is `unverified` and its layer is still unknown.
+Allowed results are `unverified`, `not-run`, `pass`, and `fail`.
+`pass` and `fail` must name the command and the output.
+Do not write that every condition passed unless every sourced row exists and each of those rows has real evidence.
 
-- วิจัยกฎฉบับทางการและงานที่มีมาก่อนก่อนลงมือ ข้อที่ยังไม่มีแหล่งให้ค้างว่ายังไม่ตรวจ
-- แต่ละเงื่อนไขต้องมีแหล่งก่อนเขียนเทสต์และโค้ด
-- มีเคสที่ควรล้มและเคสขอบเขต
-- ซีดของการจำลองต้องทำซ้ำได้ และบันทึกไว้ในคอลัมน์ test
-- ผลบนแบบจำลองไม่ใช่ผลบนฮาร์ดแวร์
+## Loop, once code is authorized
 
-## ฮาร์ดแวร์
+plan, then implement, then compile, then test each sourced condition, then tighten, then verify.
 
-งานฮาร์ดแวร์เป็นประตูปิด
-ไม่มีสิทธิ์แฟลช ดีพลอย หรือแตะอุปกรณ์จนกว่า Teerapat จะอนุญาตชัดในงานนั้น
-แถวที่ gate เป็น `hardware` และยังไม่ได้รับอนุญาต ผลต้องเป็น `unverified` หรือ `not-run` เท่านั้น
+- Research the authoritative rulebook and prior art before implementation. An unsourced requirement stays unresolved.
+- Give each condition a source before writing its test and its code.
+- Include cases that should fail, and boundary cases.
+- Record a reproducible simulation seed in the test column.
+- A simulation pass does not close a hardware row.
+- A hardware row stays `unverified` or `not-run` until that task's device is authorized and connected.
