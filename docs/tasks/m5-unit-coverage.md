@@ -1,0 +1,25 @@
+# M5 unit coverage
+
+Selection of the pointed bag, and the report that follows it. This note does not change a row in [3.1 Carry My Luggage](3.1-carry-my-luggage.md). Every acceptance `result` there stays `not-run`. A unit or harness result is not a scenario-simulation acceptance pass and not a hardware result.
+
+The selector reads an operator origin, a pointing direction, and candidate positions. It does not read a referee id. The fixture builds the direction from the bag it was asked to measure, then drops that id before selection. A wrong ray names the bag on that ray, or it returns uncertain. It does not switch back to the referee id.
+
+`CORRIDOR_MM` is 150 and `TIE_GAP_MM` is 2. Both are assumptions. The professor PDF states no angle, sensor noise, tie rule, hand point, or bag width. A hit is a visible bag in front of the ray and at most 150 mm from it, using `floor` of the ray length so the tube is never wider. Two hits whose perpendicular gap is 2 mm or less are `Ambiguous`. That gap is the safe side of a 1 mm coordinate quantization on both candidates. The output is not the nearer bag, the earlier candidate, or the smaller id.
+
+`MockReport` stores the id it was shown. `Effect::ReportBag` is not confirmation until that mock is applied. Confirmation ends in `Phase::Picking` with an empty gripper. No grasp, ready signal, follow, or handoff is applied. The pick command the machine emits at that step is not executed.
+
+The seven open scoring rows stay open: `CML-GEN-MAIN`, `CML-SHEET-START`, `CML-OPEN-PARTIAL`, `CML-OPEN-ABSENT`, `CML-OPEN-CAP`, `CML-OPEN-DROP`, `CML-OPEN-FOLLOW`. No score is chosen.
+
+The commands and the counts are in [WORKLOG](../../WORKLOG.md).
+
+| requirement | source | test | result | gate |
+| --- | --- | --- | --- | --- |
+| Name the bag the ray points at, for either fixture bag | Printed pp.15 and 17, perceiving the pointed bag. Issue 10. The opposite-side layout is an M3 assumption. | `the_second_candidate_is_selected_when_the_ray_aims_at_it`, `the_other_physical_bag_is_selected_when_the_ray_aims_there`, `a_diagonal_ray_selects_the_aligned_bag_and_not_the_first_id`, `each_seeded_bag_is_reported_and_not_grasped`, seeds 0 through 31 and `u64::MAX` | unit, see WORKLOG | sim |
+| Reject a missing operator, a missing ray, a zero ray, an empty list, and a duplicate id | Issue 10. | `a_missing_operator_or_pointing_is_rejected`, `a_zero_direction_is_rejected`, `an_empty_candidate_list_is_rejected`, `duplicate_ids_are_rejected_even_when_one_point_is_a_clear_hit`, `a_hand_built_duplicate_is_rejected_before_the_trip_moves` | unit, see WORKLOG | sim |
+| A reversed ray, a bag behind the operator, and a miss are not a unique bag | Issue 10. Forward ray from Geometric Tools, t greater than 0. | `a_reversed_ray_does_not_select_the_bag_it_used_to_aim_at`, `a_bag_behind_or_beside_the_operator_is_not_a_hit`, `the_corridor_boundary_is_inclusive_and_one_millimeter_outside_is_a_miss` | unit, see WORKLOG | sim |
+| Equal geometry, one ray through two bags, and a 2 mm gap stay uncertain | Issue 10. Tie policy above. Not a printed rule. | `equal_positions_with_different_ids_are_ambiguous`, `two_bags_on_the_same_ray_are_ambiguous`, `a_two_millimeter_gap_is_ambiguous_and_a_three_millimeter_gap_is_unique` | unit, see WORKLOG | sim |
+| A hidden bag is not selected and does not create the tie | Printed p.15, bags visible to the robot. Issue 10. | `an_invisible_bag_on_the_ray_is_not_selected`, `a_hidden_bag_on_the_ray_does_not_steal_or_tie_the_visible_bag`, `a_hidden_aimed_bag_does_not_become_the_report`, seed 4 | unit, see WORKLOG | sim |
+| Candidate order and id value do not choose the bag | Issue 10. | `reversed_candidate_order_returns_the_same_bag`, `reversed_bag_order_still_reports_the_aimed_bag`, seed 2 | unit, see WORKLOG | sim |
+| Large coordinates and a direction that does not fit in `i32` do not wrap | Issue 10. | `large_coordinates_select_the_aligned_bag`, `deltas_keep_sign_and_reject_an_axis_that_does_not_fit` | unit, see WORKLOG | sim |
+| The aim sample is the visible offset, stays within 2 m, and is not the car | Printed p.15, within 2 m. The 400 mm lower bound is the M3 assumption. | `seed_one_aim_is_the_visible_bag_offset_and_not_the_car`, `both_bags_stay_inside_two_meters_for_every_fixture_seed`, seeds 0 through 31 and `u64::MAX` | unit, see WORKLOG | sim |
+| Report the selected bag, confirm only through the mock, and stop before a grasp | Printed p.15 procedure and p.17 perceive line. Issue 10. | `each_seeded_bag_is_reported_and_not_grasped`, `pointing_at_the_other_bag_is_not_corrected_to_the_referee_bag`, `invalid_selection_and_non_reports_leave_the_trip_unchanged`, `a_regressing_confirmation_does_not_name_the_bag`, `the_mock_confirms_only_the_bag_it_was_shown`, `the_same_sample_replays_the_same_result`, `the_same_seed_replays_the_same_report`, seed 1 and seed 11 | unit, see WORKLOG | sim |

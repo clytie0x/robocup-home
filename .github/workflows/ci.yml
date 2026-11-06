@@ -63,6 +63,12 @@ jobs:
       - name: Doc tests
         run: cargo test --workspace --doc --locked
 
+      - name: Release tests
+        run: cargo test --workspace --all-targets --locked --release
+
+      - name: Release doc tests
+        run: cargo test --workspace --doc --locked --release
+
       - name: Docs
         run: cargo doc --workspace --no-deps --locked
         env:

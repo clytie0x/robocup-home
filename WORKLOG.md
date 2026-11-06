@@ -1,5 +1,114 @@
 # WORKLOG
 
+## M5 pointed-bag selection (2026-11-06)
+
+Scope. Issue 10. One writer. Branch `cursor/m5-pointed-bag-1f1e` from `44b502ddac19cce65952c2503bbb508b875b9704`. Perception selects one visible bag from a pointing sample. The harness posts that bag on the M4 trip and confirms the report through a mock. No grasp, ready signal, follow, handoff, navigation, scorer, hardware, deploy, registration, contact, or spending. M6, M7, and M8 were not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+Parent CI. Pull-request run `42202405233` completed with conclusion success on `5e39e7b09786a7ab8c8a05ce7fd07891deb5b385`: https://github.com/clytie0x/robocup-home/actions/runs/42202405233. The merge push run `42202531854` completed with conclusion success on `44b502ddac19cce65952c2503bbb508b875b9704`: https://github.com/clytie0x/robocup-home/actions/runs/42202531854. The review note under M4 still stands. This section does not replace it.
+
+Code commits before this note: `a8c5b30`, `3848589`, `a3daca9`, `8e33f2e`, and `6e96d4e`.
+
+### Plan
+
+Keep the selector in `perception`, depending only on `domain`. The fixture in `sim_runtime` builds an operator-to-bag offset and does not put the bag id in that sample. `task_3_1` is unchanged and still does not depend on `sim_runtime`. `sim_runtime` does not depend on `perception` or `task_3_1`. The checker rejects dev-dependencies, so the wiring lives in a new member, `harness`, whose edges are `domain`, `hri`, `perception`, `sim_runtime`, and `task_3_1`. Nothing depends on `harness`. That is an added edge, not a dropped check.
+
+### Decisions
+
+The PDF says the operator stands in front of the robot and points at one bag, that at least two bags are within 2 m and visible, and that perceiving the correct bag is a screen image or a spoken identification. It states no angle, sensor, tie rule, hand point, or bag width. Those numbers below are assumptions.
+
+The ray starts at the operator pose. This model has no finger, elbow, or head joint, so it does not use a head-hand or elbow-hand ray. The direction is an integer millimeter vector. The nominal fixture vector is the offset from the operator to the bag the fixture was asked to measure. No extra random noise is added. The millimeter grid is the quantization.
+
+A candidate counts only when it is visible, the dot product with the direction is positive, and the perpendicular distance `|dx * py - dy * px| / hypot(dx, dy)` is at most 150 mm. The test uses `floor(hypot)`, so the tube is never wider than 150 mm. A bag at exactly 150 mm on an axis-aligned ray is a hit. One millimeter outside is not. A non-positive dot is behind or beside the operator and is not a hit. A zero direction is rejected before any bag is considered.
+
+Two hits are unique only when the perpendicular gap is greater than 2 mm, compared with `ceil(hypot)`. A gap of 2 mm or less is `Ambiguous`. One millimeter of movement on each of two candidates can close a 2 mm gap, so the safe output is no bag. The same output is used when two bags sit on the ray or on the same point with different ids. The choice does not fall through to the nearer bag, the earlier candidate, or the smaller id. Duplicate ids are rejected before the geometry runs. A hidden bag is skipped and does not create a tie.
+
+`direction_mm` subtracts in `i64` and returns overflow when a component does not fit in `i32`. It does not return one axis. `select` uses `i128` for the dot and cross products and `u128::isqrt` for the length. The tested extremes, including `i32::MIN` and `i32::MAX`, return a result and do not panic. Coordinates are already integer millimeters, so a NaN cannot enter this API.
+
+`stage_report` copies the trip and posts `Event::Pointed` with the selected id. The effect is `ReportBag`. That effect is not confirmation. `confirm_with_mock` accepts only `ReportBag`, shows that id to `MockReport`, and posts `Event::Named` with the id the mock returns. Other effects leave the trip unchanged. After a successful name the phase is `Picking`, the gripper is empty, and ready, arrival, and completion stay false. The machine emits `Effect::Pick` on that transition. The harness does not apply it. No grasp, ready, follow, or handoff event is sent.
+
+The seeded layout still places both bags between 400 mm and 2000 mm of the operator, on opposite sides. An exact aim at one of them has a single forward hit because the other bag is behind the ray. That is a property of this fixture, not a rule that two forward bags are unique. The unit tests cover two forward bags.
+
+### Sources
+
+Used for the shape. Not taken as dependencies. The 9.6 cm and 2 cm figures are not this model's thresholds.
+
+- Professor PDF section 3.1, printed pages 15–17. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. No public URL is assigned to that file.
+- Ray parameter `t >= 0`. If the projection falls behind the origin, the closest point is the origin: https://www.geometrictools.com/Documentation/DistancePointLine.pdf
+- Perpendicular distance from the length of the cross product: https://cs.oberlin.edu/~bob/cs357.08/VectorGeometry/VectorGeometry.pdf
+- A pointing gesture that does not single out one object is region-pointing, not object-pointing: https://www.techfak.uni-bielefeld.de/ags/wbski/veroeffentlichungen/download/KranstedtEtAl_GW05.pdf
+- Threshold, then an ambiguity test, otherwise no target: https://fja.sciencesconf.org/57073/pointing_hri.pdf
+- Household pointing rays and a reported average position accuracy of 9.6 cm: http://webdocs.cs.ualberta.ca/~vis/HRI/papers/ICRA2013SEPO.pdf
+- `u128::isqrt`: https://doc.rust-lang.org/std/primitive.u128.html#method.isqrt
+- `i128` for products of `i32` coordinates: https://doc.rust-lang.org/std/primitive.i128.html
+
+### Tests
+
+Red, before the behavior. The perception stub returned `Ok(Id(1))` for every sample. `cargo test -p perception --all-targets --locked` was 18 failed and 0 passed. The doctest failed with `Id(1)` instead of `Id(4)`. Representative assertions: the second candidate was `Id(1)` instead of `Id(9)`; two bags on one ray were `Ok(Id(1))` instead of `Err(Ambiguous)`; a duplicate id was `Ok(Id(1))` instead of `Err(DuplicateId)`. The aim stub returned `(0, 0)`. `cargo test -p sim_runtime --lib --locked` was 14 passed and 3 failed, including `(0, 0)` instead of `(1531, 0)` for seed 1. The mock stub stored `Id(3)`. Its test was 1 failed: `Some(Id(3))` instead of `Some(Id(4))`. The harness stub returned the first bag and staged `Effect::Pick`. `cargo test -p harness --lib --offline` was 8 failed and 0 passed. Representative assertions: an aim at `Id(4)` returned `Id(3)`; the reversed slice returned `Id(4)` instead of `Id(3)`; a hidden aim was `Ok(Id(3))` instead of `Err(NoHit)`; a zero direction was `Ok(Id(3))` instead of `Err(NoDirection)`; a duplicate was `Ok(Id(3))` instead of `Err(DuplicateId)`; the staged effect was `Pick` instead of `ReportBag`.
+
+Green counts below are the workspace commands on this tree. Debug and release match. They do not close an acceptance row. Unit mapping: [docs/tasks/m5-unit-coverage.md](docs/tasks/m5-unit-coverage.md).
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 6, harness 8, hri 1, manipulation 0, navigation 0, perception 18, sim_runtime 17, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+domain 6, harness 8, hri 1, manipulation 0, navigation 0, perception 18, sim_runtime 17, task_3_1 30
+0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+domain 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
+The attached copy is 1129757 bytes, 52 pages, creation 2024-07-09. `pdfinfo` reported that page count and `CreationDate: Tue Jul  9 14:56:18 2024 UTC`. A Thai scan of the tree was `thai_line_count=0`. `Cargo.lock` adds the `harness` path package only.
+
+### Adversarial notes
+
+A zero direction is rejected even when the candidate list is empty. A missing operator is rejected before a missing direction. The reversed ray of a bag that was a hit returns `NoHit`, not that bag. A bag at the origin, a bag beside the operator, and a bag behind the operator are `NoHit`. The inclusive corridor point `(1000, 150)` with direction `(1000, 0)` is selected. `(1000, 151)` is `NoHit`. Perpendicular gaps of 2 mm and 3 mm are `Ambiguous` and a unique hit respectively. Two ids at the same point are `Ambiguous`, as are a near bag and a far bag on the same ray, in either slice order. An invisible bag on the ray is not selected, and it does not take a visible bag 10 mm off the ray or tie a visible bag on the ray. Seed 1 east is `(1531, 0)` and west is `(-453, 0)` from the operator at `(0, 1000)`. Neither sample is the car offset. Aiming at the car id, the robot id, or the operator id is `UnknownBag`, and the world, events, and hidden truth compare equal afterward. `direction_mm` from `i32::MIN` to `i32::MAX` is overflow, and both input points keep their coordinates. Seeds 0 through 31 and `u64::MAX` each aim both bags inside the 400 mm to 2000 mm bounds and replay the same sample. The harness reports each of those bags, leaves `named` false after `ReportBag`, and after the mock is `Picking` with an empty gripper. Aiming at the other bag reports that bag, not the referee id. Pick, ready, follow, and release effects do not confirm, and the trip compares equal. A confirmation stamp earlier than the report is `Regressed` and the trip stays unnamed. The same seed replays the same report.
+
+### Limits
+
+The corridor and the tie gap are assumptions, not printed measurements. `floor(hypot)` can make a non-square ray a fraction of a millimeter stricter than 150 mm. The fixture does not add Kinect-scale noise, and it does not model a hand. A passing test does not mean an acceptance row passed. The open scoring rows are untouched. No statement here says the software has no remaining defects. M6, M7, M8, and M9.3 were not started.
+
 ## M4 review test gap (2026-11-06)
 
 Independent review of `833737192b59da784d5e2a09d93419cdd00f64db`. No verified production merge blocker. Its full pinned checks, debug and release, were 48 library tests and 3 doctests, all passed. It checked the professor PDF hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. A scratch probe reported 161902 steps, 352 completions, 5322 timeouts, 0 panics, and 0 contract failures. That review was bounded, not exhaustive. M9.3 was not run and is still later. Acceptance rows stay `not-run`. The seven open scoring rows stay open. Public 2025.1 is not the baseline. The raw PDF was not committed.
