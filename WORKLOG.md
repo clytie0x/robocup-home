@@ -22,7 +22,15 @@ Branch: `cursor/docs-conventions-bootstrap-546a`
 
 Merging pull request 1 is authorized after this review when a sanctioned merge tool exists and required checks are not pending or failing.
 The sanctioned pull-request tool exposes `create_pr`, `update_pr`, `post_comment`, `resolve_comment`, `get_ci_status`, and `set_pr_status`. `set_pr_status` opens or closes a pull request and does not merge it. A search of available tools found no GitHub merge action. `gh` is not a sanctioned write route, so it is not used to merge.
-That is a blocker, not a pass. The pull request stays open unless a later sanctioned merge succeeds. `main` is unchanged by this milestone until that happens.
+
+After English commit `f8ee395008c95e985b83ce33547aa9b8680755a7` was pushed, the sanctioned tool was called with action `merge` on pull request 1. It refused before any merge:
+
+```text
+Invalid arguments: action: Invalid option: expected one of "create_pr"|"update_pr"|"post_comment"|"resolve_comment"|"get_ci_status"|"set_pr_status"
+```
+
+`get_ci_status` for https://github.com/clytie0x/robocup-home/pull/1 returned: CI status is unavailable or no checks were reported. That is not a green result.
+The pull request stayed `OPEN` with `mergedAt` null. `main` stayed `338dd0b70568dbf6a9d7e065f97e3e035f03f15b`. No unsupported write route was used.
 
 Checks read before the English commit, on the previous head `452dc4b`:
 
@@ -184,4 +192,27 @@ gh repo view --json nameWithOwner,isPrivate,visibility,url
 
 fmt, build, clippy, test, and simulation were not run. Missing CI is not reported as green.
 
-The new commit SHA and its post-push check read are not in this block, because this block was written before that commit existed. A later note will record them without rewriting this commit.
+Post-push read of `f8ee395008c95e985b83ce33547aa9b8680755a7`, after that commit was already on the branch:
+
+```text
+gh pr checks 1
+no checks reported on the 'cursor/docs-conventions-bootstrap-546a' branch
+checks_exit:1
+
+gh api repos/clytie0x/robocup-home/commits/f8ee395008c95e985b83ce33547aa9b8680755a7/status
+{"state":"pending","statuses":[],"total":0}
+
+gh api repos/clytie0x/robocup-home/commits/f8ee395008c95e985b83ce33547aa9b8680755a7/check-runs
+{"runs":[],"total":0}
+
+gh pr view 1 --json state,mergedAt,baseRefName,headRefOid,url
+{"base":"main","head":"f8ee395008c95e985b83ce33547aa9b8680755a7","mergedAt":null,"state":"OPEN","url":"https://github.com/clytie0x/robocup-home/pull/1"}
+
+gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch}'
+{"default_branch":"main","private":true,"visibility":"private"}
+
+git ls-remote origin refs/heads/main
+338dd0b70568dbf6a9d7e065f97e3e035f03f15b	refs/heads/main
+```
+
+The combined status `pending` has an empty status list. It is not a passing check suite. There is still no CI workflow to call green.
