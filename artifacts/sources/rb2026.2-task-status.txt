@@ -1,0 +1,56 @@
+Source: https://github.com/RoboCupAtHome/RuleBook/releases/download/2026.2/rulebook.pdf
+SHA256: d35e93c7f291a59a823691905b47dcd7e8de14ab3a4c546aca55ba20b30ce128
+GitHub release asset digest: sha256:d35e93c7f291a59a823691905b47dcd7e8de14ab3a4c546aca55ba20b30ce128
+Release tag: 2026.2
+Commit: b844d5a6d6ebf4307c3250a01d1eca4ba56f8452
+Retrieved: 2026-11-06
+Counts below are substring counts in the full pdftotext of that PDF.
+
+search_count Help Me Carry: 0
+search_count Carry My Luggage: 0
+search_count Help me Carry: 0
+search_count Help-me-Carry: 1
+
+BEGIN_PAGE_TEXT
+                 RoboCup@Home
+                      Rules & Regulations
+
+
+
+
+                        Version: 2026 Rev-1
+             Last Build Date: May 11, 2026 Time: 614
+                   Last Revision Date: 2026-05-11
+
+
+
+
+RoboCup@Home Rulebook / Final version for RoboCup 2026 (Revision 2026-05-11 1)
+
+--- stale skill-certificate sentence ---
+ssing. A team receives the certificate if it scores
+at least 75% of the attainable points for that skill across all tests and challenges. For example,
+if a robot scores manipulation points during the Help-me-Carry test to open the door, that will
+count for the Manipulation certificate. Note that the certificate will only be awarded if the team
+is not the overall winner of the competition.
+
+1.7.6. Open-source software award
+Since Nagoya 2017, RoboCup@Home awards the best contribution to the community by means
+of an open-source software solution. To be eligible for the award, the software must be easy to
+read, well-documented, follow standard design patterns, actively maintained, and meet the 
+
+--- chapter 5 list ---
+ntation Session . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .      30
+        4.3.1. Poster presentation session . . . . . . . . . . . . . . . . . . . . . . . . . .       30
+   4.4. Robot Inspection . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     31
+
+5. Tests                                                                                             33
+   5.1. Human Robot Interaction Challenge . . . . . . . . . . . . . . . . . . . . . . . . .          35
+   5.2. Pick and Place Challenge . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       40
+   5.3. General Purpose Service Robot Challenge . . . . . . . . . . . . . . . . . . . . . .          45
+   5.4. Doing Laundry Challenge . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .        48
+   5.5. Restaurant Challenge . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       51
+        5.5.1. Restart . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     52
+
+6. Finals                                                                     
+END_PAGE_TEXT

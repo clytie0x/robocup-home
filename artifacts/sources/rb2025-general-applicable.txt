@@ -1,0 +1,607 @@
+Source: https://github.com/RoboCupAtHome/RuleBook/releases/download/2025.1/rulebook.pdf
+SHA256: d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11
+Release tag: 2025.1
+Commit: 26403178bcdf39d2c5d9ed2e27849a9d8af1401e
+Printed pages: 11, 19, 22-30 (physical PDF pages 17, 25, 28-36)
+Retrieved: 2026-11-06
+Tool: pdftotext -layout (poppler-utils)
+Scope: priority sentence, section 3.1 title, robot appearance, schedule and scoring, procedure, Deus Ex Machina, special penalties. Not the whole rulebook.
+
+BEGIN_PAGE_TEXT
+
+--- physical page 17 ---
+
+Chapter 3. General Rules and Regulations                                                         11
+
+
+
+
+Chapter 3
+
+General Rules and Regulations
+These are the general rules and regulations for the competition in the RoboCup@Home league.
+Every rule in this section can be considered to implicitly include the term “unless stated other-
+wise”. This means that additional or contrary rules, in particular with respect to the specification
+of tests, have a higher priority than those mentioned in the general rules and regulations.
+
+
+3.1 Team Registration and Qualification
+3.1.1 Registration and Qualification Process
+Each year, there are three phases in the process towards participation in @Home:
+
+  1. Preregistration
+  2. Qualification announcement
+  3. Final Registration for qualified teams
+
+The preregistration will be announced by a call for participation sent to the RoboCup@Home
+mailing list. Preregistration requires a team description paper , a video and a website. The
+expected contents of these are described below.
+
+3.1.2 Team Description Paper
+The Team Description Paper (TDP) is an 8-pages long scientific paper, which must include a
+description of your main research, including the scientific contribution, goals, scope, and results.
+The TDP has to be written in English and formatted using the template of the RoboCup
+International Symposium without any alterations. The paper should contain the following items:
+
+   • The focus of research and the contributions in the respective fields
+   • Innovative technology (if any)
+   • Re-usability of the system for other research groups
+   • Applicability of the robot in real-world scenarios
+   • Photo(s) of the robot(s) used
+
+As an appendix on the 9th page (after the references), please include:
+
+   • Team name
+   • Contact information
+   • Website URL
+   • Names of the team members
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 25 ---
+
+Chapter 3. General Rules and Regulations                                                        19
+
+
+  2. Regular Tests: Only one robot is allowed per test. For different test runs, different
+     robots can be used.
+  3. Final : In the Final , both robots can be used simultaneously.
+
+3.4.2 Appearance and Safety
+Robots should have a product-like appearance and be safe to operate. The following rules apply
+to all robots:
+
+  1. Cover: The robot’s internal hardware (electronics and cables) should be covered so that
+     safety is ensured. The use of (visible) duct tape is strictly prohibited.
+  2. Loose cables: Loose cables hanging out of the robot are not permitted.
+  3. Safety: The robot must not have sharp edges or elements that might harm people.
+  4. Annoyance: The robot must not be continuously making loud noises or use blinding
+     lights.
+  5. Marks: The robot may not exhibit any kind of artificial marks or patterns.
+  6. Driving: To be safe, the robots should be careful when driving. Obstacle avoidance is
+     mandatory.
+
+The compliance with these rules will be verified during Robot Inspection (see 4.4).
+
+3.4.3 Standard Platform Leagues
+Standardized platforms allow teams to compete under equal conditions by eliminating all hardware-
+dependent variables from the tasks; therefore, unauthorized modifications and alterations to the
+robots are strictly forbidden. This includes, but is not limited to, attaching, connecting, plug-
+ging, gluing, and taping components into and onto the robot, as well as, modifying or altering
+the robot structure. Not complying with this rule leads to an immediate disqualification and
+penalization of the team (see Section 3.9.2). Robots are, however, allowed to “wear” clothes,
+have stickers (such as a sticker exhibiting the logo of a sponsor), or be painted (provided that
+the robot provider has approved that).
+  All modifications to the robots will be examined during the Robot Inspection (see 4.4). Note
+that the EC and TC members may request re-inspection of an SPL robot at any time during
+the competition.
+
+Authorized DSPL Modifications
+In the Domestic Standard Platform League (DSPL), teams may use an external laptop, which
+is safely located in the official Mounting Bracket provided by Toyota and is connected to the
+Toyota HSR via an Ethernet cable. Any laptop fitting inside the Mounting Bracket is allowed
+to be used, regardless of its technical specification. Furthermore, teams are allowed to attach
+the following devices to either the Toyota HSR or the laptop in the Mounting Bracket:
+
+   • Audio: A USB audio output device, such as a USB speaker or a sound card dongle.
+   • Microphone: A USB or AUX external microphone. Wireless microphones are not al-
+     lowed.
+   • Wi-Fi adapter: A USB-powered IEEE 802.11ac (or newer) compliant device.
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 28 ---
+
+22                                                                      3.6 Organization of the Competition
+
+
+3.6 Organization of the Competition
+3.6.1 Stage System
+The competition features a stage system, namely it is organized in two stages, each consisting
+of a number of specific tasks, and ends with a Final .
+
+     1. Robot Inspection: For security, robots are inspected during the Setup Days. A robot
+        must pass the Robot Inspection test (see Section 4.4) so that it is allowed to compete.
+     2. Stage I : The first days of the competition are called Stage I . All qualified teams that
+        have passed the Robot Inspection can participate in Stage I .
+     3. Stage II : The best 50% of teams after Stage I advance to Stage II . If the total number of
+        teams is less than 12, up to 6 teams may advance to Stage II . In this stage, tasks require
+        more complex abilities or combinations of abilities.
+     4. Final : The best two teams of each league, namely the ones with the highest score after
+        Stage II , advance to the Final . The final round features only a single task integrating all
+        tested abilities.
+
+In case of having no considerable score deviation between a team advancing to the next stage
+and a team dropping out, the TC may announce additional teams advancing to the next stage.
+
+3.6.2 Schedule
+     1. Test Blocks: For each test one Test Block is scheduled during which each (qualified)
+        team gets at least two Test Slots assigned. With the Restaurant test being the exception
+        where only one Test Slot is assigned.
+     2. Test Slots: During a Test Slot a team has the amount of time specified for the test to
+        attempt to solve it.
+     3. Participation is default: Teams have to inform the OC in advance if they are skipping
+        a Test Block. Without such indication, they may receive a penalty when not attending
+        (see Section 3.9.1).
+
+
+                                Day 1                 Day 2                Day 3                   Day 4
+           Block 1         Help Me Carry        Serve Breakfast         Restaurant
+         (9:00–11:00)
+                                                   —Break—                                     Finals
+           Block 2          Receptionist                             Stickler for the
+                                                     GPSR
+         (13:00–15:00)                                                    Rules
+                                                    Stage 2
+
+           Block 3             Storing
+                                                Clean the Table          EGPSR
+         (17:00–19:00)        Groceries
+
+  Table 3.1: Example schedule. Each team has at least two Test Slots assigned in every Test Block.
+
+Note that the actual allocation of blocks will be announced by the OC during the Setup Days
+(see Table 3.1).
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 29 ---
+
+Chapter 3. General Rules and Regulations                                                         23
+
+
+3.6.3 Scoring System
+Each task has a main objective and a set of bonus scores. To score in a test, a team must
+successfully accomplish the main objective of the task; bonuses are not awarded otherwise.
+  The scoring system has the following constrains:
+
+  1. Final : The final score is normalized.
+  2. Minimum score: The minimum total score per test in Stage I and Stage II is 0 points.
+     In principle, teams cannot receive negative points, except if they receive penalties. In
+     particular, both penalties for not attending (see Section 3.9.1) and extraordinary penalties
+     (see Section 3.9.2) can result in a total negative score.
+
+
+3.7 Procedure during Tests
+3.7.1 Safety First!
+  1. Emergency Stop: At any time when operating the robot inside and outside the scenario
+     the owners have to stop the robot immediately if there is a possibility of dangerous behavior
+     towards people and/or objects.
+  2. Stopping on request: If a referee, member of the Technical or Organizational committee,
+     an Executive or Trustee of the federation stops the robot (by pressing the emergency
+     button) there will be no discussion. Similarly if they tell the team to stop the robot, the
+     robot must be stopped immediately.
+  3. Penalties: If the team does not comply, the team and its members will be excluded
+     from the ongoing competition immediately by a decision of the RoboCup@Home Technical
+     Committee (TC). Furthermore, the team and its members may be banned from future
+     competitions for a period not less than a year by a decision of the RoboCup Federation
+     Trustee Board.
+
+3.7.2 Maximum number of team members
+  1. Regular Tests: During a regular test, the maximum number of team members allowed
+     inside the Arena is one (1). Exceptions are tests that explicitly require volunteer assis-
+     tance.
+  2. Setup: During the setup of a test, the number of team members inside the Arena is not
+     limited.
+
+3.7.3 Fair play
+Fair Play and cooperative behavior is expected from all teams during the entire competition, in
+particular:
+
+   • while evaluating other teams,
+   • while refereeing, and
+   • when having to interact with other teams’ robots.
+
+This also includes:
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 30 ---
+
+24                                                                                 3.7 Procedure during Tests
+
+
+     • not trying to cheat (e.g., pretending autonomous behavior where there is none),
+     • not trying to exploit the rules (e.g., not trying to solve the task but trying to score), and
+     • not trying to make other robots fail on purpose.
+     • not modifying robots in standard platforms.
+Disregard of this rule can lead to penalties in the form of negative scores, disqualification for a
+test, or even for the entire competition.
+
+3.7.4 Expected Robot’s Behavior
+Unless stated otherwise, it is expected that the robot always behave and react in the same way a
+polite and friendly human being would do. This applies also to how robots try solve the assigned
+task As rule of thumb, one may ask any non-scientist how she would solve the task.
+  Please consider that average users will not know the specific procedure to operate a robot.
+Hence, interaction should be as with any other human being.
+
+3.7.5 Robot Autonomy and Remote Control
+     1. No touching: During a test, the participants are not allowed to make contact with the
+        robot(s), unless it is in a “natural” way and required by the task.
+     2. Natural interaction: The only allowed means to interact with the robot(s) are gestures
+        and speech.
+     3. Natural commands: Anything that resembles direct control is forbidden.
+     4. Remote Control: Remotely controlling the robot(s) is strictly prohibited. This also
+        includes pressing buttons, or influencing sensors on purpose.
+     5. Penalties: Disregard of these rules will lead to disqualification for a test or for the entire
+        competition.
+
+3.7.6 Collisions
+     1. Touching : Gently touching objects is tolerated but unadvised. However, robots are not
+        allowed to crash with something. The “safety first” rule (Section 3.7.1) overrides any other
+        rule.
+     2. Major collisions: If a robot crushes into something during a test, the robot is immedi-
+        ately stopped. Additional penalties may apply.
+     3. Functional touching : Robots are allowed to apply pressure on objects, push away
+        furniture and, in general, interact with the environment using structural parts other than
+        their manipulators. This is known as functional touching. However, the robot must clearly
+        announce the collision-like interaction and kindly request not being stopped.
+        Remark:       Referees can (and will) immediately stop a robot in case or suspicion of
+        dangerous behavior.
+
+3.7.7 Removal of robots
+Robots not obeying the rules are stopped and removed from the Arena.
+     1. It is the decision of the referees and the TC member monitoring the test if and when to
+        remove a robot.
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 31 ---
+
+Chapter 3. General Rules and Regulations                                                        25
+
+
+  2. When told to do so by the referees or the TC member monitoring the test, the team must
+     immediately stop the robot, and remove it from the Arena without disturbing the ongoing
+     test.
+  3. More than 1 team member is allowed to enter the Arena after the robot has been stopped
+     to quickly remove the robot from the Arena
+
+3.7.8 Start Signal
+The default start signal (unless stated otherwise) is door opening. Other start signals are
+allowed but must be authorized by the Technical Committee (TC) during the Robot Inspection
+(see Section 4.4).
+
+  1. Door opening: The robot is waiting behind the door, outside the Arena and accompanied
+     by a team member. The test starts when a referee (not a team member) opens the door.
+  2. Start button: If the robot is not able to automatically start after the door is open, the
+     team may start the robot using a start button.
+     2.1. It must be a physical button on the robot (e.g., a dedicated one or releasing the
+           eStop).
+     2.2. It is allowed to use the robot’s contact/pressure sensors (e.g., pushing the head or an
+           arm joint).
+     2.3. Using a start button needs to be announced to the referees before the test starts.
+     2.4. There may be penalties for using a start button in some tests.
+  3. Ad-hoc start signal: Other means of triggering the robot to action are allowed but
+     must be approved by the Technical Committee (TC) during the Robot Inspection (see Sec-
+     tion 4.4). These include:
+        • QR Codes
+        • Verbal instructions
+        • Custom HRI interfaces (apps, software, etc.)
+     Remark: There may be penalties for using Ad-hoc start signals in some tests. The use
+     of mouses, keyboards, and devices attached to ECRA computers is strictly forbidden.
+  4. No penalties for physical constraints (HSR only): In cases where a physical issue,
+     such as a door bump, impedes the league’s ability to ensure a standard start signal with
+     full safety for the HSR robot, penalties will not be imposed. The following guidelines
+     apply:
+        • The team must document the physical issue and notify the committee prior to the
+           Robot Inspection.
+        • The issue must be reviewed and approved by the league’s rules committee.
+        • An alternative start method will be determined on-site in consultation with the com-
+           mittee.
+     This rule ensures fairness and flexibility while addressing unavoidable physical challenges
+     during league operations.
+
+3.7.9 Restart Rule
+During any test, teams are allowed to perform a single restart per attempt under the following
+conditions:
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 32 ---
+
+26                                                                                3.7 Procedure during Tests
+
+
+     • A restart may only be requested until the robot completes a major scoring action.
+     • The test time will continue running until the team has exited the Arena with the robot.
+     • A restart incurs a penalty of 30 s, subtracted from the total time.
+     • After exiting, the team may requeue at the back of the line and begin their attempt again
+       within their remaining time.
+     • Only one restart is permitted per test attempt.
+     • Only points scored after a restart are counted; points scored before the restart are not
+       considered if a restart was requested.
+
+
+3.7.10 Entering and leaving the Arena
+     1. Start position: Unless stated otherwise, the robot starts outside of the Arena.
+     2. Entering: The robot must autonomously enter the Arena.
+
+
+3.7.11 Gestures
+Hand gestures may be used to control the robot in the following way:
+
+     1. Definition: The teams define the hand gestures by themselves.
+     2. Approval: Gestures need to be approved by the referees and TC member monitoring the
+        test. Gestures should not involve more than the movement of both arms. This includes,
+        e.g., expressions of sign language or pointing gestures.
+     3. Instructing operators: It is the responsibility of the team to instruct operators.
+        3.1. The team may only instruct the operator when told to so by a referee.
+        3.2. The team may only instruct the operator in the presence of a referee.
+        3.3. The team may only instruct the robot for as long as allowed by the referee.
+        3.4. When the robot has to instruct the operator, it is the robot that instructs the operator
+             and not the team. The team is not allowed to additionally guide the operator, e.g.,
+             tell the operator to come closer, speak louder, or to repeat a command.
+        3.5. The robot is allows to instruct the operator at any time.
+     4. Receiving gestures: Unless stated otherwise, it is not allowed to use a speech command
+        to set the robot into a special mode for receiving gestures.
+
+
+3.7.12 Referees
+All tests are monitored by a referee, who is a member of the Technical Committee (TC). The
+referee may appoint an assistant to aid in keeping time and filling in scoresheets. The following
+rules apply:
+
+
+     1. Selection: Referees are chosen by EC/TC/OC.
+     2. Referee instructions: Right before each test, referee chooses one or more assistant to
+        aid during the test. The assistants will be instructed by the referee.
+
+
+
+                 RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 33 ---
+
+Chapter 3. General Rules and Regulations                                                         27
+
+
+3.7.13 Operators
+Unless stated otherwise, robots are operated by the referee or by a person selected by the referee.
+If the robot fails to understand the default operator, the team may request the use of a custom
+operator. Penalty may apply when using a custom operator.
+
+3.7.14 Time limits
+  1. Stage I: Unless stated otherwise, the time limit for each test in Stage I is 5 minutes.
+  2. Stage II: Unless stated otherwise, the time limit for each test in Stage II is 10 minutes.
+  3. Inactivity: Robots are not allowed to stand still or get stuck into endless loops. A robot
+     not progressing in the task execution (and obviously not trying to), is consider as inactive.
+     Robots must be removed after 30 seconds of inactivity.
+  4. Requesting time: A robot (not the team) can request referees to make exception from
+     the 30-seconds inactivity time limit. In its request, the robot must clearly state for how
+     long it will be performing a time-consuming process (e.g., 60 seconds). This time cannot
+     exceed 3 minutes and cannot be used more than once per test.
+  5. Setup time: Unless stated otherwise, there is no setup time. Robots need to be ready
+     to enter the Arena no later than one minute after the door has been closed to the former
+     team.
+  6. Time-up: When the time is up, the team must immediately remove their robot(s) from
+     the Arena. No more additional score will be giving.
+  7. Show must go on: On special cases, the referee may let the robot continue the test for
+     demonstration purposes, but no additional points will be scored.
+
+
+3.8 Deus Ex Machina: Bypassing Features With Human Help
+Because the Show Must Go On
+
+Robots can’t score unless they accomplish the main goal of a task. However, in many real-life
+situations, a minor malfunction may prevent the robot from accomplishing a task. To prevent
+this situation, while fostering awareness and human-robot interaction, robots are allowed to
+request human assistance during a test.
+
+3.8.1 Procedure
+The procedure to request human assistance while solving a task is as follows:
+
+  1. Request help: The robot must indicate loud and clear that it requires human assistance.
+     It must be clearly stated:
+        • The nature of the assistance
+        • The particular goal or desired result
+        • How the action must be carried out (when necessary)
+        • Details about how to interact with the robot (when necessary)
+        • Detailed information to identify objects for picking and placing (e.g. object name,
+          color or location). The provided information needs to show that objects were per-
+          ceived by the robot.
+
+
+
+                RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 34 ---
+
+28                                                                                      3.8 Deus Ex Machina
+
+
+     2. Supervise: The robot must be aware of the human’s actions, being able to tell when the
+        requested action has been completed, as well as guiding the human assistant (if necessary)
+        during the process.
+     3. Acknowledge: The robot must politely thank the human for the assistance provided.
+
+Example
+In the following example, a robot has to clean the table but is unable to grasp the spoon.
+
+     R: I am sorry, but the spoon is too small for me to take.
+        Could you please help me with it?
+        Please say "robot yes" or "robot no" to confirm.
+     H: Robot, yes!
+     R: Thank you! Please follow my instructions.
+        Please take the purple spoon from the table. It is on my left.
+        (The robot also shows the result of the perception, e.g. by pointing at the spoon
+        or showing a picture with a bounding box on the screen)
+     H: (Referee takes purple spoon)
+     R: I saw you took the spoon.
+        Would you be so kind as to follow me to the kitchen?
+        Please keep the spoon visible in front of you so I can track you. Thank you!
+     R: You can stop following me now.
+        As you can see, the dishwasher is already open.
+        Please place the spoon in the gray basket on the lower tray.
+     R: Lovely! Thanks for your help.
+        I’ll let you know if I need further assistance.
+
+
+3.8.2 Scoring
+There is no limit in the amount of times a robot can request human assistance, but score
+reduction applies every time it is requested.
+
+     1. Partial execution: A reduction of 10% of the maximum attainable score is applied when
+        the robot request a partial solution (e.g. pointing to the person the robot is looking for
+        or placing an object within grasping distance). The referee decides whether the requested
+        action is simple enough to corresponds to a partial execution or not.
+     2. Full awareness: A reduction of 20% of the maximum attainable score is applied when the
+        robot is able to track and supervise activity, detecting possible, and when the requested
+        action has been completed.
+     3. No awareness: A reduction of 30% of the maximum attainable score is applied when the
+        robot has to be told when the requested action has been completed.
+     4. Bonuses: No bonus points can be scored when the robot requests help to solve part of a
+        task that normally would grant a bonus.
+     5. Score reduction overlap: The score reduction for multiple requests of the same kind
+        do not stack, but overlap. The total reduction applied correspond to the worse execution
+        (higher reduction of all akin help requests). This means, a robot won’t be reduced again
+        for requesting help to transport a second object, but a second reduction will apply when
+        the robot asks for a door to be opened.
+
+
+
+                 RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 35 ---
+
+Chapter 3. General Rules and Regulations                                                        29
+
+
+  6. Allowed types of assistance: The types of assistance allowed in a given task are specified
+     in the respective task description. It should be noted that only the assistance types
+     explicitly mentioned in a task description are actually allowed in a task; other types of
+     assistance are not allowed and will nullify the obtained points for the part of the task in
+     which they are applied. For instance, if a task focused on manipulation does not explicitly
+     mention a Deus Ex Machina penalty for instructing a person to perform a manipulation
+     activity, it should not be assumed that this is a loophole that can be exploited.
+
+
+3.8.3 Bypassing Automatic Speech Recognition
+Giving commands to the robot is essential in many tests. When the robot is not able to receive
+spoken commands, teams are allowed to provide means to bypass ASR via an Alternative method
+for HRI (see Section 3.8.3). Nonetheless, Automatic Speech Recognition is preferred.
+  The following rules apply in addition to the ones specified in section Section 3.8.2
+
+  1. ASR with Default Operator: No score reduction. The command is given by the human
+     operator who must speak (not shout) loud and clear. The default operator may repeat the
+     command up to three times.
+  2. ASR with Custom Operator: A reduction of 10% of the maximum attainable score
+     is applied when a custom operator is requested. The Team Leader chooses a person who
+     gives the command exactly as instructed by the referee.
+  3. Gestures: A reduction of 20% of the maximum attainable score is applied when a gesture
+     (or set of gestures) is used to instruct the robot.
+  4. QR Codes: A reduction of 30% of the maximum attainable score is applied when a QR
+     code is used to instruct the robot.
+  5. Alternative Input Method: A reduction of up to 30% of the maximum attainable score
+     is applied when a alternative HRI interface, is used to instruct the robot. Alternative HRI
+     interfaces (see Section 3.8.3) must be previously approved by the TC during the Robot
+     Inspection (see Section 4.4).
+
+
+Alternative interfaces for HRI
+
+Alternative methods and interfaces for HRI offer a way for a robot to start or complete a task.
+Any reasonable method may be used, with the following criteria:
+
+   • Intuitive to use and self-explanatory: a manual should not be needed. Teams are
+     not allowed to explain how to interface with the robot.
+   • Effortless use: Must be as easy to use as uttering a command.
+   • Is smart and preemptive: The interface adapts to the user input, displaying only the
+     options that make sense or that the robot can actually perform.
+   • Exploits the best of the device being used (eg. touch screen, display area, speakers, etc.)
+
+  Preferably, the alternative HRI must be also adapted to the user. Consider localization (with
+English as the default), but also potential users of service robots at their home. For example:
+elderly people and people with physical disabilities.
+
+
+
+               RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+--- physical page 36 ---
+
+30                                                                         3.9 Special penalties and bonuses
+
+
+3.9 Special penalties and bonuses
+3.9.1 Penalty for not attending
+     1. Automatic schedule: All teams are automatically scheduled for all tests.
+     2. Announcement: If a team cannot participate in a test (for any reason), the team leader
+        has to announce this to the OC at least 60 minutes before the test slot begins.
+     3. Penalties: A team that is not present at the start position when their scheduled test
+        starts, the team is not allowed to participate in the test anymore. If the team has not
+        announced that it is not going to participate, it gets a penalty of 250 points.
+
+
+3.9.2 Extraordinary penalties
+     1. Penalty for cheating: If a team member is found cheating or breaking Fair Play, the
+        team will be automatically disqualified of the running test, and a penalty of 500 points is
+        handed out. The Technical Committee (TC) may also disqualify the team for the entire
+        competition.
+     2. Penalty for faking robots: If a team starts a test, but it does not solve any of the
+        partial tasks (and is obviously not trying to do so), a penalty of 250 points is handed out.
+        The decision is made by the referees and the monitoring TC member.
+     3. Extra penalty for collision: In case of major, (grossly) negligent collisions the Technical
+        Committee (TC) may disqualify the team for a test (the team receives 0 points), or for
+        the entire competition.
+     4. Not showing up as referee or jury member: If a team does not provide a referee or
+        jury member (being at the Arena on time), the team receives a penalty of 250 points, and
+        will be remembered for qualification decisions in future competitions.
+        Jury members missing a performance to evaluate are excluded from the jury, and the team
+        is disqualified from the test (receives 0 points).
+     5. Modifying or altering standard platform robots: If any unauthorized modification
+        is found on a Standard Platform League robot, the responsible team will be immediately
+        disqualified for the entire competition while also receiving a penalty of 500 points in the
+        overall score. This behavior will be remembered for qualification decisions in future com-
+        petitions.
+
+
+
+3.9.3 Bonus for outstanding performance
+     1. For every regular test in Stage I and Stage II , the @Home Technical Committee (TC) can
+        decide to give an extra bonus for outstanding performance of up to 10% of the maximum
+        test score.
+     2. This is to reward teams that do more than what is needed to solely score points in a test
+        but show innovative and general approaches to enhance the scope of @Home.
+     3. If a team thinks that it deserves this bonus, it should announce (and briefly explain) this
+        to the Technical Committee (TC) beforehand.
+     4. It is the decision of the Technical Committee (TC) if (and to which degree) the bonus
+        score is granted.
+
+
+
+                  RoboCup@Home Rulebook / Final version for RoboCup 2025 (Revision 2025-04-28 1)
+
+END_PAGE_TEXT

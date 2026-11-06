@@ -1,0 +1,39 @@
+Source URL retrieved 2026-11-06: https://robocupathome.github.io/RuleBook/rulebook/master.pdf
+SHA256: 45aa98b1773f202abfd7cd919b8aba5581cbf2e0182216fe479ee2eed59ace38
+PDF CreationDate: 2026-10-14T14:38:35Z
+Nearby source commit on master: ebdf34d223ddc3ae89ac3f16a23ad28024adfdf6 (2026-10-14T14:36:56Z)
+That commit sets YEAR 2027 and STATE Draft in setup/active_version.tex.
+This PDF is a draft. It is not a final release. The URL is a moving build.
+
+search_count Help Me Carry: 0
+search_count Carry My Luggage: 0
+search_count Help-me-Carry: 1
+
+BEGIN_PAGE_TEXT
+                 RoboCup@Home
+                      Rules & Regulations
+
+
+
+
+                       Version: 2027 Rev-1
+           Last Build Date: October 14, 2026 Time: 878
+                  Last Revision Date: 2026-10-14
+
+
+
+
+RoboCup@Home Rulebook / Draft version for RoboCup 2027 (Revision 2026-10-14 1)
+
+--- stale sentence ---
+ssing. A team receives the certificate if it scores
+at least 75% of the attainable points for that skill across all tests and challenges. For example,
+if a robot scores manipulation points during the Help-me-Carry test to open the door, that will
+count for the Manipulation certificate. Note that the certificate will only be awarded if the team
+is not the overall winner of the competition.
+
+1.7.6. Open-source software award
+Since Nagoya 2017, RoboCup@Home awards the best contribution to the community by means
+of an open-source software solution. To be eligible for the award, the software must be easy to
+read, well-documented, follow standard design patterns, actively maintained, and meet the 
+END_PAGE_TEXT

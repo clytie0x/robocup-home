@@ -45,6 +45,13 @@ A simulation result is not a hardware result.
 - Do not delete a file, branch, or the repository without the owner's approval.
 - Do not register for an event, submit competition results, contact organizers or another team, or spend money.
 
+### Quality locks
+
+- Do not treat a milestone as complete while a sourced row is missing, or while a conflict is written as a pass.
+- A known software defect stays on a software row. Do not close it by moving it to hardware.
+- Do not claim that no undiscovered defect remains.
+- Interrogate the milestone set before M9 closure. The Carry My Luggage specification does not perform that interrogation and does not claim it.
+
 ## Tests, once code exists
 
 TDD order is red, then green, then refactor, on three layers: unit, scenario simulation, and adapter contract.
