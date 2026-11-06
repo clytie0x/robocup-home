@@ -136,12 +136,25 @@ def check_math(rows, origin):
     return problems
 
 
+def rust_bodies():
+    bodies = {}
+    for path in (ROOT / "crates").rglob("*.rs"):
+        text = path.read_text(encoding="utf-8")
+        matches = list(re.finditer(r"\bfn\s+([A-Za-z0-9_]+)\s*\(", text))
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            bodies[match.group(1)] = bodies.get(match.group(1), "") + text[start:end]
+    return bodies
+
+
 def check_rows(spec):
     problems = []
     rows = requirement_rows(spec)
     ids = [row[0] for row in rows]
     if len(ids) != len(set(ids)):
         problems.append("duplicate requirement ids")
+    bodies = rust_bodies()
     for row in rows:
         if len(row) != 8:
             problems.append(f"{row[0] if row else '?'} has {len(row)} cells")
@@ -149,7 +162,7 @@ def check_rows(spec):
         ident, _requirement, kind, _source, test, result, gate, block = row
         if kind not in {"official", "derived", "assumption"}:
             problems.append(f"{ident} kind {kind}")
-        if result != "not-run":
+        if result not in {"not-run", "pass", "fail"}:
             problems.append(f"{ident} result {result}")
         if gate not in {"sim", "hardware"}:
             problems.append(f"{ident} gate {gate}")
@@ -160,6 +173,16 @@ def check_rows(spec):
                 problems.append(f"{ident} missing {marker}")
         if block == "open" and "cannot pass" not in test:
             problems.append(f"{ident} open without cannot pass")
+        # A pass or fail only proves that the cited test function contains the row id.
+        # It does not prove that the assertions mean what the row requires.
+        if result in {"pass", "fail"}:
+            if block == "open":
+                problems.append(f"{ident} open marked {result}")
+            if gate == "hardware":
+                problems.append(f"{ident} hardware marked {result}")
+            names = re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", test)
+            if not any(ident in bodies.get(name, "") for name in names):
+                problems.append(f"{ident} result {result} without an executable test")
     for ident in REQUIRED_OPEN + REQUIRED_ASSUMPTIONS + REQUIRED_ADDED:
         if ident not in ids:
             problems.append(f"missing {ident}")
@@ -350,9 +373,15 @@ def self_test():
     tampered = spec.replace("| 1015 | total |", "| 1016 | total |", 1)
     if not any("does not match" in item or "1015" in item for item in collect(tampered)):
         failures.append("tampered total should fail")
-    passed = spec.replace("| not-run | sim | none |", "| pass | sim | none |", 1)
-    if not any("result pass" in item for item in collect(passed)):
-        failures.append("pass result should fail")
+    passed = spec.replace("| not-run | hardware | none |", "| pass | hardware | none |", 1)
+    if not any("hardware marked pass" in item for item in collect(passed)):
+        failures.append("hardware pass should fail")
+    opened_result = spec.replace("| not-run | sim | open |", "| pass | sim | open |", 1)
+    if not any("open marked pass" in item for item in collect(opened_result)):
+        failures.append("open pass should fail")
+    missing = spec.replace("`seeded_main_reaches_the_car`", "`missing_evidence_name`", 1)
+    if not any("without an executable test" in item for item in collect(missing)):
+        failures.append("pass without a test should fail")
     contaminated = spec.replace("not the baseline", "not the baseline\n1115 is the total.", 1)
     if not any("2025.1" in item or "1115" in item for item in collect(contaminated)):
         failures.append("1115 contamination should fail")

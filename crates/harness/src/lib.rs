@@ -17,6 +17,9 @@
 //! clock. A world time of 400000 ms does not by itself make a pick at trip stamp
 //! 10 late. [`step_drive`] is the navigation path: there the world clock and the
 //! trip stamp are the same count, and a split or a backward stamp changes nothing.
+//! [`run`] is the full task: one stamp from the report through the
+//! optional return. Its pass check is the world at the designated car, not the
+//! trip flag. The component cue can still set that flag.
 
 use domain::{Bag, Custody, Id, Point, World};
 use hri::{MockReady, MockReport};
@@ -26,8 +29,10 @@ use sim_runtime::{ArmError, SimWorld};
 use task_3_1::{Effect, Event, Outcome, Phase, Reject, Trip};
 
 mod drive;
+mod episode;
 
 pub use drive::{Drive, NavEnd, step_drive};
+pub use episode::{EpisodeReport, Script, run};
 
 /// The trip rejected the event, the effect was not a report, or the budget ended.
 ///

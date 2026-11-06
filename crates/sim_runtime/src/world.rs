@@ -36,6 +36,9 @@ pub struct SimWorld {
     carried: Option<Id>,
     grasp_fault: bool,
     handoff_fault: bool,
+    /// When set, slides do not block on this class and the follower is not shown it.
+    /// The disks stay in the world, so a later live hit test can still meet them.
+    collision_fault: Option<ObstacleClass>,
     car: Point,
     car_id: Id,
     events: Vec<Event>,
@@ -158,6 +161,7 @@ impl SimWorld {
             carried: None,
             grasp_fault: false,
             handoff_fault: false,
+            collision_fault: None,
             car: Point::new(Mm::new(assume::CAR_X_MM), Mm::new(assume::CAR_Y_MM)),
             car_id: id(9),
             events: vec![Event {
@@ -211,6 +215,18 @@ impl SimWorld {
         self.handoff_fault = on;
     }
 
+    /// Guard fault for one class. The bodies stay in [`Self::observe`].
+    ///
+    /// Slides skip that class, and [`collision_fault`](Self::collision_fault) tells
+    /// the follower not to treat those disks as a sight. This is not deletion.
+    pub const fn set_collision_fault(&mut self, class: Option<ObstacleClass>) {
+        self.collision_fault = class;
+    }
+
+    pub const fn collision_fault(&self) -> Option<ObstacleClass> {
+        self.collision_fault
+    }
+
     /// Changes the setup fact `visible`. This is not a detector.
     pub fn set_visible(&mut self, bag: Id, visible: bool) -> Result<(), ArmError> {
         let index = self.locate(bag)?;
@@ -221,6 +237,13 @@ impl SimWorld {
     /// Replaces the obstacle list. This does not reveal the car and does not move the robot.
     pub fn set_obstacles(&mut self, obstacles: Vec<Obstacle>) {
         self.obstacles = obstacles;
+    }
+
+    /// Moves the hidden car. The observation, the trace, and [`World::revealed_car`] stay unchanged.
+    ///
+    /// The navigator is not given this point. A scenario may read it when it moves the operator.
+    pub fn set_car(&mut self, at: Point) {
+        self.car = at;
     }
 
     /// Fixture motion for the operator. The navigator does not receive this path.
@@ -261,13 +284,15 @@ impl SimWorld {
     }
 
     fn blocked(&self, from: Point, to: Point, robot_radius_mm: i32) -> bool {
-        self.obstacles
-            .iter()
-            .flat_map(|obstacle| &obstacle.bodies)
-            .any(|disk| {
+        self.obstacles.iter().any(|obstacle| {
+            if self.collision_fault == Some(obstacle.class) {
+                return false;
+            }
+            obstacle.bodies.iter().any(|disk| {
                 let limit = robot_radius_mm.saturating_add(disk.radius.get());
                 segment_within(from, to, disk.center, limit)
             })
+        })
     }
 
     /// Moves a free bag. This does not move the robot and does not pick the bag.
@@ -329,6 +354,32 @@ impl SimWorld {
         self.events.push(Event {
             at_ms,
             kind: EventKind::Grasped { bag },
+        });
+        Ok(())
+    }
+
+    /// A person takes a free bag. The gripper stays empty. This is not a robot grasp.
+    pub fn human_take(&mut self, bag: Id) -> Result<(), ArmError> {
+        if bag == self.operator.id {
+            return Err(ArmError::Role);
+        }
+        if self.carried.is_some() {
+            return Err(ArmError::Occupied);
+        }
+        let index = self.locate(bag)?;
+        if self.bags[index].custody != Custody::Free {
+            return Err(ArmError::NotFree);
+        }
+        let pose = self.operator.pose;
+        let at_ms = self.clock.now_ms();
+        self.bags[index].custody = Custody::Operator;
+        self.bags[index].pose = pose;
+        self.events.push(Event {
+            at_ms,
+            kind: EventKind::Handed {
+                bag,
+                to: self.operator.id,
+            },
         });
         Ok(())
     }
@@ -1407,5 +1458,22 @@ mod tests {
             empty.hand_to(empty_bag, empty_operator, ROBOT_MM),
             Err(ArmError::Empty)
         );
+    }
+
+    #[test]
+    fn a_varied_car_stays_out_of_the_observation() {
+        let mut world = SimWorld::from_seed(3);
+        let before = world.observe();
+        let events = world.events().to_vec();
+        let moved = point(12_000, 4_000);
+        world.set_car(moved);
+        assert_eq!(world.truth().car(), moved);
+        assert_eq!(world.observe(), before);
+        assert_eq!(world.events(), events.as_slice());
+        assert_eq!(world.revealed_car(), None);
+        assert!(before.points().all(|item| item != moved));
+        world.set_car(point(2_600, -4_000));
+        assert_eq!(world.revealed_car(), None);
+        assert_eq!(world.observe().robot, before.robot);
     }
 }

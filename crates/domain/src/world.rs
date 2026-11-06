@@ -137,7 +137,7 @@ pub enum EventKind {
     },
 }
 
-/// Simulator-free world port. `revealed_car` stays empty until a later milestone discovers the car.
+/// Simulator-free world port. `revealed_car` stays empty. The car coordinate is not a task field.
 pub trait World {
     fn now_ms(&self) -> u64;
     fn advance(&mut self, step: Step) -> Result<(), TimeError>;
