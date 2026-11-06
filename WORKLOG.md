@@ -1,6 +1,138 @@
 # WORKLOG
 
+## M3 clock and seeded world (2026-11-06)
+
+Scope. Issue 6. One writer. Branch `cursor/m3-sim-clock-world-e955` from `58cfa9de29c033a0061dc7e654d84b20fb69e6f6`. Code commits before this note: `acf444a` and `fedf5ab`. No task state machine, perception, grasp, path planning, scorer, hardware, deploy, registration, contact, or spending. M4 was not started. M9.3 was not run. This self-review does not replace that interrogation. The seven open scoring rows stay open. Every acceptance row in the task specification stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline.
+
+### Plan
+
+Add a reusable simulation clock and a seeded world behind `World`, `Arm`, and `Base`. Keep those traits in `domain`. Put the clock, the generator, and the adapters in `sim_runtime`. Prove the fixture, replay, clock bounds, and the hidden car with tests that failed before the behavior existed.
+
+### Decisions
+
+`World`, `Arm`, and `Base` stay in `domain`, so `sim_runtime` still depends only on `domain` and `task_3_1` still does not depend on the simulator. `artifacts/check_workspace.py` was not changed. Manipulation and navigation stay empty of grasp and planning. No registry dependency was added. `Cargo.lock` did not change.
+
+The stored model uses integer millimeters and an integer millisecond count. A float enters only through `Mm::try_from_meters`, which rejects non-finite values and values outside `i32`. `Id` is a non-zero `u32`. `Step` is a `u64` count. Negative counts are rejected before a step exists. `Clock::advance` uses `u64::checked_add` and writes the new time only after that succeeds. A failed world advance does not append an event.
+
+The generator is owned. It is xoshiro256** 1.0 (`next` only; jump functions were not copied), seeded by splitmix64 (2015). Version string: `xoshiro256**-1.0+splitmix64-2015`. Layout version: `m3-layout-1`. The seed is consumed while the layout is built. Replay means constructing again with the same seed and the same `advance` calls. A zero step is a successful call: the clock does not move, and the trace records the call. The generator is not cryptographic.
+
+Layout assumptions, labeled in `sim_runtime::assume`, are not official measurements. The printed 2 m bag limit is the inclusive upper bound of 2000 mm. The 400 mm lower bound, the opposite-x placement, the operator at `(0, 1000)` mm, the robot at `(0, 0)` mm, the inside half-plane `x <= 2500` mm, the car at `(8000, -1500)` mm, the obstacle pitch, and the 400 mm clearance are assumptions. The millisecond unit is an assumption. The clock does not start or enforce the five-minute test. Each obstacle is one placeholder. The crowd placeholder is not three or four people. Bag kind `LightweightStiffVerticalHandles` records section 2.1.5. It is not a stiffness or weight measurement. `visible` records the setup fact, not a detector. The obstacle order is one Durstenfeld shuffle of the four classes. The PDF still calls that order arbitrary. The car point is fixed in the hidden truth, so a different seed cannot reveal it. Seeds 1 and 2 change bag offsets and obstacle order.
+
+`SimWorld` does not implement `Debug`. The car is readable from `truth()`, which is not part of the `World` trait.
+
+### Sources
+
+Used for this design. Not taken as dependencies.
+
+- xoshiro256** 1.0 `next`, public domain, David Blackman and Sebastiano Vigna: https://prng.di.unimi.it/xoshiro256starstar.c
+- splitmix64, 2015, Sebastiano Vigna: https://prng.di.unimi.it/splitmix64.c
+- `u64::checked_add`: https://doc.rust-lang.org/std/primitive.u64.html#method.checked_add
+- `std::time::Instant` is an operating-system clock and is not used as simulation time: https://doc.rust-lang.org/std/time/struct.Instant.html
+- embedded-hal 1.0.0 keeps traits separate from device implementations: https://docs.rs/embedded-hal/1.0.0/embedded_hal/
+- Durstenfeld shuffle, high index down to 1: https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+- The Rust Rand Book marks `SmallRng` not portable. The `rand` crate was not added: https://rust-random.github.io/book/guide-rngs.html
+- Explicit virtual clocks were the pattern, not a dependency. Examples: https://docs.rs/vortex-sim/latest/vortex_sim/struct.SimClock.html and https://docs.rs/refault/latest/refault/
+- The `xoshiro` crate at 0.0.5 was not added. The `next` function above was rewritten here.
+
+### Tests
+
+Red, before the behavior. Stubs compiled and returned the wrong value. `cargo test --workspace --all-targets --locked` stopped at `domain`: 6 failed, 0 passed. `cargo test --workspace --doc --locked` then failed the `Step::try_from_i64` doctest, 1 failed. `cargo test -p sim_runtime --all-targets --locked` failed 14, passed 0. `cargo test -p sim_runtime --doc --locked` failed the `Clock` doctest, 1 failed. Representative assertions: `try_from_i64(-1)` was `Ok(Step(0))` instead of `Err(Negative)`; `Mm::try_from_meters(NaN)` was `Ok(Mm(0))`; clock overflow returned `Ok(())`; seed 0 drew `0` instead of `0x99ec5f36cb75f2b4`; `revealed_car` was `Some((8000, -1500))`; the arm reported `Some(Id(1))`.
+
+Green, after `acf444a` and `fedf5ab`, on the tree that also contains this note's documentation edits. Counts are 20 library tests and 2 doctests. Zero failures. The same commands were the check set. `pdf=False` means the professor PDF was absent. This run did not hash that file.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+hri, manipulation, navigation, perception, task_3_1: ok. 0 passed; 0 failed
+sim_runtime: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain: ok. 1 passed; 0 failed
+sim_runtime: ok. 1 passed; 0 failed
+other crates: ok. 0 passed; 0 failed
+doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=7 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+spec_exit:0
+```
+
+`Cargo.lock` had no diff. A Thai scan of the tree was `thai_line_count=0`.
+
+M3 rows. These passes are the commands above. They do not close an acceptance row in `docs/tasks/3.1-carry-my-luggage.md`.
+
+| requirement | source | test | result | gate |
+| --- | --- | --- | --- | --- |
+| Robot, operator, at least two defined bags, and all four obstacle classes | Professor PDF section 3.1 and section 2.1.5. Prerequisite only. | `fixtures_keep_two_bags_and_four_classes`, seeds 0 through 31 and `u64::MAX`; `seed_one_matches_layout_v1` | pass, suite above | sim |
+| Car hidden from the task port | Professor PDF car sentence. Prerequisite only. | `the_task_port_hides_the_car`, seed 1 | pass, suite above | sim |
+| Clock zero, step, maximum, and overflow | Issue 6. The millisecond unit is `CML-ASM-CLOCK`, not a printed start event. | `clock::tests`, including a 30000 ms step that returns in under 2 wall-clock seconds | pass, suite above | sim |
+| Same-seed replay | Issue 6. Algorithm versions above. | `the_same_seed_replays_the_same_trace`, seed 11, including one rejected overflow | pass, suite above | sim |
+| Different seed changes the visible trace | Issue 6. | `a_different_seed_changes_the_visible_trace`, seeds 1 and 2 | pass, suite above | sim |
+
+### Adversarial notes
+
+`i64::MIN` and `-1` never become a step. `NaN`, both infinities, and `1e20` meters are rejected. An offset that overflows either axis returns an error and the original point still has both of its coordinates. A clock at `u64::MAX` rejects one more millisecond and stays there; a zero step at that value stays there. After a rejected world step, the observation, the event slice, and the hidden truth compare equal to the pre-call copies, and a later 5 ms step still applies. The task-facing function returns `None` while `truth().car()` is `(8000, -1500)` and that point is not among the observed points. Seed 0 and `u64::MAX` still build two bags and four distinct classes. The arm stays empty after a 40 ms step, and the base pose stays at the robot origin.
+
+Clippy on the library target, without the test cfg, reported the fixture helpers as dead code. They moved into the test module. That was a warning, not a behavior change.
+
+### Limits
+
+The model is an abstract fixture. It is not a claim of physical accuracy, and it is not a hardware result. It does not grasp, follow, plan, perceive, or score. It does not discover the car. It does not apply the five-minute limit. It does not decide any open scoring row. A passing M3 test does not mean an acceptance row passed. No statement here says the software has no remaining defects.
+
+## Visibility and M2 CI read (2026-11-06)
+
+Read after the M2 merge. This is the current visibility. No visibility write was made in this read. The refused 403 attempt in the next section stays as history.
+
+```text
+gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch,html_url:.html_url}'
+{"default_branch":"main","html_url":"https://github.com/clytie0x/robocup-home","private":false,"visibility":"public"}
+
+gh repo view clytie0x/robocup-home --json nameWithOwner,isPrivate,visibility,url,defaultBranchRef
+{"defaultBranchRef":{"name":"main"},"isPrivate":false,"nameWithOwner":"clytie0x/robocup-home","url":"https://github.com/clytie0x/robocup-home","visibility":"PUBLIC"}
+```
+
+M2 is merged at `58cfa9de29c033a0061dc7e654d84b20fb69e6f6`. Pull-request CI run `42186659932` attempt 2 completed with conclusion success on head `52e73bde7b0a236e723406ee60b643a515cbb68c`. The merge push also completed with conclusion success: run `42193390300` attempt 1 on that merge commit, https://github.com/clytie0x/robocup-home/actions/runs/42193390300. The billing failure on run `42185539820` remains the earlier record in the M2 section. It is not the current CI result.
+
+```text
+gh api repos/clytie0x/robocup-home/actions/runs/42186659932 --jq '{id,run_attempt,event,head_sha,head_branch,conclusion,status,html_url}'
+{"conclusion":"success","event":"pull_request","head_branch":"cursor/rust-workspace-ci-91af","head_sha":"52e73bde7b0a236e723406ee60b643a515cbb68c","html_url":"https://github.com/clytie0x/robocup-home/actions/runs/42186659932","id":42186659932,"run_attempt":2,"status":"completed"}
+
+gh api repos/clytie0x/robocup-home/actions/runs/42193390300 --jq '{id,run_attempt,event,head_sha,head_branch,conclusion,status,html_url}'
+{"conclusion":"success","event":"push","head_branch":"main","head_sha":"58cfa9de29c033a0061dc7e654d84b20fb69e6f6","html_url":"https://github.com/clytie0x/robocup-home/actions/runs/42193390300","id":42193390300,"run_attempt":1,"status":"completed"}
+```
+
 ## Visibility instruction (2026-11-06)
+
+Historical refused attempt. It is not the current visibility. The current read is the section above.
 
 On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/robocup-home` be made public and that CI be rerun. That replaces the earlier private-only rule for this repository. It is not permission to publish any other repository, and it is not permission to change this visibility again without a new instruction.
 
@@ -218,7 +350,9 @@ annotation on .github:
 The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
 ```
 
-Privacy, read only:
+That billing failure is run `42185539820`. It is not the current CI result. The completed runs are in the visibility and M2 CI read above.
+
+Privacy read during M2, before the repository was public. It is not the current visibility.
 
 ```text
 gh api repos/clytie0x/robocup-home --jq '{private:.private,visibility:.visibility,default_branch:.default_branch}'
