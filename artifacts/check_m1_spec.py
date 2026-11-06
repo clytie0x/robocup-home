@@ -280,6 +280,18 @@ def admit_pdf(path, requested):
     return problems, not problems
 
 
+def tool_text(cmd):
+    completed = subprocess.run(
+        cmd,
+        text=True,
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return completed.stdout, completed.returncode == 0
+
+
 def check_pdf(path):
     problems = []
     data = path.read_bytes()
@@ -289,17 +301,22 @@ def check_pdf(path):
     if len(data) != EXPECTED_SIZE:
         problems.append(f"professor PDF size {len(data)}")
     if shutil.which("pdfinfo"):
-        info = subprocess.check_output(["pdfinfo", str(path)], text=True, errors="replace")
-        match = re.search(r"^Pages:\s+(\d+)$", info, re.M)
-        if not match or int(match.group(1)) != EXPECTED_PAGES:
-            problems.append("professor PDF page count is not 52")
-        if "2024-07-09" not in info and "Jul  9" not in info and "July 9" not in info:
-            problems.append("professor PDF creation date is not 2024-07-09")
+        info, ok = tool_text(["pdfinfo", str(path)])
+        if not ok:
+            problems.append("professor PDF pdfinfo failed")
+        else:
+            match = re.search(r"^Pages:\s+(\d+)$", info, re.M)
+            if not match or int(match.group(1)) != EXPECTED_PAGES:
+                problems.append("professor PDF page count is not 52")
+            if "2024-07-09" not in info and "Jul  9" not in info and "July 9" not in info:
+                problems.append("professor PDF creation date is not 2024-07-09")
     if shutil.which("pdftotext"):
-        text = subprocess.check_output(["pdftotext", "-layout", str(path), "-"], text=True, errors="replace")
-        if "3.1 Carry My Luggage" not in text or "1015" not in text:
+        text, ok = tool_text(["pdftotext", "-layout", str(path), "-"])
+        if not ok:
+            problems.append("professor PDF pdftotext failed")
+        elif "3.1 Carry My Luggage" not in text or "1015" not in text:
             problems.append("professor PDF text lost section 3.1 or total 1015")
-        if "5.1 Help Me Carry" in text:
+        elif "5.1 Help Me Carry" in text:
             problems.append("professor PDF unexpectedly contains the 2025.1 task title")
     return problems
 
@@ -497,6 +514,10 @@ def pdf_cli_failures():
             or "professor PDF size 9" not in proc.stdout
         ):
             failures.append(f"wrong PDF should fail closed: code={proc.returncode} out={proc.stdout!r}")
+        if shutil.which("pdfinfo") and "professor PDF pdfinfo failed" not in proc.stdout:
+            failures.append(f"wrong PDF should record pdfinfo failure: out={proc.stdout!r}")
+        if shutil.which("pdftotext") and "professor PDF pdftotext failed" not in proc.stdout:
+            failures.append(f"wrong PDF should record pdftotext failure: out={proc.stdout!r}")
     finally:
         wrong.unlink(missing_ok=True)
     directory = Path(os.path.join(os.environ.get("TMPDIR", "/tmp"), "robocup-home-pdf-dir"))

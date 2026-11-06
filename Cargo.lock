@@ -17,6 +17,7 @@ dependencies = [
  "perception",
  "sim_runtime",
  "task_3_1",
+ "task_3_2",
 ]
 
 [[package]]
@@ -63,4 +64,11 @@ dependencies = [
  "manipulation",
  "navigation",
  "perception",
+]
+
+[[package]]
+name = "task_3_2"
+version = "0.1.0"
+dependencies = [
+ "domain",
 ]

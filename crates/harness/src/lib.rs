@@ -30,6 +30,7 @@ use task_3_1::{Effect, Event, Outcome, Phase, Reject, Trip};
 
 mod drive;
 mod episode;
+mod gpsr;
 
 pub use drive::{Drive, NavEnd, step_drive};
 pub use episode::{EpisodeReport, Script, run};

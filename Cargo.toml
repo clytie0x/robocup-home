@@ -9,6 +9,7 @@ members = [
     "crates/perception",
     "crates/sim_runtime",
     "crates/task_3_1",
+    "crates/task_3_2",
 ]
 
 [workspace.package]
@@ -25,3 +26,4 @@ navigation = { path = "crates/navigation" }
 perception = { path = "crates/perception" }
 sim_runtime = { path = "crates/sim_runtime" }
 task_3_1 = { path = "crates/task_3_1" }
+task_3_2 = { path = "crates/task_3_2" }
