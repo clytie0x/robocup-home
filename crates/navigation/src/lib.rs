@@ -620,26 +620,23 @@ fn choose_step(from: Point, goal: Point, bodies: &[SeenBody], side: i8) -> Optio
     {
         return Some((direct, 0));
     }
-    let mut best: Option<(i128, usize, Point, i128)> = None;
-    let mut index = 0usize;
+    let mut best: Option<(i128, i32, i32, Point, i128)> = None;
     for disk in bodies {
         let limit = assume::ROBOT_RADIUS_MM.saturating_add(disk.radius_mm);
         for sign in [1, -1] {
-            index += 1;
             let Some(candidate) = tangent_step(from, disk.center, limit, sign) else {
                 continue;
             };
-            consider(from, goal, bodies, candidate, index, side, &mut best);
+            consider(from, goal, bodies, candidate, side, &mut best);
         }
     }
     for (cos, sin) in HEADINGS {
-        index += 1;
         let Some(candidate) = headed_step(from, goal, cos, sin) else {
             continue;
         };
-        consider(from, goal, bodies, candidate, index, side, &mut best);
+        consider(from, goal, bodies, candidate, side, &mut best);
     }
-    best.map(|(_, _, point, cross)| {
+    best.map(|(_, _, _, point, cross)| {
         let chosen = if side == 0 {
             sign_of(cross).unwrap_or(1)
         } else {
@@ -654,9 +651,8 @@ fn consider(
     goal: Point,
     bodies: &[SeenBody],
     candidate: Point,
-    index: usize,
     side: i8,
-    best: &mut Option<(i128, usize, Point, i128)>,
+    best: &mut Option<(i128, i32, i32, Point, i128)>,
 ) {
     if candidate == from || !segment_clear(from, candidate, bodies) {
         return;
@@ -670,11 +666,13 @@ fn consider(
         return;
     }
     let score = dist_sq(candidate, goal);
+    let x = candidate.x().get();
+    let y = candidate.y().get();
     let replace = best
-        .map(|(best_score, best_index, _, _)| (score, index) < (best_score, best_index))
+        .map(|(best_score, best_x, best_y, _, _)| (score, x, y) < (best_score, best_x, best_y))
         .unwrap_or(true);
     if replace {
-        *best = Some((score, index, candidate, cross));
+        *best = Some((score, x, y, candidate, cross));
     }
 }
 
@@ -1152,6 +1150,18 @@ mod tests {
         assert!(!within_reach(at(0, 0), bag, reach));
         assert!(!within_reach(robot, bag, 0));
         let wall = [body(0, 400, 80)];
+        let pair = [body(-100, 100, 30), body(100, 100, 30)];
+        let mut flipped = pair;
+        flipped.reverse();
+        assert_ne!(
+            pair.map(|disk| (disk.center.x().get(), disk.center.y().get())),
+            flipped.map(|disk| (disk.center.x().get(), disk.center.y().get()))
+        );
+        assert_eq!(
+            plan_approach(at(0, 0), bag, &pair, reach),
+            plan_approach(at(0, 0), bag, &flipped, reach),
+            "body order changed the step"
+        );
         let intent = plan_approach(at(0, 0), bag, &wall, reach);
         match intent {
             Intent::Move(to) => assert!(clear(at(0, 0), to, &wall)),

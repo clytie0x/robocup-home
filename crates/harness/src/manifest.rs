@@ -11,7 +11,7 @@ use navigation::assume::ARRIVE_MM;
 use sim_runtime::assume::INSIDE_X_MAX_MM;
 use task_3_1::LIMIT_MS;
 
-use crate::episode::{EpisodeReport, Probe, Script, execute_probe};
+use crate::episode::{EpisodeReport, Probe, Script, execute_probe, execute_probe_edges};
 
 fn near(a: (i32, i32), b: (i32, i32)) -> bool {
     within_reach(
@@ -295,6 +295,20 @@ fn line(row: &Row) -> String {
 mod tests {
     use super::*;
 
+    fn sorted<T: Clone + Ord>(items: &[T]) -> Vec<T> {
+        let mut copy = items.to_vec();
+        copy.sort();
+        copy
+    }
+
+    fn ids_of(people: &[(u32, i32, i32)]) -> String {
+        people
+            .iter()
+            .map(|person| person.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
     #[test]
     fn the_manifest_is_sixteen_and_prior_claims_stay_locked() {
         let slots = slots();
@@ -314,6 +328,23 @@ mod tests {
                 assert!(agrees(row), "prior claim moved: {}", line(row));
             }
         }
+        let hypotheses: Vec<_> = rows
+            .iter()
+            .filter(|row| row.basis == Basis::Hypothesis && row.expect != Expect::Record)
+            .map(|row| row.id)
+            .collect::<Vec<_>>();
+        assert_eq!(hypotheses, ["S06", "S13", "S14"]);
+        println!(
+            "HYPOTHESIS-NOT-GATED {}",
+            rows.iter()
+                .filter(|row| hypotheses.contains(&row.id))
+                .map(line)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+        let recorded = rows.iter().find(|row| row.id == "S15").unwrap();
+        assert_eq!(recorded.expect, Expect::Record);
+        println!("RECORD-NOT-A-CLAIM {}", line(recorded));
         assert!(rows.iter().any(|row| row.covers.contains("crowd 4")));
         assert!(rows.iter().any(|row| row.covers.contains("crowd 3")));
         assert_eq!(rows.iter().find(|row| row.id == "S01").unwrap().crowd, 4);
@@ -344,24 +375,85 @@ mod tests {
             );
         }
         assert_eq!(judge(&first), judge(&second));
-        let reversed = execute_probe(Probe {
-            reverse_obstacles: true,
+    }
+
+    #[test]
+    fn posted_list_order_differs_and_the_world_outcome_does_not() {
+        let (normal_report, normal) = execute_probe_edges(Probe::main(1));
+        let (permuted_report, permuted) = execute_probe_edges(Probe {
+            permute_lists: true,
             ..Probe::main(1)
         });
-        println!(
-            "MORPH truth_normal={} truth_reversed={} trace_same={}",
-            judge(&first),
-            judge(&reversed),
-            first.trace.len() == reversed.trace.len()
-                && first
-                    .trace
-                    .iter()
-                    .zip(reversed.trace.iter())
-                    .all(|(left, right)| left.ms == right.ms
-                        && left.robot_x == right.robot_x
-                        && left.robot_y == right.robot_y)
+        let left = normal.iter().find(|edge| edge.bag_ids.len() >= 2).unwrap();
+        let right = permuted
+            .iter()
+            .find(|edge| edge.bag_ids.len() >= 2)
+            .unwrap();
+        assert_ne!(
+            left.bag_ids, right.bag_ids,
+            "bag order was erased before the posted view"
         );
-        assert_eq!(judge(&first), judge(&reversed));
+        assert_eq!(sorted(&left.bags), sorted(&right.bags));
+        assert_eq!(left.gesture, right.gesture);
+        assert_eq!(left.aim, right.aim);
+        let left_bodies = normal.iter().find(|edge| edge.bodies.len() >= 2).unwrap();
+        let right_bodies = permuted.iter().find(|edge| edge.bodies.len() >= 2).unwrap();
+        assert_ne!(
+            left_bodies.bodies, right_bodies.bodies,
+            "body order was erased before the posted view"
+        );
+        assert_eq!(sorted(&left_bodies.bodies), sorted(&right_bodies.bodies));
+        if let (Some(left_people), Some(right_people)) = (
+            normal.iter().find(|edge| edge.people.len() >= 2),
+            permuted.iter().find(|edge| edge.people.len() >= 2),
+        ) {
+            assert_ne!(left_people.people, right_people.people);
+            assert_eq!(sorted(&left_people.people), sorted(&right_people.people));
+            println!(
+                "MORPH people {} vs {}",
+                ids_of(&left_people.people),
+                ids_of(&right_people.people)
+            );
+        }
+        println!(
+            "MORPH bags {:?} vs {:?} bodies {:?} vs {:?}",
+            left.bag_ids, right.bag_ids, left_bodies.bodies, right_bodies.bodies
+        );
+        println!(
+            "MORPH truth {} vs {} pointed {} vs {} trace {} vs {}",
+            judge(&normal_report),
+            judge(&permuted_report),
+            normal_report.pointed,
+            permuted_report.pointed,
+            normal_report.trace.len(),
+            permuted_report.trace.len()
+        );
+        assert_eq!(normal_report.pointed, permuted_report.pointed);
+        assert_eq!(judge(&normal_report), judge(&permuted_report));
+        assert_eq!(normal_report.custody, permuted_report.custody);
+        assert_eq!(normal_report.phase, permuted_report.phase);
+        assert_eq!(normal_report.clock_ms, permuted_report.clock_ms);
+        assert_eq!(normal_report.trace.len(), permuted_report.trace.len());
+        for (left_sample, right_sample) in
+            normal_report.trace.iter().zip(permuted_report.trace.iter())
+        {
+            assert_eq!(
+                (
+                    left_sample.ms,
+                    left_sample.robot_x,
+                    left_sample.robot_y,
+                    left_sample.operator_x,
+                    left_sample.operator_y
+                ),
+                (
+                    right_sample.ms,
+                    right_sample.robot_x,
+                    right_sample.robot_y,
+                    right_sample.operator_x,
+                    right_sample.operator_y
+                )
+            );
+        }
     }
 
     #[test]

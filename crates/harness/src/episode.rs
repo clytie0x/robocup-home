@@ -532,6 +532,7 @@ struct Mail {
     dy: i32,
     miss_one: bool,
     reverse_once: bool,
+    permute_lists: bool,
     held: Vec<Held>,
     history: SampleHistory,
     log: Vec<DeliveryNote>,
@@ -545,6 +546,7 @@ impl Mail {
             dy: 0,
             miss_one: false,
             reverse_once: false,
+            permute_lists: false,
             held: Vec::new(),
             history: SampleHistory::new(),
             log: Vec::new(),
@@ -605,6 +607,8 @@ struct Episode {
     mail: Mail,
     last_cue: Cue,
     departing: bool,
+    #[cfg(test)]
+    posted_orders: Vec<PostedEdge>,
 }
 
 pub fn run(script: Script) -> EpisodeReport {
@@ -678,6 +682,8 @@ impl Episode {
             mail: Mail::zero(),
             last_cue: Cue::None,
             departing: false,
+            #[cfg(test)]
+            posted_orders: Vec::new(),
         }
     }
 
@@ -1429,7 +1435,14 @@ impl Episode {
         if self.mail.dx != 0 || self.mail.dy != 0 {
             view = shift_view(&view, self.mail.dx, self.mail.dy).expect("profile shift");
         }
+        if self.mail.permute_lists {
+            view.people.reverse();
+            view.bodies.reverse();
+            view.bags.reverse();
+        }
         let aim = self.world.aim_at(self.pointed).ok();
+        #[cfg(test)]
+        self.posted_orders.push(PostedEdge::from_view(&view, aim));
         self.mail.held.push(Held { view, aim });
     }
 
@@ -2427,6 +2440,7 @@ pub(crate) struct Probe {
     pub reach_fail: bool,
     pub raw_layout: bool,
     pub reverse_obstacles: bool,
+    pub permute_lists: bool,
 }
 
 #[cfg(test)]
@@ -2454,6 +2468,7 @@ impl Probe {
             reach_fail: false,
             raw_layout: false,
             reverse_obstacles: false,
+            permute_lists: false,
         }
     }
 }
@@ -2472,6 +2487,7 @@ pub(crate) fn execute_probe(probe: Probe) -> EpisodeReport {
     episode.opt.reach_fail = probe.reach_fail;
     episode.opt.raw_layout = probe.raw_layout;
     episode.opt.reverse_obstacles = probe.reverse_obstacles;
+    episode.mail.permute_lists = probe.permute_lists;
     if probe.loss_stay {
         episode.opt.loss = true;
     }
@@ -2480,6 +2496,82 @@ pub(crate) fn execute_probe(probe: Probe) -> EpisodeReport {
     }
     episode.execute();
     episode.report()
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PostedEdge {
+    pub bag_ids: Vec<u32>,
+    pub bags: Vec<(u32, i32, i32)>,
+    pub bodies: Vec<(i32, i32, i32)>,
+    pub people: Vec<(u32, i32, i32)>,
+    pub gesture: bool,
+    pub aim: Option<(i32, i32, i32, i32)>,
+}
+
+#[cfg(test)]
+impl PostedEdge {
+    fn from_view(view: &navigation::SensorView, aim: Option<AimSample>) -> Self {
+        Self {
+            bag_ids: view.bags.iter().map(|bag| bag.id.get()).collect(),
+            bags: view
+                .bags
+                .iter()
+                .map(|bag| {
+                    (
+                        bag.id.get(),
+                        bag.pose.point().x().get(),
+                        bag.pose.point().y().get(),
+                    )
+                })
+                .collect(),
+            bodies: view
+                .bodies
+                .iter()
+                .map(|body| (body.center.x().get(), body.center.y().get(), body.radius_mm))
+                .collect(),
+            people: view
+                .people
+                .iter()
+                .map(|person| (person.id.get(), person.at.x().get(), person.at.y().get()))
+                .collect(),
+            gesture: view.gesture,
+            aim: aim.map(|sample| {
+                (
+                    sample.origin().x().get(),
+                    sample.origin().y().get(),
+                    sample.dx(),
+                    sample.dy(),
+                )
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn execute_probe_edges(probe: Probe) -> (EpisodeReport, Vec<PostedEdge>) {
+    let mut episode = Episode::prepare(options(probe.script));
+    episode.mail.delay_ms = probe.delay_ms;
+    episode.mail.miss_one = probe.miss_one;
+    episode.mail.reverse_once = probe.reverse_once;
+    episode.mail.dx = probe.dx;
+    episode.mail.dy = probe.dy;
+    episode.mail.permute_lists = probe.permute_lists;
+    episode.opt.loss_stay = probe.loss_stay;
+    episode.opt.block_approach = probe.block_approach;
+    episode.opt.hide_block = probe.hide_block;
+    episode.opt.reach_fail = probe.reach_fail;
+    episode.opt.raw_layout = probe.raw_layout;
+    episode.opt.reverse_obstacles = probe.reverse_obstacles;
+    if probe.loss_stay {
+        episode.opt.loss = true;
+    }
+    if probe.block_approach {
+        episode.opt.far_bag = true;
+    }
+    episode.execute();
+    let orders = episode.posted_orders.clone();
+    (episode.report(), orders)
 }
 
 #[cfg(test)]
