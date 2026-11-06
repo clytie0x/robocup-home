@@ -221,16 +221,14 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
             "#e07a3d",
             &format!("posted sensor {sx},{sy}"),
         );
+    } else if mark.fresh {
         text(
             body,
             x + 8,
-            y + 108,
+            y + 90,
             12,
-            "#111",
-            &format!(
-                "truth operator {},{}  custody {}",
-                mark.truth_x, mark.truth_y, mark.custody
-            ),
+            "#666",
+            &format!("{}. No posted operator.", mark.kind),
         );
     } else {
         text(
@@ -241,18 +239,18 @@ fn frame(body: &mut String, mark: &Mark, x: i32, y: i32) {
             "#666",
             &format!("{}. Not a fresh observation.", mark.kind),
         );
-        text(
-            body,
-            x + 8,
-            y + 108,
-            12,
-            "#111",
-            &format!(
-                "truth operator {},{}  custody {}",
-                mark.truth_x, mark.truth_y, mark.custody
-            ),
-        );
     }
+    text(
+        body,
+        x + 8,
+        y + 108,
+        12,
+        "#111",
+        &format!(
+            "truth operator {},{}  custody {}",
+            mark.truth_x, mark.truth_y, mark.custody
+        ),
+    );
     body.push_str("</g>\n");
 }
 
@@ -450,6 +448,94 @@ mod tests {
         assert!(svg.contains("data-after=\"39,195\""));
         assert!(svg.contains("stop reason: none"));
         assert!(svg.contains("capture absent") || svg.contains("capture "));
+    }
+
+    #[test]
+    fn a_ready_loss_without_an_operator_stays_fresh() {
+        let picture = crate::episode::replay_picture(ReplayCase::Loss);
+        let svg = render(&picture);
+        for decision in [5_400_u64, 7_400] {
+            let mark = picture
+                .marks
+                .iter()
+                .find(|mark| mark.decision_ms == decision)
+                .unwrap();
+            assert_eq!(mark.kind, "ready");
+            assert!(mark.fresh);
+            assert_eq!(mark.captured_ms, Some(decision));
+            assert_eq!(mark.delivered_ms, decision);
+            assert_eq!(mark.age_ms, Some(0));
+            assert_eq!(mark.action, "lost");
+            assert_eq!(mark.end_ms, Some(decision + 200));
+            assert_eq!(
+                (mark.before_x, mark.before_y, mark.after_x, mark.after_y),
+                (Some(-56), Some(370), Some(-56), Some(370))
+            );
+            assert!(mark.sensed_x.is_none());
+            assert!(mark.sensed_y.is_none());
+            let group = frame_group(&svg, decision);
+            assert!(!group.contains("Not a fresh observation."), "{group}");
+            assert!(group.contains("ready. No posted operator."));
+            assert!(group.contains("data-fresh=\"1\""));
+            assert!(!group.contains("class=\"sensor\""));
+            assert!(!svg_has_sensor_at(&svg, decision));
+        }
+        for kind in ["missing", "stale", "duplicate", "reversed", "future"] {
+            let drawn = render(&withheld(kind));
+            assert!(drawn.contains("Not a fresh observation."), "{kind}");
+            assert!(drawn.contains(&format!("data-kind=\"{kind}\"")));
+            assert!(drawn.contains("data-fresh=\"0\""));
+            assert!(!drawn.contains("class=\"sensor\""), "{kind}");
+        }
+    }
+
+    fn frame_group(svg: &str, decision_ms: u64) -> String {
+        let key = format!("data-decision=\"{decision_ms}\"");
+        svg.split("<g ")
+            .find(|group| group.contains(&key) && group.contains("data-kind="))
+            .unwrap()
+            .split("</g>")
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    fn svg_has_sensor_at(svg: &str, decision_ms: u64) -> bool {
+        let key = format!("data-decision=\"{decision_ms}\"");
+        svg.split("<circle ").skip(1).any(|circle| {
+            let tag = circle.split("/>").next().unwrap_or("");
+            tag.contains("class=\"sensor\"") && tag.contains(&key)
+        })
+    }
+
+    fn withheld(kind: &'static str) -> Picture {
+        Picture {
+            seed: 1,
+            profile: kind,
+            phase: "following",
+            fail: "-",
+            custody: "gripper",
+            truth: vec![(1_000, 0, 0, 10, 20)],
+            marks: vec![Mark {
+                captured_ms: Some(0),
+                delivered_ms: 0,
+                decision_ms: 1_001,
+                age_ms: Some(1_001),
+                kind,
+                fresh: false,
+                sensed_x: Some(9),
+                sensed_y: Some(9),
+                truth_x: 10,
+                truth_y: 20,
+                end_ms: Some(1_201),
+                action: "need-fresh",
+                before_x: Some(0),
+                before_y: Some(0),
+                after_x: Some(0),
+                after_y: Some(0),
+                custody: "gripper",
+            }],
+        }
     }
 
     #[test]

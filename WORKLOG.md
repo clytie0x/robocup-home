@@ -1,5 +1,25 @@
 # WORKLOG
 
+## R1 through R5 interrogate fix (2026-11-07)
+
+The interrogate covered the approved R1 through R5 plan. The Rust candidate was `08e85403f78ccbcdb025f62d110bdebfb68c528c`. The intent stays a bounded laptop simulation of Carry My Luggage in two dimensions: posted sensing with real delivery boundaries, causal world events, frozen scenarios judged apart from the script, and an SVG drawn from the recorded log. It is not a hardware result, a field score, or complete acceptance. Section 3.1 stays 45 `pass` and 11 `not-run`. No hardware row is closed. GPSR is unchanged. Public 2024.2 and public 2025.1 are not the baseline. The professor PDF remains SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`.
+
+Seat A filed 0 and dropped 13. Seat B filed 1 and dropped 15. Seat A first dropped the loss caption. The coordinator overruled that drop: a ready sample is a fresh observation even when the operator is outside the sensor, so the caption was an honest-meaning defect. The two seat counts overlap on that one caption. They merge to one root cause. Speculation and the exclusions already named in the plan stay dropped. Cross-judge, pick, and graft were not used.
+
+The coordinator reproduced it on a detached worktree of `08e85403` with the scratch probe applied and not committed. Command: `cargo test -p harness --lib seat_b_reads_the_candidate --offline -- --nocapture`. Exit 101. The log had exactly two `VIOLATION` lines, both `kind ready`, `fresh 1`, capture equal to the decision, age 0, action `lost`, base stationary at `(-56, 370)`, caption `Not a fresh observation.` Decisions 5400 and 7400.
+
+The permanent test `a_ready_loss_without_an_operator_stays_fresh` then failed the same way on the primary tree, exit 101, before the caption change. After the change it passes. A ready sample with no posted operator says `ready. No posted operator.` The orange circle stays omitted. Missing, stale, duplicate, reversed, and future samples still say they are not a fresh observation. Kind, fresh, age, action, and the before and after poses are unchanged. The loss SVG differs in those two caption lines only. Success and delay 200 are byte-identical to the previous exemplars. A second render of each picture matches the first. The same scratch probe, pointed at the fixed renderer and still not committed, exited 0 with no `VIOLATION` line.
+
+Hash algorithm remains SHA-256 from `sha256sum`.
+
+| file | bytes | sha256 |
+| --- | --- | --- |
+| `/opt/cursor/artifacts/r5-success-seed1.svg` | 27448 | `f49f467a29421b35dd31b2f047974ca87f7631151246aea5bfd68a1ca15abd0e` |
+| `/opt/cursor/artifacts/r5-loss-seed1.svg` | 5567 | `e812a390b97acfe0c855004fafb670150bb54ca71ec52d9a60e136e37f277a92` |
+| `/opt/cursor/artifacts/r5-delay200-seed1.svg` | 28746 | `2f4a0709561451491cc8b8a06a248c249e07dc925d28083e01e756f5eb28a4ea` |
+
+This run's library count is 195: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Format, clippy, and `cargo doc` passed. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. This entry does not merge. Independent review of the corrected head, and visual QA of the three pictures, are still required. This entry does not say the plan is complete.
+
 ## R1 through R5 interrogate plan (2026-11-07)
 
 Documentation only. No code change. Pull request 25 stays open and is not merged. The code candidate is `08e85403f78ccbcdb025f62d110bdebfb68c528c`. Independent review of that head was safe: 194 library tests and 7 doctests, debug and release. CI run `42284519561` succeeded on that SHA. This entry does not start a fix and does not say the plan is complete.
