@@ -1,5 +1,80 @@
 # WORKLOG
 
+## M9.3 missing-PDF flag (2026-11-06)
+
+Scope. One verified finding from the M9.3 audit, rerun on `298104e381a4fc101394446bd4e3e0fa581a3cb2`. The rest of that audit is still in progress. This does not close M9.3, does not merge, and does not start M10. The acceptance table stays 45 `pass` and 11 `not-run`. No episode, route, or custody code changed.
+
+Finding. `env PROFESSOR_PDF=/tmp/m93-audit/verifier/no-such.pdf python3 artifacts/check_m1_spec.py` printed `ok rows=56 pdf=True` and exited 0. The path did not exist, and the fallback upload `at-home-robocup-my-2025-1_763a.pdf` did not exist either. The same command on the M8 checker at `b446ae9b59cd9543c1c321dcbd461f2dc1586de9` did the same. The checker file was unchanged. The new README said `pdf=True` only for the exact file. Unset `PROFESSOR_PDF` printed `pdf=False` and exited 0. The exact file printed `pdf=True` and exited 0. A 9-byte file exited 1 with a hash mismatch and `professor PDF size 9`.
+
+Cause. `main` printed `pdf={professor_pdf_path() is not None}`. A set path is not `None` even when the file is absent, so the flag was true before any hash. `collect` hashed a path only when it existed, and it reported `professor PDF missing` only when its `pdf` argument was passed. The CLI does not pass that argument, so a missing requested file produced no problem and a true flag.
+
+Red. `python3 artifacts/check_m1_spec.py --self-test` exited 1. The missing-path case returned `code=0 out='ok rows=56 pdf=True\n'`. A directory raised `IsADirectoryError`. An unreadable file raised `PermissionError`.
+
+Green. A requested path is admitted only after it is opened. A missing requested path prints `professor PDF missing` and exits 1. A directory prints `professor PDF is not a file` and exits 1. An unreadable file prints `professor PDF unreadable` and exits 1. `pdf=True` is printed only when the opened bytes match the pinned hash. Unset `PROFESSOR_PDF` still prints `pdf=False` and exits 0 when the fallback file is absent. A set path does not use that fallback. An empty value stays unset. A fallback that is not a file stays unset. A fallback file that is present is hashed, and a wrong file does not verify. The self-test covers those cases, including the exact attached PDF when a file with hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` is visible. CI still does not require the PDF.
+
+```text
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+unset_exit:0
+
+env PROFESSOR_PDF=/tmp/m93-audit/verifier/no-such.pdf python3 artifacts/check_m1_spec.py
+professor PDF missing
+missing_exit:1
+
+PROFESSOR_PDF=<attached copy, hash da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+exact_exit:0
+
+PROFESSOR_PDF=<9-byte file> python3 artifacts/check_m1_spec.py
+professor PDF hash 55e6967dae43099b5d6822df808b06e30454a2be93475a3d82ba612d8dd3bf29
+professor PDF size 9
+wrong_exit:1
+
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 45, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+```
+
 ## M9 simplify and verify (2026-11-06)
 
 Scope. Issue 18, parts M9.1 and M9.2 only. Branch `cursor/m9-simplify-verify-2b9e` from merge `b446ae9b59cd9543c1c321dcbd461f2dc1586de9`. One writer. Laptop simulation. No hardware, deploy, registration, contact, spending, new dependency, or deletion. M9.3 was not run and is not claimed. M10 was not started. This does not say that no defect remains, and it is not full acceptance.
