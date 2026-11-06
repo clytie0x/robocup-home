@@ -1,5 +1,17 @@
 # WORKLOG
 
+## R2 review fix, live base as the motion origin (2026-11-07)
+
+Reviewer `bc-0faa` on `e0b7e9c` closed the three earlier blockers and found one new one. A delayed sample was still accepted, then the step was planned from the captured base. At seed 1, delay 200 ms, clock 1600, the captured base was `(0, 200)`, the live base was `(-102, 171)`, and the planned target was `(-89, 378)`. The live distance squared was 43018, above `200² = 40000`, so the episode stopped with `NotACommand`. The same people and empty body list planned from the live base give `(-169, 359)`, distance squared 39833. Delay 1000 ms stopped at clock 6400: captured base `(153, 358)`, live base `(244, 289)`, target `(294, 498)`, distance squared 46181. From the live base the step is `(367, 446)`, distance squared 39778. One missed delivery stopped at the same 1600 ms step.
+
+The motion origin is now the current base. People, bodies, bags, the pointing ray, and the cue stay on the posted sample. The controller does not read a fresh exteroceptive list or the car for that step. A step longer than 200 mm asks for a fresh sample, advances the clock, and does not keep the sample.
+
+Red. `cargo test -p harness --lib a_delayed_sample_steps_from_the_current_base --offline` exited 101: `left Err(NotACommand) right Ok(Moved { to: (-169, 359) })`. The episode profiles stopped with fail `command`.
+
+Green. That step moves to `(-169, 359)` and the 1000 ms geometry moves to `(367, 446)`. Seed 1 after the change, measured, not required in advance: delay 200 ms completes, phase `complete`, clock 15200, custody `operator`, robot `(7997, -488)`, operator `(8000, -1500)`, 77 trace lines. Delay 1000 ms completes at clock 21000, robot `(7999, -628)`, 106 lines. One missed delivery completes at clock 15200, robot `(7997, -488)`, 77 lines. Shift `+8, -8` mm completes at clock 14800, robot `(8005, -495)`, operator still `(8000, -1500)`, 75 lines. The zero profile still matches the frozen 75-line trace. There was no remaining task-level failure on these four runs.
+
+This run's library count is 185: domain 8, harness 63, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757.
+
 ## R2 review fixes, decision age and episode delivery (2026-11-07)
 
 Reviewer `bc-0faa` on `fc784b9` found three blockers. The library count 179 and CI were green and did not catch them.

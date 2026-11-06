@@ -22,6 +22,8 @@ Exit. Hold a sensor history fixed and swap the true car position. Controller act
 2. Delays are 0 ms, 200 ms, and 1000 ms. Cases include one missing sample, a stale sample, and a reversed sample. Stop and request-fresh behavior stays bounded.
 3. One bounded deterministic positional perturbation profile is explicitly synthetic and unmeasured. The zero profile is the control.
 
+The current base pose is proprioception. Follow, approach, and accompany use that pose as the motion origin. The posted sample still supplies the people, bodies, bags, pointing ray, and cue. The controller does not replace those with a fresh truth list or the car. A planned step longer than the base can take requests a fresh sample, advances the authoritative clock, and does not keep that sample.
+
 Exit. The zero-profile trace matches the baseline. A reversed sample is rejected atomically and does not change pose or custody. Missing data does not reveal truth. The episode clock enforces 5 minutes independently of stale sample stamps.
 
 ## R3 Causal motion and manipulation
@@ -59,6 +61,7 @@ These limits stay after R1. They are not field acceptance.
 - The model has no occlusion, no pixels, and no contact-force calibration.
 - The operator route is scripted by the scenario. The scenario may use the car. The controller does not.
 - The positional profile is a synthetic unmeasured shift of 8 mm on sensed people, bodies, and bags. The zero shift is the control. It is not a calibration. The robot base pose in the sample is not shifted.
+- The motion origin is the live base. A delayed sample does not carry its captured base pose into the step. Exteroceptive points stay on that sample.
 - Component tests may still leave the world clock and the trip stamp apart. The episode scorer requires them to match.
 - `CML-BAG-DEF`, the three hardware rows, and the seven open scoring rows stay `not-run`. The sheet does not award a run total.
 - A collision does not invent a drop.

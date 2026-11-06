@@ -2426,6 +2426,14 @@ mod tests {
         assert_eq!(delayed_report.clock_ms, delayed.world.now_ms());
         assert!(delayed_report.clock_ms > 200);
         assert!(delayed_report.clock_ms <= LIMIT_MS);
+        assert_ne!(delayed_report.fail, Some("command"));
+        assert!(delayed_report.main_passed);
+        assert_eq!(delayed_report.phase, "complete");
+        assert_eq!(delayed_report.custody, "operator");
+        assert_eq!(delayed_report.clock_ms, 15_200);
+        assert_eq!(delayed_report.robot, (7_997, -488));
+        assert_eq!(delayed_report.operator, (8_000, -1_500));
+        assert_eq!(delayed_report.trace.len(), 77);
 
         let mut slow = Episode::prepare(options(Script::Main {
             seed: 1,
@@ -2448,6 +2456,14 @@ mod tests {
         assert_eq!(slow_report.clock_ms, slow.world.now_ms());
         assert!(slow_report.clock_ms > 1_000);
         assert!(slow_report.clock_ms <= LIMIT_MS);
+        assert_ne!(slow_report.fail, Some("command"));
+        assert!(slow_report.main_passed);
+        assert_eq!(slow_report.phase, "complete");
+        assert_eq!(slow_report.custody, "operator");
+        assert_eq!(slow_report.clock_ms, 21_000);
+        assert_eq!(slow_report.robot, (7_999, -628));
+        assert_eq!(slow_report.operator, (8_000, -1_500));
+        assert_eq!(slow_report.trace.len(), 106);
 
         let mut dropped = Episode::prepare(options(Script::Main {
             seed: 1,
@@ -2475,6 +2491,14 @@ mod tests {
         assert_eq!(dropped_report.clock_ms, dropped.world.now_ms());
         assert!(dropped.world.now_ms() > 0);
         assert!(dropped_report.clock_ms <= LIMIT_MS);
+        assert_ne!(dropped_report.fail, Some("command"));
+        assert!(dropped_report.main_passed);
+        assert_eq!(dropped_report.phase, "complete");
+        assert_eq!(dropped_report.custody, "operator");
+        assert_eq!(dropped_report.clock_ms, 15_200);
+        assert_eq!(dropped_report.robot, (7_997, -488));
+        assert_eq!(dropped_report.operator, (8_000, -1_500));
+        assert_eq!(dropped_report.trace.len(), 77);
 
         let mut shifted = Episode::prepare(options(Script::Main {
             seed: 1,
@@ -2495,7 +2519,14 @@ mod tests {
         assert_eq!(shift.sensed_y.unwrap() - shift.truth_y, -8);
         let shift_report = shifted.report();
         assert_eq!(shift_report.clock_ms, shifted.world.now_ms());
-        assert!(shift_report.clock_ms <= LIMIT_MS);
+        assert!(shift_report.main_passed);
+        assert_eq!(shift_report.phase, "complete");
+        assert_eq!(shift_report.custody, "operator");
+        assert_eq!(shift_report.clock_ms, 14_800);
+        assert_eq!(shift_report.robot, (8_005, -495));
+        assert_eq!(shift_report.operator, (8_000, -1_500));
+        assert_eq!(shift_report.trace.len(), 75);
+        assert_eq!(shift_report.fail, None);
     }
 
     #[test]
