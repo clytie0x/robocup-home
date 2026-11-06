@@ -50,10 +50,13 @@ pub mod assume {
 
     /// Inclusive planar reach from the robot base, in millimeters.
     ///
-    /// The fixture robot is at the origin and the operator is 1000 mm in front.
-    /// A bag at the printed 2 m from that operator is still under 2500 mm from
-    /// the base, so both fixture bags can be picked without moving the base.
-    /// Moving the base would be navigation. This is not an arm length.
+    /// This covers the seeded bags. They sit on the horizontal through the
+    /// operator at `(0, 1000)`, with `|x|` from 400 through 2000, and those
+    /// points are inside 2500 mm of the robot at the origin. It does not cover
+    /// every bag inside the printed 2 m of the operator. A bag at `(0, 3000)`
+    /// is 2000 mm from that operator and 3000 mm from the robot, so it is
+    /// outside this disk. Picking it means moving the base, which is later
+    /// navigation. This is not an arm length.
     pub const REACH_MM: i32 = 2500;
 
     /// A dropped or held bag is recorded at the robot base. There is no gripper frame.

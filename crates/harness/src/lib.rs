@@ -12,6 +12,11 @@
 //! [`hri::MockReady`]. It does not follow and it does not move the base.
 //! [`execute_handoff`] does not invent arrival. A caller that already applied
 //! `Event::Arrived` has supplied a fixture event, not a navigation result.
+//!
+//! The world clock and the trip stamp are separate counts. Neither is a wall
+//! clock. The five-minute check reads the trip stamp. A world time of 400000 ms
+//! does not by itself make a pick at trip stamp 10 late. Joining the two
+//! clocks is later navigation and end-to-end work.
 
 use domain::{Bag, Custody, Id, Point, World};
 use hri::{MockReady, MockReport};
@@ -1411,5 +1416,39 @@ mod tests {
             world.observe().robot.pose.point(),
             Point::new(Mm::new(0), Mm::new(0))
         );
+    }
+
+    #[test]
+    fn a_legal_two_meter_placement_behind_the_operator_is_outside_the_seeded_reach() {
+        let (mut world, mut trip, bag, _) = named(4, 0);
+        let robot = world.observe().robot.pose.point();
+        let operator = world.observe().operator.pose.point();
+        let at = Point::new(Mm::new(0), Mm::new(3000));
+        assert_eq!(robot, Point::new(Mm::new(0), Mm::new(0)));
+        assert_eq!(operator, Point::new(Mm::new(0), Mm::new(1000)));
+        let from_operator = {
+            let dy = i128::from(at.y().get()) - i128::from(operator.y().get());
+            dy * dy
+        };
+        let from_robot = {
+            let dy = i128::from(at.y().get()) - i128::from(robot.y().get());
+            dy * dy
+        };
+        assert_eq!(from_operator, i128::from(2000) * i128::from(2000));
+        assert_eq!(from_robot, i128::from(3000) * i128::from(3000));
+        assert!(from_robot > i128::from(manipulation::assume::REACH_MM).pow(2));
+        world.place_free(bag, at).unwrap();
+        let placed = (mark(&world), trip);
+        assert_eq!(held_copy(&world, bag).pose.point(), at);
+        assert_eq!(held_copy(&world, bag).custody, Custody::Free);
+        assert_eq!(
+            execute_pick(&mut world, &mut trip, 5, Effect::Pick { bag }),
+            Err(FeedError::Arm(GripError::OutOfReach))
+        );
+        assert_eq!((mark(&world), trip), placed);
+        assert_eq!(trip.phase(), Phase::Picking);
+        assert_eq!(trip.carried(), None);
+        assert_eq!(world.carried(), None);
+        assert_eq!(world.observe().robot.pose.point(), robot);
     }
 }

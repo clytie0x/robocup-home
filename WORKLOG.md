@@ -1,5 +1,61 @@
 # WORKLOG
 
+## M6 review wording (2026-11-06)
+
+Scope. Pull request 13, reviewed head `1009b66909483cbabe8b566065d3e074ea73ce47`. One factual sentence. No reach change, no clock rewrite, no algorithm change. M7 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
+
+Independent read-only review of that head reported no verified production blocker. Its full checks were 112 library tests and 5 doctests, debug and release, spec `pdf=True`, and CI run `42211202059` success: https://github.com/clytie0x/robocup-home/actions/runs/42211202059. It also reported a reach reference of 20000 points, 20000 trips of 40 steps, world custody, and timeout and fault atomicity, and those probes held. This follow-up did not repeat that probe. The review does not say that no defect remains.
+
+The sentence in `manipulation` and in the M6 decision said a bag at the printed 2 m from the operator is inside the 2500 mm disk. That is true for the seeded horizontal placements. It is not true for the whole printed disk. The operator is at `(0, 1000)` and a bag at `(0, 3000)` is 2000 mm from the operator and 3000 mm from the robot at the origin. `decide` and `execute_pick` already return out of reach and leave the world unchanged. `REACH_MM` stays 2500. It is not a rulebook length. Reaching the rest of that disk means moving the base in M7.
+
+The same review noted that the world clock and the trip stamp can differ. A world time of 400000 ms and a pick at trip stamp 10 is valid here, because the deadline reads the trip stamp. The clocks stay separate. They are not a wall clock. Joining them is M7 and M8 work.
+
+`a_legal_two_meter_placement_behind_the_operator_is_outside_the_seeded_reach` passed on the existing decision before the wording edit. No earlier test used operator `(0, 1000)` and bag `(0, 3000)`.
+
+```text
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 7, harness 21, hri 2, manipulation 8, navigation 0, perception 20, sim_runtime 25, task_3_1 30
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
 ## M6 simulated gripper (2026-11-06)
 
 Scope. Issue 12. One writer. Branch `cursor/m6-sim-arm-37d5` from `c70a7b3b5fefab82f592671b7dbd145377ce2ea0`. A manipulation decision and a simulated single gripper for pick, carry, drop, and handoff, wired through the existing trip. No motion planner, camera, navigation, optional return, scorer, hardware, deploy, registration, contact, or spending. M7 and M8 were not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. Every acceptance row stays `not-run`. The professor file remains the baseline: `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2025.1 is not the baseline. The raw PDF was not committed.
@@ -18,7 +74,9 @@ Reviewed `ae255f82c4f58650ad999c4b36397ee42f482bb6`, which is an ancestor of the
 
 The PDF says the robot picks up the pointed bag, tells the operator it is ready, and the operator takes the bag back at the car. It states no arm length, grasp pose, drop point, or gripper count. Those numbers below are assumptions.
 
-`REACH_MM` is 2500. The fixture robot stays at `(0, 0)` and the operator at `(0, 1000)`, so a bag at the printed 2 m from the operator is still inside that disk. The base is not moved. Moving it would be navigation. A held bag and a dropped bag are recorded at the robot base (`SITE` = `robot-base`). There is no gripper frame and no contact model. After handoff the bag remains in the world at the operator pose with operator custody. It is not deleted and it is not free.
+`REACH_MM` is 2500. It covers the seeded bags, which sit on the horizontal through the operator at `(0, 1000)` with `|x|` from 400 through 2000. It does not cover every bag inside the printed 2 m of that operator. A bag at `(0, 3000)` is 2000 mm from the operator and 3000 mm from the robot at `(0, 0)`, so it is outside this disk. Picking that placement means moving the base, which is M7 navigation. The base is not moved here. A held bag and a dropped bag are recorded at the robot base (`SITE` = `robot-base`). There is no gripper frame and no contact model. After handoff the bag remains in the world at the operator pose with operator custody. It is not deleted and it is not free.
+
+The world clock and the trip stamp are separate counts. Neither is a wall clock. The five-minute check uses the trip stamp. A world time of 400000 ms does not make a pick at trip stamp 10 late. Coordinating the clocks is M7 and M8 work. This milestone does not rewrite either clock.
 
 Custody is `Free`, `Gripper`, or `Operator`. At most one bag is `Gripper`, and that id is `carried`. A refusal does not change custody, pose, the trace, or the trip, except a late stamp, which stores `TimeUp` and does not apply the payload. An injected grasp or handoff fault is a flag on the world. It is checked after the geometric and role refusals, and it does not move the bag.
 
