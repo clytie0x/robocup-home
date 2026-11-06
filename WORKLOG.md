@@ -17,10 +17,10 @@ python3 artifacts/check_m1_spec.py --self-test
 self-test ok
 
 python3 artifacts/check_m1_spec.py
-ok rows=53 pdf=True
+ok rows=56 pdf=True
 ```
 
-The self-test fails a total rewritten to 1016, a `result` cell set to `pass`, the number 1115 inserted into the specification, and an open row whose "cannot pass" sentence is removed. The attached PDF hash, size, page count, and section 3.1 text were checked because the file was present. fmt, build, clippy, test, and simulation were not run. No CI result exists to call green. No behavioral task test has passed.
+The self-test fails a total rewritten to 1016, a `result` cell set to `pass`, the number 1115 inserted into the specification, an open row whose "cannot pass" sentence is removed, and a fixed obstacle order. The attached PDF hash, size, page count, and section 3.1 text were checked because the file was present. fmt, build, clippy, test, and simulation were not run. No CI result exists to call green. No behavioral task test has passed.
 
 ## M1 status (2026-11-06, superseded by the correction above)
 

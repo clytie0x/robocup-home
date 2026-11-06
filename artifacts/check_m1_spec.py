@@ -23,12 +23,13 @@ EXPECTED_PAGES = 52
 LAPTOP_PATH = r"C:\Users\teera\Downloads\at-home-robocup-my-2025-1.pdf"
 
 REQUIRED_OPEN = (
+    "CML-GEN-MAIN",
+    "CML-SHEET-START",
     "CML-OPEN-PARTIAL",
     "CML-OPEN-ABSENT",
     "CML-OPEN-CAP",
     "CML-OPEN-DROP",
     "CML-OPEN-FOLLOW",
-    "CML-SHEET-START",
 )
 
 REQUIRED_ASSUMPTIONS = (
@@ -36,7 +37,10 @@ REQUIRED_ASSUMPTIONS = (
     "CML-ASM-SIZE",
     "CML-ASM-FEW",
     "CML-ASM-CLOCK",
+    "CML-ASM-ORDER",
 )
+
+REQUIRED_ADDED = ("CML-DER-CAP", "CML-BAG-DEF")
 
 REQUIRED_PHRASES = (
     "3.1 Carry My Luggage",
@@ -49,6 +53,9 @@ REQUIRED_PHRASES = (
     "2024-07-09",
     "not the baseline",
     "not-run",
+    "arbitrary order",
+    "stiff, vertical handles",
+    "previously unknown public place",
 )
 
 
@@ -153,9 +160,22 @@ def check_rows(spec):
                 problems.append(f"{ident} missing {marker}")
         if block == "open" and "cannot pass" not in test:
             problems.append(f"{ident} open without cannot pass")
-    for ident in REQUIRED_OPEN + REQUIRED_ASSUMPTIONS:
+    for ident in REQUIRED_OPEN + REQUIRED_ASSUMPTIONS + REQUIRED_ADDED:
         if ident not in ids:
             problems.append(f"missing {ident}")
+    open_ids = [row[0] for row in rows if len(row) == 8 and row[7] == "open"]
+    if set(open_ids) != set(REQUIRED_OPEN) or len(open_ids) != 7:
+        problems.append(f"open rows {open_ids}")
+    by_id = {row[0]: row for row in rows if len(row) == 8}
+    if by_id.get("CML-DER-CAP", [""] * 8)[2] != "derived":
+        problems.append("CML-DER-CAP is not derived")
+    if by_id.get("CML-BAG-DEF", [""] * 8)[2] != "official":
+        problems.append("CML-BAG-DEF is not official")
+    hw = by_id.get("CML-HW-OUT")
+    if hw and "p.3" not in hw[3]:
+        problems.append("CML-HW-OUT does not cite printed p.3")
+    if "order changes mid-trip" in spec or "in a fixed order" in spec:
+        problems.append("obstacle order invents a fixed-order constraint")
     for phrase in REQUIRED_PHRASES:
         if phrase not in spec:
             problems.append(f"missing phrase {phrase}")
@@ -181,6 +201,9 @@ def check_sources(spec):
         "within a 2m distance",
         "5 minutes",
         "1015",
+        "stiff, vertical handles",
+        "previously unknown public place",
+        "in arbitrary order",
     ):
         haystack = page_body(TASK_EXCERPT) + "\n" + general
         if phrase not in haystack:
@@ -353,6 +376,9 @@ def self_test():
     )
     if not any("cannot pass" in item for item in collect(opened)):
         failures.append("removed cannot-pass should fail")
+    ordered = spec.replace("in an arbitrary order", "in a fixed order", 1)
+    if not any("fixed-order" in item or "arbitrary order" in item for item in collect(ordered)):
+        failures.append("fixed obstacle order should fail")
     rows = score_rows(page_body(TASK_EXCERPT))
     broken = list(rows)
     broken[-1] = (broken[-1][0], 999)
