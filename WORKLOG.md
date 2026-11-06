@@ -1,5 +1,95 @@
 # WORKLOG
 
+## M9 simplify and verify (2026-11-06)
+
+Scope. Issue 18, parts M9.1 and M9.2 only. Branch `cursor/m9-simplify-verify-2b9e` from merge `b446ae9b59cd9543c1c321dcbd461f2dc1586de9`. One writer. Laptop simulation. No hardware, deploy, registration, contact, spending, new dependency, or deletion. M9.3 was not run and is not claimed. M10 was not started. This does not say that no defect remains, and it is not full acceptance.
+
+### M8 review history
+
+The first full-run note below recorded 46 `sim` rows as `pass`. That count treated the four avoidance lines as pass when `avoided` was `present && !hit`. A disk with x greater than 2500 counted as present. The operator lane cleared the disks, so the robot did not face the four classes. Seeds 0, 1, 2, 3, 7, and `u64::MAX` left the hard-to-see disk outside the 800 mm sensor, and a car at `(2501, 1000)` still received all four credits. That claim was too wide.
+
+The obstacle-credit review replaced that test with an abreast sight, the class sensor, and the close band, and it required the class to remain for a collision. `CML-BAG-DEF` was downgraded to `not-run`: the fixture stores `BagKind` and does not measure stiffness or weight. That note still described a hit on the layout copy after the live disk was removed.
+
+The live-hit review moved `note_step` and `note_encounter` onto `observe().obstacles`. A removed class no longer sets a hit. An explicit collision fault keeps the class, omits it from the guard and the follower, and the hit is the live disk.
+
+Independent verification of merged head `63931d905f14a411dcad221cee3e80bb5563c10a` is CI run `42236672054`, conclusion success: https://github.com/clytie0x/robocup-home/actions/runs/42236672054. That run is 154 library tests and 6 doctests, debug and release. The acceptance table on that head is 45 `pass` and 11 `not-run`. The 11 are `CML-BAG-DEF`, the seven open scoring rows (`CML-GEN-MAIN`, `CML-SHEET-START`, `CML-OPEN-PARTIAL`, `CML-OPEN-ABSENT`, `CML-OPEN-CAP`, `CML-OPEN-DROP`, `CML-OPEN-FOLLOW`), and the three hardware rows (`CML-HW-OUT`, `CML-HW-HIT`, `CML-HW-SPL`). That is model, catalog, and labeled-assumption evidence. It is not a field score and not a claim that no defect remains.
+
+### M9.1
+
+No new rulebook sentence. The professor PDF remains the rule. Cover 2024 Rev-1, revision 2024-07-09. Hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. Public 2024.2 and public 2025.1 are not the baseline. The raw PDF was not committed. Prior art for the follower is unchanged and is not a dependency.
+
+The slide guard and the follower sight each omitted one collision-fault class. `SimWorld::obstacles_for_planner` is now that omission, and `try_slide` uses the same predicate. The default is still `None`. A set class stays until another call changes it. `observe` still contains the class. `note_step` still reads the live disks. The drive path calls the world method. Seed 1, then two replacement disks: with no fault the planner list matches `observe` and a slide through the small disk is blocked; with `SmallGround` the planner list matches the old filter, the small disk stays in `observe`, the slide crosses it, and the crowd disk still blocks. Clearing the fault blocks the small disk again.
+
+The return walk and the marked route walk used two copies of the same step loop. `extend` now calls `extend_mark`. A direct comparison of both, from three starts to nine goals including an empty path, matches. A marked goal still carries its class tag.
+
+`ENCOUNTER_WINDOW_MM` is 340, `CLOSE_BAND_MM` is 280, and `ROUTE_PASS_MM` is 40. The encounter check and the report use those names. The report gained the line `assumption route-pass-mm 40`. The robot path is unchanged. 341 mm is outside the abreast window. One millimeter past the close band is outside it. These lengths are assumptions, not official measurements. The printed avoidance lines stay 50. That catalog value is not this distance proof.
+
+`main_passed` still requires the operator on the designated car, pointed-bag custody, local proximity, a locally seen cue, steps of at most 200 mm, and one clock at or under 300000 ms. It does not read the trip flag. An ordinary collision clears the avoidance class. It does not by itself fail the main carry. A major collision stays the separate hardware finding `CML-HW-HIT`.
+
+### M9.2
+
+The acceptance table is still 45 `pass` and 11 `not-run`. The checker was not loosened and was not changed to require the PDF. Without `PROFESSOR_PDF` it prints `pdf=False`. With the attached file it prints `pdf=True`. A `pass` row still only has to name a test whose body contains the row id.
+
+The episode set is `cargo test -p harness --lib --locked --offline`. Those 45 harness tests ran inside the workspace command below, including every `Script` variant. Seed 1 is the main carry. The new summary label uses `Script::Overflow`, seed 0, start `u64::MAX - 40`.
+
+Limits that remain. `execute_pick` can still pair world time 400000 ms with trip stamp 10. That helper is outside the episode. The episode uses one clock. Direct `try_slide` can still take a long clear segment. The episode marks a jump and does not pass. The navigator still receives no car and, with no fault, no class filter. The sensor ranges 800 and 2500, the disk radii, the 250 mm robot disk, the arena half-plane, and the three-step stay are assumptions. CI does not have the professor PDF.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked --offline
+domain 8, harness 45, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 30, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked --offline
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, harness 0, hri 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release --offline
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release --offline
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=False
+spec_exit:0
+
+PROFESSOR_PDF=<attached copy, hash da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_pdf_exit:0
+```
+
+The `--offline` flag is local. CI does not pass it. The spec self-test, the checker without the PDF, the checker with the attached PDF, and the workspace check were repeated after this note and the README edit. Each exited 0 with the same lines as above. M9.3 remains mandatory before milestone closure.
+
 ## M8 live hit geometry (2026-11-06)
 
 Scope. Narrow review of `58d8745e2c5e5fbad59fd4b81b9760e90d23f008`. The abreast encounter credit held. The residual bug was `note_step`: it tested the disks copied when the route was built, not the bodies in the world at the step. No merge. M9 was not started. M9.3 was not run.

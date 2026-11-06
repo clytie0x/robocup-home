@@ -6,6 +6,30 @@ The repository has a Rust workspace. `sim_runtime` has a deterministic clock, a 
 `clytie0x/robocup-home` is public. The owner's instruction and the API read are in [WORKLOG.md](WORKLOG.md). That applies to this repository only. Do not change this visibility again without a new instruction.
 The toolchain pin is stable 1.99.1 in [rust-toolchain.toml](rust-toolchain.toml). The edition is 2024. `rust-version` matches that pin. CI is [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
+M8 is merged at `b446ae9b59cd9543c1c321dcbd461f2dc1586de9`. The acceptance table has 45 `pass` rows and 11 `not-run` rows. A `pass` is a labeled model, catalog, or assumption check in [the task specification](docs/tasks/3.1-carry-my-luggage.md). It is not a field score and not a hardware result. The 11 `not-run` rows are `CML-BAG-DEF` (the fixture stores the bag kind and does not measure stiffness or weight), the seven open scoring rows (`CML-GEN-MAIN`, `CML-SHEET-START`, `CML-OPEN-PARTIAL`, `CML-OPEN-ABSENT`, `CML-OPEN-CAP`, `CML-OPEN-DROP`, `CML-OPEN-FOLLOW`), and the three hardware rows (`CML-HW-OUT`, `CML-HW-HIT`, `CML-HW-SPL`). There is no awarded total. M9.3 has not been run. This repository does not claim that no defect remains.
+
+The professor PDF is the rule. Cover 2024 Rev-1, revision 2024-07-09. SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. The raw PDF is not in git. Public 2024.2 and public 2025.1 are not the baseline. `artifacts/check_m1_spec.py` checks that a `pass` or `fail` row names a test whose body contains the row id. It does not judge the meaning of the assertions. CI does not have the PDF, so that command prints `pdf=False` and still succeeds. A local run prints `pdf=True` only when `PROFESSOR_PDF` points at that exact file.
+
+From the repository root, with the pinned toolchain:
+
+```text
+cargo fmt --all -- --check
+cargo build --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
+cargo test --workspace --doc --locked
+cargo test --workspace --all-targets --locked --release
+cargo test --workspace --doc --locked --release
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+python3 artifacts/check_workspace.py
+python3 artifacts/check_m1_spec.py --self-test
+python3 artifacts/check_m1_spec.py
+PROFESSOR_PDF=/path/to/the/professor.pdf python3 artifacts/check_m1_spec.py
+cargo test -p harness --lib --locked
+```
+
+The last command is the seeded episode set. The counts from the latest run are in [WORKLOG.md](WORKLOG.md). Abreast 340 mm, the 280 mm close band, the 40 mm route margin, the 800 mm and 2500 mm sensors, the disk radii, the 250 mm robot disk, the arena half-plane, and the three-step stay are assumptions, not official measurements.
+
 Crates live under `crates/`. `domain` is the one shared contract between task logic and adapters. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `sim_runtime` depends on `domain`. `harness` may depend on `sim_runtime`. `task_3_1` does not. No other crate depends on `sim_runtime`.
 
 - Locked conventions: [AGENTS.md](AGENTS.md)
