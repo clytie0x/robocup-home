@@ -1,5 +1,29 @@
 # WORKLOG
 
+## R1 red-log clarification (2026-11-07)
+
+Independent review re-ran the two R1 halo tests on `3c6cab12`. The harness test failed at the bag-membership assertion. The writer log that shows `unwrap_err()` on `Ok(Moved { to: (0, 200) })` is from a build where that membership assertion was not yet in front of the approach call. Both failures are the same leak. They are not the same assertion line.
+
+## R2 sensor delivery (2026-11-07)
+
+R1 is merged at `8228d76c8d770216059941b5ce3c92ef5effb866`. This branch implements R2 only.
+
+### Design
+
+The controller no longer calls `sense` inside `step_drive`. It receives a `Posted` value. `accept` checks that value against `SampleHistory` and the sim clock at the decision. `Missing` stays missing. A capture older than the last accepted capture, or a capture or delivery later than that clock, is rejected and does not change pose, custody, or history. Age above 1000 ms is stale: the base stays and the fresh world is not read. Ages 0, 200, and 1000 ms are the approved delay profiles and may still move the base from the captured pose. The episode budget uses the trip stamp, not `captured_ms`.
+
+`shift_view` adds at most 8 mm to sensed people, bodies, and bags. The zero shift is identity. The shift does not take the world, so truth and `world.pick` stay on the real pose. 8 mm is an assumption named `synthetic-unmeasured-8mm`. It is not a measurement.
+
+Rejected shapes. Replaying the last pose whenever a sample is missing would chase that pose without a bound. Reading `observe` inside `follow` on a gap would put fresh truth back on the controller path. A seeded random offset would look like a calibration.
+
+The R1 main trace for seed 1 was frozen before these edits: 75 samples, clock 14800, 67 follow moves, longest step 200. The zero-delay path matches that trace. No pose field was dropped. Capture and delivery stamps are a separate log.
+
+Red. `cargo test -p navigation --lib a_reversed_sample_keeps_history_and_a_missing_sample_is_not_truth --offline` exited 101 because `Posted` and `accept` were not defined. `cargo test -p harness --lib a_held_sample_is_followed_after_the_operator_moves --offline` exited 101 with the base at `(200, 0)` after the operator moved to `(1500, 0)`. The held sample still had the operator at `(0, 1000)`.
+
+Green. That follow step stays on x = 0 and moves in y. A 200 ms sample and a 1000 ms sample do the same, with ages 200 and 1000. Approach toward a held bag at `(0, 3000)` still moves in y after the world bag is placed at `(4000, 0)`. A missing sample and a 1001 ms sample return `NeedFresh` and leave the base at the origin. A reversed capture leaves pose, custody, history, and then advances the clock to 500. A missing sample at 300000 ms stays out of `TimeUp`; the next stamp at 300001 ms is `TimeUp` with the base still at the origin. `shift_view` by 8 mm does not change `observe`, and `world.pick` still uses the true pose. `the_zero_profile_matches_the_r1_main_trace` passes. The R1 halo and fixed-car tests pass.
+
+This run's library count is 179: domain 8, harness 58, hri 2, manipulation 8, navigation 18, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. `pdfinfo` and `pdftotext` are absent. The attached PDF hash and size still match.
+
 ## R1 review fix, unseen-operator bag halo (2026-11-07)
 
 Reviewer `bc-0faa` reproduced a blocker on `3c6cab12`. Robot `(0, 0)`, operator `(0, 20000)`, visible free bag `(0, 19000)`, other bag `(50000, 50000)`, gesture offered. People were empty and the cue was `None`, but the view still contained bag 3 at `(0, 19000)`. `point_from_sample` could select it, and `step_drive` Approach moved the base to `(0, 200)` at clock 100 in `Picking`. Bag `(0, 18000)` was inside that halo and `(0, 17999)` was outside. Moving the unseen operator to `(20000, 0)` dropped the bag. The 2 m disk was tracking an unseen true person.

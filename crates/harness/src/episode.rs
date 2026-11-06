@@ -9,8 +9,8 @@ use domain::{
     segment_within, within_reach,
 };
 use navigation::{
-    Cue, Follower, assume::ARRIVE_MM, assume::ROBOT_RADIUS_MM, assume::SENSOR_MM, assume::STEP_MM,
-    cue_from, look, sense,
+    Cue, Follower, Posted, SampleHistory, assume::ARRIVE_MM, assume::ROBOT_RADIUS_MM,
+    assume::SENSOR_MM, assume::STEP_MM, cue_from, look, sense,
 };
 use sim_runtime::SimWorld;
 use sim_runtime::assume::{
@@ -1842,7 +1842,19 @@ fn robot_follow(
     cue: Cue,
 ) -> Result<NavEnd, FeedError> {
     debug_assert!(world.revealed_car().is_none());
-    step_drive(world, trip, follower, at_ms, drive, cue)
+    let observed = world.observe();
+    let offered = matches!(drive, Drive::Follow { .. }) && cue == Cue::TakeBag;
+    let view = sense(
+        observed.robot.pose.point(),
+        observed.operator,
+        &observed.bags,
+        &world.obstacles_for_planner(),
+        offered,
+        observed.now_ms,
+    );
+    let posted = Posted::ready(view, observed.now_ms);
+    let mut history = SampleHistory::new();
+    step_drive(world, trip, follower, at_ms, drive, &posted, &mut history)
 }
 
 fn point(x: i32, y: i32) -> Point {
@@ -2229,6 +2241,30 @@ mod tests {
         extend(&mut empty_plain, point(10, 0));
         assert!(empty_marked.is_empty());
         assert!(empty_plain.is_empty());
+    }
+
+    #[test]
+    fn the_zero_profile_matches_the_r1_main_trace() {
+        let report = main_at(1, None);
+        let mut lines = String::new();
+        for sample in &report.trace {
+            lines.push_str(&format!(
+                "{} {} {} {} {}\n",
+                sample.ms, sample.robot_x, sample.robot_y, sample.operator_x, sample.operator_y
+            ));
+        }
+        let frozen = include_str!("r1_main_trace.txt");
+        assert_eq!(
+            lines, frozen,
+            "zero-delay trace diverged from the R1 baseline"
+        );
+        assert!(report.main_passed);
+        assert_eq!(report.custody, "operator");
+        assert_eq!(report.phase, "complete");
+        assert_eq!(report.clock_ms, 14_800);
+        assert_eq!(report.follow_moves, 67);
+        assert_eq!(report.longest_step_mm, 200);
+        assert_eq!(report.trace.len(), 75);
     }
 
     #[test]
@@ -2864,7 +2900,7 @@ mod tests {
 
     fn stepped(mut world: SimWorld, cue: Cue) -> (crate::NavEnd, (i32, i32), u64, &'static str) {
         use crate::{Drive, step_drive};
-        use navigation::Follower;
+        use navigation::{Follower, Posted, SampleHistory, sense};
         use task_3_1::{Event, Trip};
         let operator = world.observe().operator.id;
         let bag = world.observe().bags[0].id;
@@ -2874,6 +2910,17 @@ mod tests {
         trip.apply(0, Event::Named { bag }).unwrap();
         trip.apply(0, Event::Grasped { bag }).unwrap();
         trip.apply(0, Event::ReadyTold).unwrap();
+        let observed = world.observe();
+        let view = sense(
+            observed.robot.pose.point(),
+            observed.operator,
+            &observed.bags,
+            &world.obstacles_for_planner(),
+            cue == Cue::TakeBag,
+            observed.now_ms,
+        );
+        let posted = Posted::ready(view, observed.now_ms);
+        let mut history = SampleHistory::new();
         let mut follower = Follower::follow(operator);
         let end = step_drive(
             &mut world,
@@ -2881,7 +2928,8 @@ mod tests {
             &mut follower,
             100,
             Drive::Follow { person: operator },
-            cue,
+            &posted,
+            &mut history,
         )
         .unwrap();
         let at = world.observe().robot.pose.point();

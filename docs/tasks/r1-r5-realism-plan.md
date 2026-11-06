@@ -6,7 +6,7 @@ Normative source remains the professor PDF, SHA-256 `da69e2c276836ccb228ab3a9ba4
 
 The table in [3.1 Carry My Luggage](3.1-carry-my-luggage.md) stays 45 `pass` and 11 `not-run` until a later command says otherwise. Those results are model and catalog evidence. They are not a field score. The 11 `not-run` rows, including the seven open scoring rows, stay unresolved. This plan does not award a total.
 
-R1 through R5 are authorized in that order. R1 is the active milestone until its review gate passes. R2, R3, R4, and R5 do not need a new owner approval. Each one still stops for independent review before the next starts. No milestone invents a drop from a collision.
+R1 through R5 are authorized in that order. R1 is merged. R2 is the active milestone until its review gate passes. R3, R4, and R5 do not need a new owner approval. Each one still stops for independent review before the next starts. No milestone invents a drop from a collision.
 
 ## R1 Sensor boundary
 
@@ -58,7 +58,7 @@ These limits stay after R1. They are not field acceptance.
 - A visible bag inside the printed 2 m of the operator is in the sensor view only while that operator is already inside the robot sensor. That disk is a labeled setup assumption. It is not a measured camera and not a halo around an unseen person.
 - The model has no occlusion, no pixels, and no contact-force calibration.
 - The operator route is scripted by the scenario. The scenario may use the car. The controller does not.
-- The positional profile in R2 is synthetic and unmeasured. It is not implemented in R1.
+- The positional profile is a synthetic unmeasured shift of 8 mm on sensed people, bodies, and bags. The zero shift is the control. It is not a calibration. The robot base pose in the sample is not shifted.
 - Component tests may still leave the world clock and the trip stamp apart. The episode scorer requires them to match.
 - `CML-BAG-DEF`, the three hardware rows, and the seven open scoring rows stay `not-run`. The sheet does not award a run total.
 - A collision does not invent a drop.
