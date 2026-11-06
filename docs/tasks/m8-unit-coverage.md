@@ -6,6 +6,12 @@ The professor PDF is the rule. Section 3.1, printed pages 15–17, physical page
 
 Prior art for a local follower, not a dependency and not a substitute rulebook: local sensing without a map (doi:10.1109/tac.1986.1104175), bug algorithms that keep the map out of the robot (https://www.cs.columbia.edu/~allen/F19/NOTES/Chap2-Bug.pdf), and a standoff behind a moving person as a pattern only (https://docs.nav2.org/jazzy/tutorials/general_tutorials/navigation2_dynamic_point_following/navigation2_dynamic_point_following/).
 
+## Obstacles
+
+The seeded shuffle is the referee order. The episode spaces those four classes along the outside path. The pitch is an assumption so a local follower can pass each disk; it is not a printed distance. Avoidance credit for a class requires three facts from that run: the robot was abreast of one of its disks, that disk was inside the class sensor (800 mm for hard-to-see, 2500 mm otherwise), and the robot stayed in a 280 mm band outside the grown disk without a motion segment hitting it. Those ranges are assumptions. Credit is not "the disk exists and x is outside the arena."
+
+Removing every obstacle after the route is built clears all four credits. Removing one class clears that class. Driving the operator through a class whose live disk was removed still records a hit against the layout disk and clears that class. A car at `(2501, 1000)` can be a legitimate outside point and does not receive the four credits. `CML-BAG-DEF` stays `not-run`: the fixture stores the bag kind and does not measure stiffness or weight.
+
 ## Two authorities
 
 The scenario reads `truth().car()` and moves the operator along a lane that clears world disks. That lane is operator behavior. `robot_follow` takes a local sight and a cue. It has no car argument. `revealed_car` stays empty.
@@ -21,5 +27,7 @@ The optional return follows a crowd person through the labeled entrance and stay
 ## Assumptions
 
 Clearance, radii, sensor ranges, the 200 mm step, `ARRIVE_MM`, the lane offset, the entrance point, and the three-step stay are assumptions. The hard-to-see disk uses the shorter local range. That is not a contrast measurement. Direct collision checks in the simulator use world disks. The planner receives only the local sight.
+
+`CML-SET-PLACE` fails if the armed pose is outside or moves after `Begin`. `CML-SET-BAGS` accepts a bag at exactly 2000 mm and rejects 2001 mm. `CML-SCORE-SEE` is one mock confirmation, standing for either a screen or speech, not both. `CML-GEN-LIST` is a person taking the free bag, with the gripper left empty. `CML-GEN-BONUS` is a non-navigator slide during the return; the bonus lines stay 0. A stamp at 300001 on an unfinished follow stores `TimeUp`. The same stamp on `Accompany` after completion returns `TimeUp`, leaves `Complete`, and does not move. The runner stopping at 300000 while still following is `budget`, not `TimeUp`.
 
 The commands and the counts are in [WORKLOG](../../WORKLOG.md).

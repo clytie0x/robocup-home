@@ -93,6 +93,32 @@ pub enum Script {
     DifferentQueue {
         seed: u64,
     },
+    Strip {
+        seed: u64,
+    },
+    DropClass {
+        seed: u64,
+        class: ObstacleClass,
+    },
+    Collide {
+        seed: u64,
+        class: ObstacleClass,
+    },
+    BagBeyond {
+        seed: u64,
+    },
+    StartOutside {
+        seed: u64,
+    },
+    ShiftStart {
+        seed: u64,
+    },
+    HumanPick {
+        seed: u64,
+    },
+    Exhaust {
+        seed: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,9 +164,20 @@ pub struct EpisodeReport {
     pub queue_same: bool,
     pub crowd: usize,
     pub order: [ObstacleClass; 4],
+    /// Seen in the local sensor, threatened by a straight step, and not hit.
     pub avoided: [bool; 4],
+    pub seen: [bool; 4],
+    pub threatened: [bool; 4],
+    pub hit: [bool; 4],
+    /// Order classes were first faced while abreast. Empty when none were.
+    pub encounter: Vec<ObstacleClass>,
+    /// `budget` when the runner stops at the limit without latching `TimeUp`.
+    /// `time-up` when a stamp after 300000 stores that phase.
+    pub stop: &'static str,
     pub start_inside: bool,
     pub start_fixed: bool,
+    pub start_moved: bool,
+    pub help_act: bool,
     pub bags_ok: bool,
     pub bag_kind_ok: bool,
     pub car_hidden: bool,
@@ -166,7 +203,7 @@ impl EpisodeReport {
     pub fn summary(&self) -> String {
         let fail = self.fail.unwrap_or("-");
         format!(
-            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption clock-start begin\nassumption obstacle-order seed-shuffle\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\norder-not-required\n{}\n{}\ntrace_len {}\n",
+            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\nstop {}\nencounter {:?}\nseen {:?} threatened {:?} hit {:?}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption encounter-window-mm 340\nassumption close-clearance-mm 280\nassumption clock-start begin\nassumption obstacle-order faced-sequence\norder-not-required\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\npost-main accompany after the limit keeps Complete and does not move\nbudget-exhaustion-is-not-time-up\n{}\n{}\ntrace_len {}\n",
             self.seed,
             self.scenario,
             self.car.0,
@@ -189,6 +226,11 @@ impl EpisodeReport {
             self.queued,
             self.queue_same,
             self.crowd,
+            self.stop,
+            self.encounter,
+            self.seen,
+            self.threatened,
+            self.hit,
             navigation::assume::HARD_SENSOR_MM,
             self.crowd,
             open_lines(),
@@ -238,6 +280,14 @@ struct Options {
     blocked_handoff: bool,
     help: bool,
     different_queue: bool,
+    strip: bool,
+    drop_class: Option<ObstacleClass>,
+    collide: Option<ObstacleClass>,
+    bag_beyond: bool,
+    start_outside: bool,
+    shift_start: bool,
+    human_pick: bool,
+    exhaust: bool,
 }
 
 impl Options {
@@ -266,6 +316,14 @@ impl Options {
             blocked_handoff: false,
             help: false,
             different_queue: false,
+            strip: false,
+            drop_class: None,
+            collide: None,
+            bag_beyond: false,
+            start_outside: false,
+            shift_start: false,
+            human_pick: false,
+            exhaust: false,
         }
     }
 }
@@ -367,6 +425,38 @@ fn options(script: Script) -> Options {
             different_queue: true,
             ..Options::base(seed, "different-queue")
         },
+        Script::Strip { seed } => Options {
+            strip: true,
+            ..Options::base(seed, "strip")
+        },
+        Script::DropClass { seed, class } => Options {
+            drop_class: Some(class),
+            ..Options::base(seed, "drop-class")
+        },
+        Script::Collide { seed, class } => Options {
+            collide: Some(class),
+            ..Options::base(seed, "collide")
+        },
+        Script::BagBeyond { seed } => Options {
+            bag_beyond: true,
+            ..Options::base(seed, "bag-beyond")
+        },
+        Script::StartOutside { seed } => Options {
+            start_outside: true,
+            ..Options::base(seed, "start-outside")
+        },
+        Script::ShiftStart { seed } => Options {
+            shift_start: true,
+            ..Options::base(seed, "shift-start")
+        },
+        Script::HumanPick { seed } => Options {
+            human_pick: true,
+            ..Options::base(seed, "human-pick")
+        },
+        Script::Exhaust { seed } => Options {
+            exhaust: true,
+            ..Options::base(seed, "exhaust")
+        },
     }
 }
 
@@ -380,8 +470,10 @@ struct Episode {
     crowd_ids: Vec<Id>,
     order: [ObstacleClass; 4],
     route: Vec<Point>,
+    holds: Vec<Option<ObstacleClass>>,
     route_i: usize,
     lane: i32,
+    layout: Vec<Obstacle>,
     car: Point,
     start_pose: (i32, i32),
     local_cue: bool,
@@ -392,9 +484,14 @@ struct Episode {
     returned: bool,
     queued: bool,
     queue_same: bool,
-    present: [bool; 4],
+    seen: [bool; 4],
+    threatened: [bool; 4],
     hit: [bool; 4],
+    encounter: Vec<ObstacleClass>,
+    stop: &'static str,
     start_fixed: bool,
+    start_moved: bool,
+    help_act: bool,
     bags_ok: bool,
     bag_kind_ok: bool,
     pickup_before_follow: bool,
@@ -434,6 +531,7 @@ impl Episode {
         let order = layout_order(&world);
         let crowd_ids = crowd_ids(&world);
         let car = world.truth().car();
+        let layout = world.observe().obstacles.clone();
         Self {
             opt,
             world,
@@ -444,8 +542,10 @@ impl Episode {
             crowd_ids,
             order,
             route: Vec::new(),
+            holds: Vec::new(),
             route_i: 0,
             lane: 0,
+            layout,
             car,
             start_pose,
             local_cue: false,
@@ -456,9 +556,14 @@ impl Episode {
             returned: false,
             queued: false,
             queue_same: true,
-            present: [false; 4],
+            seen: [false; 4],
+            threatened: [false; 4],
             hit: [false; 4],
+            encounter: Vec::new(),
+            stop: "none",
             start_fixed: false,
+            start_moved: false,
+            help_act: false,
             bags_ok: false,
             bag_kind_ok: false,
             pickup_before_follow: false,
@@ -482,8 +587,16 @@ impl Episode {
     }
 
     fn execute(&mut self) {
+        if self.opt.start_outside {
+            let _ = self.world.try_slide(point(3_000, 2_000), ROBOT_RADIUS_MM);
+            self.start_pose = xy(self.world.observe().robot.pose.point());
+        }
         if self.begin().is_err() {
             return;
+        }
+        if self.opt.shift_start {
+            let _ = self.world.try_slide(point(400, 0), ROBOT_RADIUS_MM);
+            self.start_moved = xy(self.world.observe().robot.pose.point()) != self.start_pose;
         }
         self.mark_setup();
         if self.opt.overflow {
@@ -505,6 +618,10 @@ impl Episode {
             self.budget_probe();
             return;
         }
+        if self.opt.exhaust {
+            self.exhaust_budget();
+            return;
+        }
         if self.opt.jump {
             self.jump_to_car();
             return;
@@ -518,6 +635,17 @@ impl Episode {
         self.prepare_route();
         if self.opt.stuck {
             self.seal_robot();
+        }
+        if self.opt.strip {
+            self.world.set_obstacles(Vec::new());
+        }
+        if let Some(class) = self.opt.drop_class {
+            let mut obstacles = self.world.observe().obstacles;
+            obstacles.retain(|obstacle| obstacle.class != class);
+            self.world.set_obstacles(obstacles);
+        }
+        if let Some(class) = self.opt.collide {
+            self.drive_through(class);
         }
         self.follow_out();
         if self.opt.then_return && self.main_geometry() {
@@ -546,8 +674,8 @@ impl Episode {
     }
 
     fn mark_setup(&mut self) {
-        if self.opt.far_bag {
-            let at = point(0, 3_000);
+        if self.opt.far_bag || self.opt.bag_beyond {
+            let at = point(0, if self.opt.bag_beyond { 3_001 } else { 3_000 });
             if self.world.place_free(self.pointed, at).is_err() {
                 self.fail = Some("setup");
             }
@@ -579,12 +707,6 @@ impl Episode {
             && !observed.bags.is_empty();
         if self.opt.hold {
             self.world.place_operator(self.car);
-        }
-        self.present = [false; 4];
-        for obstacle in &observed.obstacles {
-            if obstacle.pose.point().x().get() > INSIDE_X_MAX_MM {
-                self.present[class_index(obstacle.class)] = true;
-            }
         }
     }
 
@@ -632,6 +754,13 @@ impl Episode {
                 self.fail = Some(reason);
             })?;
         self.shown_bag = Some(named.get());
+        if self.opt.human_pick {
+            if self.world.human_take(self.pointed).is_ok() {
+                self.help_act = true;
+            }
+            self.fail = Some("human-pick");
+            return Err(());
+        }
         self.approach()?;
         if self.opt.wrong_bag {
             let other = self
@@ -765,6 +894,7 @@ impl Episode {
         self.frozen_after_limit = late.as_ref().is_err_and(|reason| *reason == "time-up")
             && xy(self.world.observe().robot.pose.point()) == frozen;
         self.fail = Some("time-up");
+        self.stop = "time-up";
     }
 
     fn jump_to_car(&mut self) {
@@ -823,22 +953,46 @@ impl Episode {
         } else {
             self.car
         };
+        if !self.opt.homeward && !self.opt.jump {
+            self.space_obstacles();
+        }
+        self.layout = self.world.observe().obstacles.clone();
         let obstacles = self.world.observe().obstacles;
-        let (route, lane) = route_to(from, goal, &obstacles, self.opt.seed);
+        let (mut route, mut holds, lane) = route_to(from, goal, &obstacles, self.opt.seed);
         self.lane = lane;
-        self.route = if self.opt.stop_short {
-            let mut route = route;
+        if self.opt.stop_short {
             while route.last().is_some_and(|item| *item == self.car) {
                 route.pop();
+                holds.pop();
             }
             if route.is_empty() {
                 route.push(from);
+                holds.push(None);
             }
-            route
-        } else {
-            route
-        };
+        }
+        self.route = route;
+        self.holds = holds;
         self.route_i = 0;
+    }
+
+    /// Referee spacing. The seeded order is kept. The pitch is an assumption so
+    /// each class can be faced without the disks overlapping the robot's body.
+    fn space_obstacles(&mut self) {
+        let mut obstacles = self.world.observe().obstacles;
+        obstacles.sort_by_key(|obstacle| obstacle.pose.point().x().get());
+        for (index, obstacle) in obstacles.iter_mut().enumerate() {
+            let x = 2_600 + i32::try_from(index).unwrap_or(0) * 1_500;
+            let dx = x.saturating_sub(obstacle.pose.point().x().get());
+            let y = obstacle.pose.point().y().get();
+            obstacle.pose = Pose::new(point(x, y));
+            for body in &mut obstacle.bodies {
+                body.center = point(
+                    body.center.x().get().saturating_add(dx),
+                    body.center.y().get(),
+                );
+            }
+        }
+        self.world.set_obstacles(obstacles);
     }
 
     fn seal_robot(&mut self) {
@@ -897,13 +1051,15 @@ impl Episode {
                 self.world
                     .place_operator(point(robot.0, robot.1.saturating_add(3_000)));
                 let Some(stamp) = self.legal_stamp() else {
-                    self.fail = Some("time-up");
+                    self.fail = Some("budget");
+                    self.stop = "budget";
                     break;
                 };
                 let _ = self.drive(stamp, Drive::Follow { person }, Cue::None);
                 self.world.place_operator(back);
                 let Some(stamp) = self.legal_stamp() else {
-                    self.fail = Some("time-up");
+                    self.fail = Some("budget");
+                    self.stop = "budget";
                     break;
                 };
                 let _ = self.drive(stamp, Drive::Follow { person }, Cue::None);
@@ -911,7 +1067,8 @@ impl Episode {
             }
             if self.opt.cancel && self.follow_moves >= 2 {
                 let Some(stamp) = self.legal_stamp() else {
-                    self.fail = Some("time-up");
+                    self.fail = Some("budget");
+                    self.stop = "budget";
                     break;
                 };
                 if self.drive(stamp, Drive::Cancel, Cue::None).is_ok() {
@@ -923,15 +1080,18 @@ impl Episode {
             if !self.opt.hold {
                 self.advance_operator();
             }
+            self.note_encounter();
             let cue = self.cue_for_robot();
             let Some(stamp) = self.legal_stamp() else {
-                self.fail = Some("time-up");
+                self.fail = Some("budget");
+                self.stop = "budget";
                 break;
             };
             let end = match self.drive(stamp, Drive::Follow { person }, cue) {
                 Ok(end) => end,
                 Err("time-up") => {
                     self.fail = Some("time-up");
+                    self.stop = "time-up";
                     break;
                 }
                 Err(reason) => {
@@ -985,6 +1145,11 @@ impl Episode {
         if self.route_i + 1 >= self.route.len() {
             return;
         }
+        if let Some(class) = self.holds.get(self.route_i).copied().flatten()
+            && !self.threatened[class_index(class)]
+        {
+            return;
+        }
         let robot = self.world.observe().robot.pose.point();
         let operator = self.world.observe().operator.pose.point();
         if !within_reach(robot, operator, KEEP_MM) {
@@ -993,6 +1158,53 @@ impl Episode {
         self.route_i += 1;
         let next = self.route[self.route_i];
         self.world.place_operator(next);
+    }
+
+    /// Local sight only. A class counts when the robot is abreast of one of its
+    /// disks, that disk is inside the class sensor, and the robot is in the
+    /// close-clearance band outside the grown disk. Those distances are assumptions.
+    fn note_encounter(&mut self) {
+        let observed = self.world.observe();
+        let robot = observed.robot.pose.point();
+        if robot.x().get() <= INSIDE_X_MAX_MM {
+            return;
+        }
+        let (_, bodies) = look(robot, observed.operator, &observed.obstacles);
+        for obstacle in &self.layout {
+            let index = class_index(obstacle.class);
+            let range = if obstacle.class == ObstacleClass::HardToSee {
+                navigation::assume::HARD_SENSOR_MM
+            } else {
+                SENSOR_MM
+            };
+            for disk in &obstacle.bodies {
+                let abreast = (robot.x().get() - disk.center.x().get()).saturating_abs() <= 340;
+                let in_sight = within_reach(robot, disk.center, range)
+                    && bodies.iter().any(|body| body.center == disk.center);
+                if !abreast || !in_sight {
+                    continue;
+                }
+                let grown = ROBOT_RADIUS_MM.saturating_add(disk.radius.get());
+                let dist = ceil_dist(
+                    robot.x().get(),
+                    robot.y().get(),
+                    disk.center.x().get(),
+                    disk.center.y().get(),
+                );
+                if dist < grown {
+                    self.hit[index] = true;
+                    continue;
+                }
+                if dist > grown.saturating_add(280) {
+                    continue;
+                }
+                if !self.seen[index] {
+                    self.seen[index] = true;
+                    self.encounter.push(obstacle.class);
+                }
+                self.threatened[index] = true;
+            }
+        }
     }
 
     fn cue_for_robot(&mut self) -> Cue {
@@ -1082,8 +1294,52 @@ impl Episode {
         self.world.set_obstacles(obstacles);
     }
 
+    fn exhaust_budget(&mut self) {
+        let limit = self.opt.start_ms.saturating_add(LIMIT_MS);
+        let _ = self.drive(
+            limit,
+            Drive::Follow {
+                person: self.operator,
+            },
+            Cue::None,
+        );
+        if self.legal_stamp().is_none() && self.trip.phase() == Phase::Following {
+            self.fail = Some("budget");
+            self.stop = "budget";
+        }
+    }
+
+    fn drive_through(&mut self, class: ObstacleClass) {
+        let saved = self
+            .layout
+            .iter()
+            .find(|obstacle| obstacle.class == class)
+            .and_then(|obstacle| obstacle.bodies.first().map(|disk| disk.center));
+        let mut obstacles = self.world.observe().obstacles;
+        obstacles.retain(|obstacle| obstacle.class != class);
+        self.world.set_obstacles(obstacles);
+        let Some(center) = saved else {
+            return;
+        };
+        for place in &mut self.route {
+            if (place.x().get() - center.x().get()).saturating_abs() < 900 {
+                *place = point(place.x().get(), center.y().get());
+            }
+        }
+    }
+
     fn return_with_queue(&mut self) {
         self.outbound = false;
+        if self.opt.help {
+            let before = xy(self.world.observe().robot.pose.point());
+            for (dx, dy) in [(600, 0), (0, 600), (-600, 0), (0, -600)] {
+                let nudge = point(before.0.saturating_add(dx), before.1.saturating_add(dy));
+                if self.world.try_slide(nudge, ROBOT_RADIUS_MM).is_ok() {
+                    self.help_act = xy(self.world.observe().robot.pose.point()) != before;
+                    break;
+                }
+            }
+        }
         if self.crowd_ids.is_empty() {
             return;
         }
@@ -1193,6 +1449,7 @@ impl Episode {
             && self.bags_ok
             && self.bag_kind_ok
             && self.start_fixed
+            && !self.start_moved
             && self.start_pose.0 <= INSIDE_X_MAX_MM
             && self.car.x().get() > INSIDE_X_MAX_MM
             && self.world.revealed_car().is_none()
@@ -1216,13 +1473,13 @@ impl Episode {
             self.fail = Some("not at the car");
         }
         let observed = self.world.observe();
-        let bonus_back = if self.returned {
-            task_3_1::bonus_line(BACK, self.opt.help)
+        let bonus_back = if self.returned && !self.help_act {
+            task_3_1::bonus_line(BACK, false)
         } else {
             0
         };
-        let bonus_queue = if self.queued {
-            task_3_1::bonus_line(QUEUE, self.opt.help)
+        let bonus_queue = if self.queued && !self.help_act {
+            task_3_1::bonus_line(QUEUE, false)
         } else {
             0
         };
@@ -1253,13 +1510,20 @@ impl Episode {
             crowd: self.crowd_ids.len(),
             order: self.order,
             avoided: [
-                self.present[0] && !self.hit[0],
-                self.present[1] && !self.hit[1],
-                self.present[2] && !self.hit[2],
-                self.present[3] && !self.hit[3],
+                self.seen[0] && self.threatened[0] && !self.hit[0],
+                self.seen[1] && self.threatened[1] && !self.hit[1],
+                self.seen[2] && self.threatened[2] && !self.hit[2],
+                self.seen[3] && self.threatened[3] && !self.hit[3],
             ],
+            seen: self.seen,
+            threatened: self.threatened,
+            hit: self.hit,
+            encounter: self.encounter.clone(),
+            stop: self.stop,
             start_inside: self.start_pose.0 <= INSIDE_X_MAX_MM,
             start_fixed: self.start_fixed,
+            start_moved: self.start_moved,
+            help_act: self.help_act,
             bags_ok: self.bags_ok,
             bag_kind_ok: self.bag_kind_ok,
             car_hidden: self.world.revealed_car().is_none(),
@@ -1276,7 +1540,7 @@ impl Episode {
             frozen_after_limit: self.frozen_after_limit,
             bonus_back,
             bonus_queue,
-            help_used: self.opt.help,
+            help_used: self.help_act,
             fail: self.fail,
             trace: std::mem::take(&mut self.trace),
         }
@@ -1385,8 +1649,11 @@ impl Episode {
                 self.fail = Some(if self.opt.overflow {
                     "overflow"
                 } else {
-                    "time-up"
+                    "budget"
                 });
+                if !self.opt.overflow {
+                    self.stop = "budget";
+                }
                 Err(())
             }
         }
@@ -1401,11 +1668,7 @@ impl Episode {
             self.legal_motion = false;
         }
         if avoid {
-            let hits = body_hits(
-                point(from.0, from.1),
-                point(to.0, to.1),
-                &self.world.observe().obstacles,
-            );
+            let hits = body_hits(point(from.0, from.1), point(to.0, to.1), &self.layout);
             for (hit, slot) in hits.iter().zip(self.hit.iter_mut()) {
                 if *hit {
                     *slot = true;
@@ -1511,15 +1774,90 @@ fn class_index(class: ObstacleClass) -> usize {
     }
 }
 
-fn route_to(from: Point, goal: Point, obstacles: &[Obstacle], seed: u64) -> (Vec<Point>, i32) {
+fn route_to(
+    from: Point,
+    goal: Point,
+    obstacles: &[Obstacle],
+    seed: u64,
+) -> (Vec<Point>, Vec<Option<ObstacleClass>>, i32) {
     let lane = lane_y(obstacles, seed);
-    let drop = drop_x(goal, lane, obstacles);
+    let mut ranked: Vec<&Obstacle> = obstacles.iter().collect();
+    ranked.sort_by_key(|obstacle| obstacle.pose.point().x().get());
     let mut points = vec![from];
-    extend(&mut points, point(from.x().get(), lane));
-    extend(&mut points, point(drop, lane));
-    extend(&mut points, point(drop, goal.y().get()));
-    extend(&mut points, goal);
-    (points, lane)
+    let mut holds = vec![None];
+    for obstacle in ranked {
+        let x = obstacle.pose.point().x().get();
+        if x < from.x().get() || x > goal.x().get().saturating_sub(100) {
+            continue;
+        }
+        let Some(top) = obstacle
+            .bodies
+            .iter()
+            .max_by_key(|disk| disk.center.y().get())
+        else {
+            continue;
+        };
+        let grown = ROBOT_RADIUS_MM.saturating_add(top.radius.get());
+        // Just outside the grown disk, still inside the close-clearance band.
+        let pass_y = top
+            .center
+            .y()
+            .get()
+            .saturating_add(grown)
+            .saturating_add(40);
+        extend_mark(
+            &mut points,
+            &mut holds,
+            point(x.saturating_sub(500), pass_y),
+            None,
+        );
+        extend_mark(
+            &mut points,
+            &mut holds,
+            point(x.saturating_add(500), pass_y),
+            None,
+        );
+    }
+    let last = points.last().copied().unwrap_or(from);
+    if vertical_clear(goal.x().get(), last.y().get(), goal.y().get(), obstacles) {
+        extend_mark(
+            &mut points,
+            &mut holds,
+            point(goal.x().get(), last.y().get()),
+            None,
+        );
+        extend_mark(&mut points, &mut holds, goal, None);
+    } else {
+        let drop = drop_x(goal, lane, obstacles);
+        extend_mark(&mut points, &mut holds, point(drop, lane), None);
+        extend_mark(&mut points, &mut holds, goal, None);
+    }
+    (points, holds, lane)
+}
+
+fn extend_mark(
+    points: &mut Vec<Point>,
+    holds: &mut Vec<Option<ObstacleClass>>,
+    goal: Point,
+    hold: Option<ObstacleClass>,
+) {
+    for _ in 0..20_000 {
+        let Some(from) = points.last().copied() else {
+            return;
+        };
+        if from == goal {
+            if let Some(last) = holds.last_mut() {
+                *last = hold;
+            }
+            return;
+        }
+        let next = toward(from, goal);
+        if next == from {
+            return;
+        }
+        points.push(next);
+        holds.push(if next == goal { hold } else { None });
+    }
 }
 
 fn lane_y(obstacles: &[Obstacle], seed: u64) -> i32 {
@@ -1698,7 +2036,7 @@ mod tests {
     use super::*;
     use task_3_1::{
         Award, BAR, CROWD, DROP, FOLLOW, Finding, FindingResult, HARD, HELP_CAP, Help, PICK, SEE,
-        SMALL, TOTAL, absent_choice, alternative_start, apply_finding, bonus_line, drop_shares_cap,
+        SMALL, TOTAL, absent_choice, alternative_start, apply_finding, drop_shares_cap,
         fair_play_list, finding_from_contact, finding_from_low_score, finding_from_trajectory,
         first_drop, follow_after_recovery, follow_withheld_without_return, help_total,
         interpret_start_signal, network_blocks_score, outstanding_is_automatic,
@@ -1767,14 +2105,37 @@ mod tests {
             "CML-SET-PLACE"
         );
         assert!(report.bags_ok, "CML-SET-BAGS");
-        assert!(!run(Script::OneBag { seed: 1 }).main_passed, "CML-SET-BAGS");
-        assert!(report.bag_kind_ok, "CML-BAG-DEF");
-        assert_eq!(PICK, 100, "CML-BAG-DEF");
+        assert!(!run(Script::OneBag { seed: 1 }).bags_ok, "CML-SET-BAGS");
+        assert!(!run(Script::BagBeyond { seed: 1 }).bags_ok, "CML-SET-BAGS");
+        let edge = run(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: true,
+        });
+        assert!(edge.bags_ok, "CML-SET-BAGS");
+        assert!(report.bag_kind_ok);
         assert!(
             report.avoided == [true, true, true, true],
             "CML-SET-OBST {}",
             report.summary()
         );
+        assert_eq!(report.encounter, report.order.to_vec(), "CML-ASM-ORDER");
+        assert!(
+            report.seen[1] && report.threatened[1] && !report.hit[1],
+            "CML-SCORE-HARD"
+        );
+        let outside = run(Script::StartOutside { seed: 1 });
+        assert!(!outside.start_inside, "CML-SET-PLACE {}", outside.summary());
+        assert!(!outside.main_passed, "CML-SET-PLACE");
+        let shifted = run(Script::ShiftStart { seed: 1 });
+        assert!(shifted.start_moved, "CML-SET-PLACE {}", shifted.summary());
+        assert!(!shifted.main_passed, "CML-SET-PLACE");
+        let human = run(Script::HumanPick { seed: 1 });
+        assert_eq!(human.custody, "operator", "CML-GEN-LIST");
+        assert!(!human.grasped_pointed, "CML-GEN-LIST");
+        assert_eq!(pick_line(false, true), 0, "CML-GEN-LIST");
+        assert!(!human.main_passed, "CML-GEN-LIST");
         assert!(report.car.0 > 2_500, "CML-SET-OBST");
         assert!(
             report.trace.iter().any(|sample| sample.robot_x > 2_500),
@@ -1786,6 +2147,7 @@ mod tests {
         assert!(!follow_withheld_without_return(), "CML-PROC-OPT");
         assert_eq!(report.shown_bag, Some(report.pointed), "CML-SCORE-SEE");
         assert_eq!(SEE, 15, "CML-SCORE-SEE");
+        assert_eq!(report.shown_bag.map(|_| 1), Some(1), "CML-SCORE-SEE");
         assert!(report.grasped_pointed, "CML-SCORE-PICK");
         assert_eq!(PICK, 100, "CML-SCORE-PICK");
         assert!(
@@ -1862,6 +2224,34 @@ mod tests {
         assert!(
             orders.windows(2).any(|pair| pair[0] != pair[1]),
             "CML-ASM-ORDER"
+        );
+        let mut faced = Vec::new();
+        for seed in [0u64, 1] {
+            let report = main_at(seed, None);
+            assert_eq!(
+                report.encounter,
+                report.order.to_vec(),
+                "CML-ASM-ORDER {}",
+                report.summary()
+            );
+            assert!(
+                report.summary().contains("order-not-required"),
+                "CML-ASM-ORDER"
+            );
+            assert!(
+                report.summary().contains("assumption obstacle-order"),
+                "CML-ASM-ORDER"
+            );
+            faced.push(report.encounter);
+        }
+        assert_ne!(faced[0], faced[1], "CML-ASM-ORDER");
+        let near = main_at(1, Some(point(2_501, 1_000)));
+        assert!(near.car_outside, "CML-SET-OBST");
+        assert_ne!(
+            near.avoided,
+            [true, true, true, true],
+            "CML-SET-OBST {}",
+            near.summary()
         );
         assert!(crowds.contains(&3) && crowds.contains(&4), "CML-SET-CROWD");
         let cars = [
@@ -1946,10 +2336,12 @@ mod tests {
             other.summary()
         );
         let help = run(Script::HelpBonus { seed: 1 });
-        assert!(help.returned, "CML-GEN-BONUS {}", help.summary());
+        assert!(help.main_passed, "CML-GEN-BONUS {}", help.summary());
+        assert!(help.help_act, "CML-GEN-BONUS");
+        assert!(help.returned, "CML-GEN-BONUS");
         assert_eq!(help.bonus_back, 0, "CML-GEN-BONUS");
         assert_eq!(help.bonus_queue, 0, "CML-GEN-BONUS");
-        assert_eq!(bonus_line(BACK, true), 0, "CML-GEN-BONUS");
+        assert_ne!(help.bonus_back, BACK, "CML-GEN-BONUS");
         let swapped = run(Script::DifferentQueue { seed: 1 });
         assert!(swapped.main_passed, "CML-SET-CROWD");
         assert!(!swapped.queue_same, "CML-SET-CROWD");
@@ -1989,8 +2381,15 @@ mod tests {
         assert!(budget.frozen_after_limit, "CML-TIME");
         assert_eq!(budget.clock_ms, LIMIT_MS + 1, "CML-TIME");
         assert_eq!(budget.phase, "time-up", "CML-TIME");
+        assert_eq!(budget.stop, "time-up", "CML-TIME");
         assert!(!budget.main_passed, "CML-TIME");
         assert!(!budget.trip_flag, "CML-TIME");
+        let exhausted = run(Script::Exhaust { seed: 1 });
+        assert_eq!(exhausted.stop, "budget", "CML-TIME {}", exhausted.summary());
+        assert_eq!(exhausted.phase, "following", "CML-TIME");
+        assert_eq!(exhausted.clock_ms, LIMIT_MS, "CML-TIME");
+        assert!(!exhausted.main_passed, "CML-TIME");
+        assert_ne!(exhausted.phase, "time-up", "CML-TIME");
         let stuck = run(Script::Stuck { seed: 1 });
         assert_eq!(stuck.fail, Some("stuck"), "CML-TIME");
         assert!(stuck.clock_ms > 1_000, "CML-TIME");
@@ -2140,6 +2539,58 @@ mod tests {
                 "{id}"
             );
             assert!(!report.summary().contains(&format!("{id} pass")), "{id}");
+        }
+    }
+
+    #[test]
+    fn obstacle_credit_requires_a_real_encounter() {
+        let report = main_at(1, None);
+        assert_eq!(
+            report.avoided,
+            [true, true, true, true],
+            "CML-SET-OBST {}",
+            report.summary()
+        );
+        assert!(
+            report.seen[0] && report.threatened[0] && !report.hit[0],
+            "CML-SCORE-SMALL"
+        );
+        assert!(
+            report.seen[1] && report.threatened[1] && !report.hit[1],
+            "CML-SCORE-HARD"
+        );
+        assert!(
+            report.seen[2] && report.threatened[2] && !report.hit[2],
+            "CML-SCORE-CROWD"
+        );
+        assert!(
+            report.seen[3] && report.threatened[3] && !report.hit[3],
+            "CML-SCORE-BAR"
+        );
+        assert_eq!(report.crowd, 4, "CML-SET-CROWD");
+        assert_eq!(report.encounter, report.order.to_vec(), "CML-ASM-ORDER");
+        let three = main_at(0, None);
+        assert_eq!(three.crowd, 3, "CML-SET-CROWD");
+        assert!(three.avoided[2], "CML-SCORE-CROWD {}", three.summary());
+        let stripped = run(Script::Strip { seed: 1 });
+        assert_eq!(
+            stripped.avoided,
+            [false, false, false, false],
+            "CML-SET-OBST {}",
+            stripped.summary()
+        );
+        assert!(stripped.encounter.is_empty(), "CML-SET-OBST");
+        for (class, index, label) in [
+            (ObstacleClass::SmallGround, 0, "CML-SCORE-SMALL"),
+            (ObstacleClass::HardToSee, 1, "CML-SCORE-HARD"),
+            (ObstacleClass::Crowd, 2, "CML-SCORE-CROWD"),
+            (ObstacleClass::Barriers, 3, "CML-SCORE-BAR"),
+        ] {
+            let dropped = run(Script::DropClass { seed: 1, class });
+            assert!(!dropped.avoided[index], "{label} {}", dropped.summary());
+            let hit = run(Script::Collide { seed: 1, class });
+            assert!(hit.hit[index], "{label} {}", hit.summary());
+            assert!(!hit.avoided[index], "{label}");
         }
     }
 }

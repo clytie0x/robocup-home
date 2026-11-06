@@ -874,6 +874,35 @@ mod tests {
     }
 
     #[test]
+    fn accompany_after_the_limit_keeps_complete_and_does_not_move() {
+        let (mut world, mut trip, operator, bag) = ready();
+        trip.apply(0, Event::Arrived).unwrap();
+        execute_handoff(&mut world, &mut trip, 0, operator).unwrap();
+        assert_eq!(trip.phase(), Phase::Complete);
+        assert_eq!(world.carried(), None);
+        let pose_before = pose(&world);
+        let clock = world.now_ms();
+        let events = world.events().len();
+        let mut follower = Follower::follow(operator);
+        let err = step_drive(
+            &mut world,
+            &mut trip,
+            &mut follower,
+            LIMIT_MS + 1,
+            Drive::Accompany { person: operator },
+            Cue::None,
+        );
+        assert_eq!(err, Err(FeedError::TimeUp));
+        assert_eq!(trip.phase(), Phase::Complete);
+        assert!(trip.main_complete());
+        assert_eq!(pose(&world), pose_before);
+        assert_eq!(world.now_ms(), clock);
+        assert_eq!(world.events().len(), events);
+        assert_eq!(world.carried(), None);
+        let _ = bag;
+    }
+
+    #[test]
     fn cumulative_steps_and_a_start_near_the_top_share_one_clock() {
         let (mut world, mut trip, operator, _) = ready();
         let mut follower = Follower::follow(operator);

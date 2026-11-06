@@ -173,6 +173,8 @@ def check_rows(spec):
                 problems.append(f"{ident} missing {marker}")
         if block == "open" and "cannot pass" not in test:
             problems.append(f"{ident} open without cannot pass")
+        # A pass or fail only proves that the cited test function contains the row id.
+        # It does not prove that the assertions mean what the row requires.
         if result in {"pass", "fail"}:
             if block == "open":
                 problems.append(f"{ident} open marked {result}")

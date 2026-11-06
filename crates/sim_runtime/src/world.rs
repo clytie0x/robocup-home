@@ -340,6 +340,32 @@ impl SimWorld {
         Ok(())
     }
 
+    /// A person takes a free bag. The gripper stays empty. This is not a robot grasp.
+    pub fn human_take(&mut self, bag: Id) -> Result<(), ArmError> {
+        if bag == self.operator.id {
+            return Err(ArmError::Role);
+        }
+        if self.carried.is_some() {
+            return Err(ArmError::Occupied);
+        }
+        let index = self.locate(bag)?;
+        if self.bags[index].custody != Custody::Free {
+            return Err(ArmError::NotFree);
+        }
+        let pose = self.operator.pose;
+        let at_ms = self.clock.now_ms();
+        self.bags[index].custody = Custody::Operator;
+        self.bags[index].pose = pose;
+        self.events.push(Event {
+            at_ms,
+            kind: EventKind::Handed {
+                bag,
+                to: self.operator.id,
+            },
+        });
+        Ok(())
+    }
+
     /// Opens the gripper and records the bag at the robot base.
     pub fn drop_held(&mut self, bag: Id) -> Result<Point, ArmError> {
         if bag == self.operator.id {

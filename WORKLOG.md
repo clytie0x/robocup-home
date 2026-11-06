@@ -1,5 +1,71 @@
 # WORKLOG
 
+## M8 obstacle credit (2026-11-06)
+
+Scope. Independent review of `b6158a266c0f049b1ae990cd801d460ebec5011b` on pull request 17. The follow to the car, custody, the shared clock, and the negative trip-flag cases held. The merge blocker was the avoidance mark. No merge. M9 was not started. M9.3 was not run. This does not say that no defect remains.
+
+`avoided` was `present && !hit`. `present` was true for any disk with x greater than 2500. The operator lane cleared the tallest disk, so the robot did not face the four classes. On seeds 0, 1, 2, 3, 7, and `u64::MAX` the hard-to-see disk stayed outside the 800 mm sensor. A car at `(2501, 1000)` still received all four credits. `set_obstacles` of an empty list after setup still passed `seeded_main_reaches_the_car`. The crowd credit had the same shape. `CML-ASM-ORDER` compared the placement vector, not the order the robot faced.
+
+Red. Credit then required an abreast local sight. `cargo test -p harness --lib seeded_main_reaches_the_car --offline` failed: `main_passed false`, `fail budget`, `encounter []`, `seen [false, false, false, false]`, robot `(4084, 737)`, operator `(4850, 540)`, clock `300000`.
+
+Green. The seeded class order is kept. The episode spaces those disks along the outside path so a local follower can pass each one. The pitch, the 340 mm abreast window, the class sensors, and the 280 mm band outside the grown disk are assumptions, not printed measurements. A class is credited only when the robot is abreast, the disk is in that class sensor, the robot is in the close band, and no motion segment hits the grown disk. The navigator still receives only `look`. Removing every obstacle after the route is built clears all four credits. Removing one class clears that class. Driving through a class whose live disk was removed records a hit on the layout disk and clears that class. A car at `(2501, 1000)` does not receive the four credits.
+
+Other rows from the same review. `CML-BAG-DEF` is `not-run`: the fixture stores the bag kind and does not measure stiffness or weight. `CML-SET-PLACE` fails when the armed pose is outside and when the robot moves after `Begin`. `CML-SET-BAGS` accepts a bag at exactly 2000 mm and rejects 2001 mm. `CML-SCORE-SEE` is one mock confirmation for either a screen or speech, not a measured pair of channels. `CML-GEN-LIST` is a person taking the free bag while the gripper stays empty. `CML-GEN-BONUS` is a non-navigator slide during the return; the bonus lines stay 0. `CML-ASM-ORDER` is the order the robot faced, labeled as an assumption, and it is not a claim that the PDF requires one order.
+
+Clock. A follow stamp at 300001 stores `TimeUp`. `Accompany` at 300001 after completion returns `TimeUp`, leaves the phase `Complete`, and does not move the world. The runner stopping because the next stamp would pass 300000, while the phase is still `Following`, is `budget`, not `TimeUp`. Direct `execute_pick` can still pair world time 400000 ms with trip stamp 10. That path is the old helper, not the episode.
+
+`check_m1_spec.py` only checks that a `pass` row names a test function whose body contains the row id. It does not judge the meaning of the assertions. 45 rows are `pass`. 11 stay `not-run`: the seven open scoring rows, `CML-BAG-DEF`, and the three hardware rows. The sheet still does not award a run total.
+
+```text
+rustc --version
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+cargo --version
+cargo 1.99.1 (5f94df478 2026-08-27)
+
+cargo fmt --all -- --check
+fmt_exit:0
+
+cargo build --workspace --all-targets --locked
+build_exit:0
+
+cargo clippy --workspace --all-targets --locked -- -D warnings
+clippy_exit:0
+
+cargo test --workspace --all-targets --locked
+domain 8, harness 43, hri 2, manipulation 8, navigation 12, perception 20, sim_runtime 29, task_3_1 32
+0 failed
+test_exit:0
+
+cargo test --workspace --doc --locked
+domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, other crates 0
+0 failed
+doctest_exit:0
+
+cargo test --workspace --all-targets --locked --release
+same counts, 0 failed
+release_test_exit:0
+
+cargo test --workspace --doc --locked --release
+same doctest counts, 0 failed
+release_doctest_exit:0
+
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+doc_exit:0
+
+python3 artifacts/check_workspace.py
+ok members=8 pin=1.99.1 edition=2024
+workspace_exit:0
+
+python3 artifacts/check_m1_spec.py --self-test
+self-test ok
+self_test_exit:0
+
+PROFESSOR_PDF=<attached copy> python3 artifacts/check_m1_spec.py
+ok rows=56 pdf=True
+spec_exit:0
+```
+
 ## M8 full run to the hidden car (2026-11-06)
 
 Scope. Issue 16. One writer. Branch `cursor/m8-full-run-ffe7` from `4bf872ca88bfa2378cab3ca7d5acf4286561b3f7`. The episode follows the operator to the designated car and can re-enter with the same crowd. The car coordinate is scenario data. The navigator does not receive it. No hardware, deploy, registration, contact, or spending. M9 was not started. M9.3 was not run and is not claimed. The seven open scoring rows stay open. This does not say that no defect remains.
