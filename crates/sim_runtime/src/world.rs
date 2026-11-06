@@ -36,9 +36,11 @@ pub struct SimWorld {
     carried: Option<Id>,
     grasp_fault: bool,
     handoff_fault: bool,
-    /// When set, slides do not block on this class and the follower is not shown it.
-    /// The disks stay in the world, so a later live hit test can still meet them.
+    /// Legacy diagnostic omission for one class. Slides and the planner both skip it.
+    /// The disks stay in the world. This is not a physical law and not a drop.
     collision_fault: Option<ObstacleClass>,
+    /// One obstacle withheld from the planner. [`Self::try_slide`] still sees it.
+    planner_hidden: Option<Id>,
     car: Point,
     car_id: Id,
     events: Vec<Event>,
@@ -162,6 +164,7 @@ impl SimWorld {
             grasp_fault: false,
             handoff_fault: false,
             collision_fault: None,
+            planner_hidden: None,
             car: Point::new(Mm::new(assume::CAR_X_MM), Mm::new(assume::CAR_Y_MM)),
             car_id: id(9),
             events: vec![Event {
@@ -207,10 +210,14 @@ impl SimWorld {
         self.handoff_fault
     }
 
+    /// Injected diagnostic. A set fault refuses a grasp that was otherwise in reach.
+    /// It is not a measured contact failure.
     pub const fn set_grasp_fault(&mut self, on: bool) {
         self.grasp_fault = on;
     }
 
+    /// Injected diagnostic. It is checked after the physical segment test.
+    /// It is not a measured contact failure.
     pub const fn set_handoff_fault(&mut self, on: bool) {
         self.handoff_fault = on;
     }
@@ -219,13 +226,18 @@ impl SimWorld {
     ///
     /// The default is `None`. A set value stays until another call changes it.
     /// [`Self::try_slide`] and [`Self::obstacles_for_planner`] omit that one class.
-    /// This is not deletion.
+    /// This is a legacy diagnostic fault, not a contact model and not deletion.
     pub const fn set_collision_fault(&mut self, class: Option<ObstacleClass>) {
         self.collision_fault = class;
     }
 
     pub const fn collision_fault(&self) -> Option<ObstacleClass> {
         self.collision_fault
+    }
+
+    /// Hide one obstacle from the planner. The slide still uses the world body.
+    pub const fn hide_from_planner(&mut self, id: Option<Id>) {
+        self.planner_hidden = id;
     }
 
     /// Obstacles offered to a planner before that planner's own sensor.
@@ -235,7 +247,9 @@ impl SimWorld {
     pub fn obstacles_for_planner(&self) -> Vec<Obstacle> {
         self.obstacles
             .iter()
-            .filter(|obstacle| !self.fault_omits(obstacle.class))
+            .filter(|obstacle| {
+                !self.fault_omits(obstacle.class) && self.planner_hidden != Some(obstacle.id)
+            })
             .cloned()
             .collect()
     }

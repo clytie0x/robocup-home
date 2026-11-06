@@ -1,5 +1,23 @@
 # WORKLOG
 
+## R3 causal motion design (2026-11-07)
+
+R2 is merged at `f7bd274c004d3e8020f1ead05bf0a2c233dfdbfc`. R3 adds causal cases on the existing episode. It does not rewrite the route engine, the mailbox, or the zero-delay trace.
+
+The loss proof is a walk of at most 200 mm per sim step, with the trip clock advanced on each step. The operator is not moved by a single far `place_operator`. `Script::Loss` walks out and back, so the existing recovery can still finish. A stay-away walk is the cause. The same seed without that walk remains the followable control. The normal route is unchanged.
+
+An approach disk is a world body. `try_slide` keeps using every body. Hiding that disk from the planner does not hide it from the slide. The legacy `collision_fault` stays a labeled diagnostic omission. It is not this milestone's physics, and it is not a drop.
+
+An out-of-reach pick leaves the bag free. A disk on the handoff segment leaves the bag in the gripper. `drop_held` is the custody change. `grasp_fault` and `handoff_fault` stay injected diagnostics. No collision creates a drop.
+
+The report's geometry, custody, clock, and trace are the outcome. The script name is not.
+
+Red. Before the walk, `one_clock_covers_the_episode` exited 101: `operator jump -456,2370 at 1600`.
+
+Green. Seed 1, measured. A stay-away walk leaves the sensor in steps of at most 200 mm, phase `lost`, custody `gripper`, clock 7600, robot `(-56, 370)`, operator `(400, 5600)`, `main_passed` false. The same seed without the walk completes, custody `operator`. `Script::Loss` walks out beyond the sensor and back, and `main_passed` stays true. A far bag with no disk completes at clock 15400, robot `(7997, -488)`. The same disk hidden from the planner stops the base at `(0, 0)`, phase `picking`, custody `free`, fail `stuck`, clock 2000. The same disk left visible is avoided: `main_passed` true, clock 15600, robot `(7999, -461)`. Moving the bag out of reach before the grasp leaves custody `free`, phase `picking`, fail `reach`, clock 600. `Script::Drop` records `Dropped` and custody `free`. `Script::BlockedHandoff` leaves custody `gripper` and phase `releasing`. The zero profile still matches the frozen 75-line trace.
+
+This run's library count is 186: domain 8, harness 64, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent. The plain checker prints `pdf=False`. With `PROFESSOR_PDF` set, it prints `pdf=True` for hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600` and size 1129757. Page text was not read.
+
 ## R2 review fix, live base as the motion origin (2026-11-07)
 
 Reviewer `bc-0faa` on `e0b7e9c` closed the three earlier blockers and found one new one. A delayed sample was still accepted, then the step was planned from the captured base. At seed 1, delay 200 ms, clock 1600, the captured base was `(0, 200)`, the live base was `(-102, 171)`, and the planned target was `(-89, 378)`. The live distance squared was 43018, above `200² = 40000`, so the episode stopped with `NotACommand`. The same people and empty body list planned from the live base give `(-169, 359)`, distance squared 39833. Delay 1000 ms stopped at clock 6400: captured base `(153, 358)`, live base `(244, 289)`, target `(294, 498)`, distance squared 46181. From the live base the step is `(367, 446)`, distance squared 39778. One missed delivery stopped at the same 1600 ms step.
