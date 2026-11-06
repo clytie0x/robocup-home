@@ -187,15 +187,17 @@ pub enum SampleKind {
     Ready,
     Missing,
     Stale,
+    Duplicate,
     Reversed,
     Future,
 }
 
-/// Capture time, delivery time, and age. Age is absent when there is no capture.
+/// Capture, delivery, and the decision clock. `age_ms` is the decision age.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SampleStamp {
     pub captured_ms: Option<u64>,
     pub delivered_ms: u64,
+    pub decision_ms: u64,
     pub age_ms: Option<u64>,
     pub kind: SampleKind,
 }
@@ -215,14 +217,14 @@ pub fn accept(
         return (
             history,
             Taken::Rejected,
-            stamp(None, delivered_ms, None, SampleKind::Future),
+            stamp(None, delivered_ms, now_ms, None, SampleKind::Future),
         );
     }
     match posted {
         Posted::Missing { .. } => (
             history,
             Taken::NeedFresh,
-            stamp(None, delivered_ms, None, SampleKind::Missing),
+            stamp(None, delivered_ms, now_ms, None, SampleKind::Missing),
         ),
         Posted::Ready { view, .. } => accept_ready(history, view, delivered_ms, now_ms),
     }
@@ -239,28 +241,55 @@ fn accept_ready(
         return (
             history,
             Taken::Rejected,
-            stamp(Some(captured), delivered_ms, None, SampleKind::Future),
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                None,
+                SampleKind::Future,
+            ),
         );
     }
     if history.last_capture_ms.is_some_and(|prev| captured < prev) {
-        let age = delivered_ms.saturating_sub(captured);
+        let age = now_ms.saturating_sub(captured);
         return (
             history,
             Taken::Rejected,
             stamp(
                 Some(captured),
                 delivered_ms,
+                now_ms,
                 Some(age),
                 SampleKind::Reversed,
             ),
         );
     }
-    let age = delivered_ms - captured;
+    if history.last_capture_ms == Some(captured) {
+        let age = now_ms.saturating_sub(captured);
+        return (
+            history,
+            Taken::NeedFresh,
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                Some(age),
+                SampleKind::Duplicate,
+            ),
+        );
+    }
+    let age = now_ms.saturating_sub(captured);
     if age > MAX_SAMPLE_AGE_MS {
         return (
             history,
             Taken::NeedFresh,
-            stamp(Some(captured), delivered_ms, Some(age), SampleKind::Stale),
+            stamp(
+                Some(captured),
+                delivered_ms,
+                now_ms,
+                Some(age),
+                SampleKind::Stale,
+            ),
         );
     }
     let mut next = history;
@@ -268,19 +297,27 @@ fn accept_ready(
     (
         next,
         Taken::Act(view.clone()),
-        stamp(Some(captured), delivered_ms, Some(age), SampleKind::Ready),
+        stamp(
+            Some(captured),
+            delivered_ms,
+            now_ms,
+            Some(age),
+            SampleKind::Ready,
+        ),
     )
 }
 
 fn stamp(
     captured_ms: Option<u64>,
     delivered_ms: u64,
+    decision_ms: u64,
     age_ms: Option<u64>,
     kind: SampleKind,
 ) -> SampleStamp {
     SampleStamp {
         captured_ms,
         delivered_ms,
+        decision_ms,
         age_ms,
         kind,
     }
@@ -1433,5 +1470,36 @@ mod tests {
         assert!(shift_view(&view, SYNTHETIC_SHIFT_MM + 1, 0).is_err());
         assert_eq!(SYNTHETIC_SHIFT_MM, 8);
         assert_eq!(MAX_SAMPLE_AGE_MS, 1_000);
+    }
+
+    #[test]
+    fn the_same_posted_sample_goes_stale_at_the_decision_clock() {
+        let posted = Posted::ready(ready_view(0), 0);
+        let (_, taken, stamp) = accept(SampleHistory::new(), &posted, 1_000);
+        assert!(matches!(taken, Taken::Act(_)));
+        assert_eq!(stamp.decision_ms, 1_000);
+        assert_eq!(stamp.age_ms, Some(1_000));
+        assert_eq!(stamp.delivered_ms, 0);
+        let (_, taken, stamp) = accept(SampleHistory::new(), &posted, 1_001);
+        assert_eq!(taken, Taken::NeedFresh);
+        assert_eq!(stamp.kind, SampleKind::Stale);
+        assert_eq!(stamp.age_ms, Some(1_001));
+        let (history, first, _) = accept(SampleHistory::new(), &posted, 0);
+        assert!(matches!(first, Taken::Act(_)));
+        for now in [200, 400, 600, 800, 1_000, 1_200, 1_400, 100_000] {
+            let (kept, taken, stamp) = accept(history, &posted, now);
+            assert_eq!(kept.last_capture_ms(), history.last_capture_ms());
+            assert_ne!(taken, Taken::Act(ready_view(0)), "acted at {now}");
+            assert_eq!(stamp.decision_ms, now);
+            assert_eq!(stamp.delivered_ms, 0);
+            assert_eq!(stamp.captured_ms, Some(0));
+            assert_eq!(stamp.kind, SampleKind::Duplicate);
+            assert_eq!(stamp.age_ms, Some(now));
+        }
+        let fresh = Posted::ready(ready_view(100_000), 100_000);
+        let (_history, taken, stamp) = accept(history, &fresh, 100_000);
+        assert!(matches!(taken, Taken::Act(_)));
+        assert_eq!(stamp.age_ms, Some(0));
+        assert_eq!(stamp.kind, SampleKind::Ready);
     }
 }

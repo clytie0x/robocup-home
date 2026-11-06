@@ -1,5 +1,19 @@
 # WORKLOG
 
+## R2 review fixes, decision age and episode delivery (2026-11-07)
+
+Reviewer `bc-0faa` on `fc784b9` found three blockers. The library count 179 and CI were green and did not catch them.
+
+Age is `decision_ms - captured_ms`. Delivery latency is logged and is not the stale bound. The same posted sample stays actionable through a decision age of 1000 ms and is stale at 1001 ms. A second presentation of a capture already in history is a duplicate: `NeedFresh`, history unchanged. A newer capture recovers. `step_drive` and `accompany` write history only after the command returns `Ok`. The episode keeps one mailbox. The shutter is the only control-path `sense`. It stores the pointing ray with that capture. `shift_view` and the delay happen before selection, cue, follow, and approach. Delay 0 and shift 0 stay on the frozen 75-line trace. A missing or not-yet-due sample advances the sim clock one step and does not pause the 300000 ms budget.
+
+Red. With the delivery-latency age restored, `cargo test -p navigation --lib the_same_posted_sample_goes_stale_at_the_decision_clock --offline` exited 101: decision 1000 still reported age `Some(0)`. With history written before command validation, `cargo test -p harness --lib a_rejected_command_does_not_keep_the_sample_history --offline` exited 101: `left Some(400) right None`.
+
+Green. The same posted capture, delivery still 0, is `NeedFresh` at decisions 200 through 1400 and at 100000. The base stays on the first step. A newer capture moves it. A step that is too long for the current base, a wrong person, a follow during `Picking`, and accompany of the wrong person after `Complete` leave history, pose, and clock unchanged. The zero profile matches `r1_main_trace.txt`.
+
+Episode outcomes from `a_delayed_episode_uses_the_mailbox_and_can_miss_once`, seed 1, measured after the mailbox was wired. These are the world results, not a required pass. Delay 200 ms: `main_passed` false, phase `following`, clock 1600, custody `gripper`, fail `command`. Delay 1000 ms: `main_passed` false, phase `following`, clock 6400, custody `gripper`, fail `command`. One missed delivery: `main_passed` false, phase `following`, clock 1600, custody `gripper`, fail `command`. The fail is `NotACommand`: a delayed view still inside the 1000 ms decision age planned a step the current base could not take. Shift 8 mm and -8 mm per axis: `main_passed` true, phase `complete`, clock 14800, custody `operator`. The sensed operator differed from truth by that shift. Truth was not shifted.
+
+This run's library count is 184: domain 8, harness 62, hri 2, manipulation 8, navigation 19, perception 20, sim_runtime 30, task_3_1 32, task_3_2 3. Doctests stay 7. Debug and release match. Section 3.1 stays 45 `pass` and 11 `not-run`. The 3.2 checker stays 42 `not-run`, 6 open, 2 hardware. `pdfinfo` and `pdftotext` are absent, so the plain checker prints `pdf=False` and page text was not read. With `PROFESSOR_PDF` pointed at the attached file, the checker prints `pdf=True`: hash `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`, size 1129757.
+
 ## R1 red-log clarification (2026-11-07)
 
 Independent review re-ran the two R1 halo tests on `3c6cab12`. The harness test failed at the bag-membership assertion. The writer log that shows `unwrap_err()` on `Ok(Moved { to: (0, 200) })` is from a build where that membership assertion was not yet in front of the approach call. Both failures are the same leak. They are not the same assertion line.

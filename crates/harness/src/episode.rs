@@ -9,14 +9,14 @@ use domain::{
     segment_within, within_reach,
 };
 use navigation::{
-    Cue, Follower, Posted, SampleHistory, assume::ARRIVE_MM, assume::ROBOT_RADIUS_MM,
-    assume::SENSOR_MM, assume::STEP_MM, cue_from, look, sense,
+    Cue, Follower, Posted, SampleHistory, SampleKind, Taken, accept, assume::ARRIVE_MM,
+    assume::ROBOT_RADIUS_MM, assume::SENSOR_MM, assume::STEP_MM, cue_from, look, sense, shift_view,
 };
-use sim_runtime::SimWorld;
 use sim_runtime::assume::{
     BARRIER_RADIUS_MM, CLEARANCE_MM, HARD_RADIUS_MM, INSIDE_X_MAX_MM, PERSON_RADIUS_MM,
     SMALL_RADIUS_MM,
 };
+use sim_runtime::{AimSample, SimWorld};
 use task_3_1::{BACK, Effect, Event, LIMIT_MS, Phase, QUEUE};
 
 use super::drive::{Drive, NavEnd, step_drive};
@@ -212,6 +212,7 @@ pub struct EpisodeReport {
     pub bonus_queue: i32,
     pub help_used: bool,
     pub fail: Option<&'static str>,
+    pub delivery: String,
     pub trace: Vec<Sample>,
 }
 
@@ -219,7 +220,7 @@ impl EpisodeReport {
     pub fn summary(&self) -> String {
         let fail = self.fail.unwrap_or("-");
         format!(
-            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\nstop {}\nencounter {:?}\nseen {:?} threatened {:?} hit {:?}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption encounter-window-mm {ENCOUNTER_WINDOW_MM}\nassumption close-clearance-mm {CLOSE_BAND_MM}\nassumption route-pass-mm {ROUTE_PASS_MM}\nassumption clock-start begin\nassumption obstacle-order faced-sequence\norder-not-required\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\npost-main accompany after the limit keeps Complete and does not move\nbudget-exhaustion-is-not-time-up\n{}\n{}\ntrace_len {}\n",
+            "model {MODEL}\nsource {SOURCE_HASH}\nseed {}\nscenario {}\ncar {},{}\nrobot {},{}\noperator {},{}\ncustody {}\nphase {}\nclock_ms {}\nstart_ms {}\nmain_passed {}\ntrip_flag {}\nlocal_cue {}\nfollow_moves {}\nlongest_step_mm {}\nlegal_motion {}\nreturned {}\nqueued {}\nqueue_same {}\ncrowd {}\nfail {fail}\nstop {}\nencounter {:?}\nseen {:?} threatened {:?} hit {:?}\ncomponent-cue-is-not-the-car\nassumption clearance-mm {CLEARANCE_MM}\nassumption robot-radius-mm {ROBOT_RADIUS_MM}\nassumption arrive-mm {ARRIVE_MM}\nassumption step-mm {STEP_MM}\nassumption hard-sensor-mm {}\nassumption sensor-mm {SENSOR_MM}\nassumption encounter-window-mm {ENCOUNTER_WINDOW_MM}\nassumption close-clearance-mm {CLOSE_BAND_MM}\nassumption route-pass-mm {ROUTE_PASS_MM}\nassumption clock-start begin\nassumption obstacle-order faced-sequence\norder-not-required\nassumption few-return count={} stay-steps={STAY_STEPS}\nassumption outside-stand-in arena-half-plane\npublic-place-not-certified\nassumption size small={SMALL_RADIUS_MM} hard={HARD_RADIUS_MM} barrier={BARRIER_RADIUS_MM} person={PERSON_RADIUS_MM}\npost-main accompany after the limit keeps Complete and does not move\nbudget-exhaustion-is-not-time-up\n{}\n{}\n{}\ntrace_len {}\n",
             self.seed,
             self.scenario,
             self.car.0,
@@ -251,6 +252,7 @@ impl EpisodeReport {
             self.crowd,
             open_lines(),
             hardware_lines(),
+            self.delivery,
             self.trace.len(),
         )
     }
@@ -494,6 +496,48 @@ fn options(script: Script) -> Options {
     }
 }
 
+#[derive(Debug)]
+struct DeliveryNote {
+    captured_ms: Option<u64>,
+    delivered_ms: u64,
+    decision_ms: u64,
+    age_ms: Option<u64>,
+    kind: SampleKind,
+    sensed_x: Option<i32>,
+    sensed_y: Option<i32>,
+    truth_x: i32,
+    truth_y: i32,
+}
+
+struct Held {
+    view: navigation::SensorView,
+    aim: Option<AimSample>,
+}
+
+struct Mail {
+    delay_ms: u64,
+    dx: i32,
+    dy: i32,
+    miss_one: bool,
+    held: Vec<Held>,
+    history: SampleHistory,
+    log: Vec<DeliveryNote>,
+}
+
+impl Mail {
+    fn zero() -> Self {
+        Self {
+            delay_ms: 0,
+            dx: 0,
+            dy: 0,
+            miss_one: false,
+            held: Vec::new(),
+            history: SampleHistory::new(),
+            log: Vec::new(),
+        }
+    }
+}
+
 struct Episode {
     opt: Options,
     world: SimWorld,
@@ -544,6 +588,8 @@ struct Episode {
     trace: Vec<Sample>,
     last_ms: Option<u64>,
     outbound: bool,
+    mail: Mail,
+    last_cue: Cue,
 }
 
 pub fn run(script: Script) -> EpisodeReport {
@@ -614,6 +660,8 @@ impl Episode {
             trace: Vec::new(),
             last_ms: None,
             outbound: true,
+            mail: Mail::zero(),
+            last_cue: Cue::None,
         }
     }
 
@@ -751,21 +799,9 @@ impl Episode {
     }
 
     fn perceive_and_ready(&mut self) -> Result<(), ()> {
-        let observed = self.world.observe();
-        let view = sense(
-            observed.robot.pose.point(),
-            observed.operator,
-            &observed.bags,
-            &observed.obstacles,
-            false,
-            observed.now_ms,
-        );
-        let sample = match self.world.aim_at(self.pointed) {
-            Ok(sample) => sample,
-            Err(_) => {
-                self.fail = Some("aim");
-                return Err(());
-            }
+        let (view, sample) = match self.delivered_view() {
+            Ok(pair) => pair,
+            Err(()) => return Err(()),
         };
         let chosen = match point_from_sample(
             Some(sample.origin()),
@@ -877,7 +913,7 @@ impl Episode {
             let stamp = self.must_stamp()?;
             let before = xy(self.world.observe().robot.pose.point());
             let end = self
-                .drive(stamp, Drive::Approach { bag: self.pointed }, Cue::None)
+                .drive(stamp, Drive::Approach { bag: self.pointed })
                 .map_err(|reason| {
                     self.fail = Some(reason);
                 })?;
@@ -890,7 +926,7 @@ impl Episode {
                     self.approached = after != start || self.approached;
                     return Ok(());
                 }
-                NavEnd::Moved { .. } | NavEnd::Blocked | NavEnd::Waiting => {}
+                NavEnd::Moved { .. } | NavEnd::Blocked | NavEnd::Waiting | NavEnd::NeedFresh => {}
                 NavEnd::Stuck => {
                     self.fail = Some("stuck");
                     return Err(());
@@ -927,7 +963,6 @@ impl Episode {
             Drive::Follow {
                 person: self.operator,
             },
-            Cue::None,
         );
         let after = xy(self.world.observe().robot.pose.point());
         self.moved_on_limit = moved.is_ok() && after != before && self.world.now_ms() == limit;
@@ -937,7 +972,6 @@ impl Episode {
             Drive::Follow {
                 person: self.operator,
             },
-            Cue::TakeBag,
         );
         self.frozen_after_limit = late.as_ref().is_err_and(|reason| *reason == "time-up")
             && xy(self.world.observe().robot.pose.point()) == frozen;
@@ -1102,14 +1136,14 @@ impl Episode {
                     self.stop = "budget";
                     break;
                 };
-                let _ = self.drive(stamp, Drive::Follow { person }, Cue::None);
+                let _ = self.drive(stamp, Drive::Follow { person });
                 self.world.place_operator(back);
                 let Some(stamp) = self.legal_stamp() else {
                     self.fail = Some("budget");
                     self.stop = "budget";
                     break;
                 };
-                let _ = self.drive(stamp, Drive::Follow { person }, Cue::None);
+                let _ = self.drive(stamp, Drive::Follow { person });
                 continue;
             }
             if self.opt.cancel && self.follow_moves >= 2 {
@@ -1118,7 +1152,7 @@ impl Episode {
                     self.stop = "budget";
                     break;
                 };
-                if self.drive(stamp, Drive::Cancel, Cue::None).is_ok() {
+                if self.drive(stamp, Drive::Cancel).is_ok() {
                     self.cancelled = true;
                     self.fail = Some("cancel");
                 }
@@ -1128,13 +1162,12 @@ impl Episode {
                 self.advance_operator();
             }
             self.note_encounter();
-            let cue = self.cue_for_robot();
             let Some(stamp) = self.legal_stamp() else {
                 self.fail = Some("budget");
                 self.stop = "budget";
                 break;
             };
-            let end = match self.drive(stamp, Drive::Follow { person }, cue) {
+            let end = match self.drive(stamp, Drive::Follow { person }) {
                 Ok(end) => end,
                 Err("time-up") => {
                     self.fail = Some("time-up");
@@ -1152,7 +1185,7 @@ impl Episode {
             }
             match end {
                 NavEnd::Arrived { .. } => {
-                    if cue == Cue::TakeBag {
+                    if self.last_cue == Cue::TakeBag {
                         self.local_cue = true;
                     }
                     if self.hand_off().is_err() {
@@ -1271,17 +1304,129 @@ impl Episode {
         }
     }
 
-    fn cue_for_robot(&mut self) -> Cue {
+    fn shutter(&mut self, offered: bool) {
         let observed = self.world.observe();
-        let view = sense(
+        let mut view = sense(
             observed.robot.pose.point(),
             observed.operator,
             &observed.bags,
             &self.world.obstacles_for_planner(),
-            self.scenario_offer(),
+            offered,
             observed.now_ms,
         );
-        cue_from(&view)
+        if self.mail.dx != 0 || self.mail.dy != 0 {
+            view = shift_view(&view, self.mail.dx, self.mail.dy).expect("profile shift");
+        }
+        let aim = self.world.aim_at(self.pointed).ok();
+        self.mail.held.push(Held { view, aim });
+    }
+
+    fn next_sample(&mut self, offered: bool) -> (Posted, Option<AimSample>) {
+        self.shutter(offered);
+        let now = self.world.now_ms();
+        if self.mail.miss_one {
+            self.mail.miss_one = false;
+            return (Posted::missing(now), None);
+        }
+        let due = self
+            .mail
+            .held
+            .iter()
+            .position(|held| held.view.captured_ms.saturating_add(self.mail.delay_ms) <= now);
+        if let Some(index) = due {
+            let held = self.mail.held.remove(index);
+            (Posted::ready(held.view, now), held.aim)
+        } else {
+            (Posted::missing(now), None)
+        }
+    }
+
+    fn record_sample(&mut self, posted: &Posted) {
+        let now = self.world.now_ms();
+        let (_, _, stamp) = accept(self.mail.history, posted, now);
+        let truth = self.world.observe().operator.pose.point();
+        let (sensed_x, sensed_y) = match posted {
+            Posted::Ready { view, .. } => view
+                .people
+                .iter()
+                .find(|person| person.id == self.operator)
+                .map(|person| (Some(person.at.x().get()), Some(person.at.y().get())))
+                .unwrap_or((None, None)),
+            Posted::Missing { .. } => (None, None),
+        };
+        self.mail.log.push(DeliveryNote {
+            captured_ms: stamp.captured_ms,
+            delivered_ms: stamp.delivered_ms,
+            decision_ms: stamp.decision_ms,
+            age_ms: stamp.age_ms,
+            kind: stamp.kind,
+            sensed_x,
+            sensed_y,
+            truth_x: truth.x().get(),
+            truth_y: truth.y().get(),
+        });
+    }
+
+    fn delivery_line(&self) -> String {
+        let mut ready = 0u32;
+        let mut other = 0u32;
+        let mut lagged = false;
+        let mut last_captured = None;
+        let mut last_delivered = 0u64;
+        let mut last_decision = 0u64;
+        let mut last_age = None;
+        for note in &self.mail.log {
+            if note.kind == SampleKind::Ready {
+                ready += 1;
+            } else {
+                other += 1;
+            }
+            if note.sensed_x.is_some_and(|x| x != note.truth_x)
+                || note.sensed_y.is_some_and(|y| y != note.truth_y)
+            {
+                lagged = true;
+            }
+            last_captured = note.captured_ms;
+            last_delivered = note.delivered_ms;
+            last_decision = note.decision_ms;
+            last_age = note.age_ms;
+        }
+        format!(
+            "delivery ready={ready} other={other} lagged={lagged} last_captured={last_captured:?} last_delivered={last_delivered} last_decision={last_decision} last_age={last_age:?}"
+        )
+    }
+
+    fn delivered_view(&mut self) -> Result<(navigation::SensorView, AimSample), ()> {
+        for _ in 0..64 {
+            let (posted, aim) = self.next_sample(false);
+            let now = self.world.now_ms();
+            self.record_sample(&posted);
+            let (_, taken, _) = accept(self.mail.history, &posted, now);
+            if let Taken::Act(view) = taken {
+                let Some(aim) = aim else {
+                    self.fail = Some("aim");
+                    return Err(());
+                };
+                return Ok((view, aim));
+            }
+            let Some(at) = self.legal_stamp() else {
+                self.fail = Some("budget");
+                self.stop = "budget";
+                return Err(());
+            };
+            let delta = at.saturating_sub(now);
+            if self.world.advance(Step::from_ms(delta)).is_err() {
+                self.fail = Some("overflow");
+                return Err(());
+            }
+            if self.trip.now_ms().is_some() && self.trip.apply(at, Event::Tick).is_err() {
+                self.fail = Some("clock");
+                return Err(());
+            }
+            self.sample();
+        }
+        self.fail = Some("sample");
+        Err(())
     }
 
     fn hand_off(&mut self) -> Result<(), ()> {
@@ -1354,7 +1499,6 @@ impl Episode {
             Drive::Follow {
                 person: self.operator,
             },
-            Cue::None,
         );
         if self.legal_stamp().is_none() && self.trip.phase() == Phase::Following {
             self.fail = Some("budget");
@@ -1486,7 +1630,7 @@ impl Episode {
                 break;
             };
             let before = xy(robot_now);
-            let end = match self.drive(stamp, Drive::Accompany { person: tail }, Cue::None) {
+            let end = match self.drive(stamp, Drive::Accompany { person: tail }) {
                 Ok(end) => end,
                 Err(_) => break,
             };
@@ -1655,6 +1799,7 @@ impl Episode {
             bonus_queue,
             help_used: self.help_act,
             fail: self.fail,
+            delivery: self.delivery_line(),
             trace: std::mem::take(&mut self.trace),
         }
     }
@@ -1706,7 +1851,14 @@ impl Episode {
     }
 
     /// One robot step. The car coordinate is not an argument.
-    fn drive(&mut self, at_ms: u64, drive: Drive, cue: Cue) -> Result<NavEnd, &'static str> {
+    fn drive(&mut self, at_ms: u64, drive: Drive) -> Result<NavEnd, &'static str> {
+        let offered = matches!(drive, Drive::Follow { .. }) && self.scenario_offer();
+        let (posted, _) = self.next_sample(offered);
+        self.last_cue = match &posted {
+            Posted::Ready { view, .. } => cue_from(view),
+            Posted::Missing { .. } => Cue::None,
+        };
+        self.record_sample(&posted);
         let before_clock = self.world.now_ms();
         let before = xy(self.world.observe().robot.pose.point());
         let result = robot_follow(
@@ -1715,7 +1867,8 @@ impl Episode {
             &mut self.follower,
             at_ms,
             drive,
-            cue,
+            &posted,
+            &mut self.mail.history,
         );
         match result {
             Ok(end) => {
@@ -1839,22 +1992,11 @@ fn robot_follow(
     follower: &mut Follower,
     at_ms: u64,
     drive: Drive,
-    cue: Cue,
+    posted: &Posted,
+    history: &mut SampleHistory,
 ) -> Result<NavEnd, FeedError> {
     debug_assert!(world.revealed_car().is_none());
-    let observed = world.observe();
-    let offered = matches!(drive, Drive::Follow { .. }) && cue == Cue::TakeBag;
-    let view = sense(
-        observed.robot.pose.point(),
-        observed.operator,
-        &observed.bags,
-        &world.obstacles_for_planner(),
-        offered,
-        observed.now_ms,
-    );
-    let posted = Posted::ready(view, observed.now_ms);
-    let mut history = SampleHistory::new();
-    step_drive(world, trip, follower, at_ms, drive, &posted, &mut history)
+    step_drive(world, trip, follower, at_ms, drive, posted, history)
 }
 
 fn point(x: i32, y: i32) -> Point {
@@ -2241,6 +2383,119 @@ mod tests {
         extend(&mut empty_plain, point(10, 0));
         assert!(empty_marked.is_empty());
         assert!(empty_plain.is_empty());
+    }
+
+    #[test]
+    fn a_delayed_episode_uses_the_mailbox_and_can_miss_once() {
+        let mut delayed = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        }));
+        delayed.mail.delay_ms = 200;
+        delayed.execute();
+        let stale_view = delayed.mail.log.iter().find(|note| {
+            note.kind == SampleKind::Ready
+                && note.age_ms == Some(200)
+                && note
+                    .captured_ms
+                    .is_some_and(|captured| captured + 200 == note.decision_ms)
+                && note.delivered_ms == note.decision_ms
+                && (note.sensed_x != Some(note.truth_x) || note.sensed_y != Some(note.truth_y))
+        });
+        assert!(
+            stale_view.is_some(),
+            "no aged view differed from truth: {:?}",
+            delayed
+                .mail
+                .log
+                .iter()
+                .filter(|note| note.age_ms == Some(200))
+                .take(6)
+                .map(|note| (
+                    note.sensed_x,
+                    note.sensed_y,
+                    note.truth_x,
+                    note.truth_y,
+                    note.kind
+                ))
+                .collect::<Vec<_>>()
+        );
+        let delayed_report = delayed.report();
+        assert_eq!(delayed_report.clock_ms, delayed.world.now_ms());
+        assert!(delayed_report.clock_ms > 200);
+        assert!(delayed_report.clock_ms <= LIMIT_MS);
+
+        let mut slow = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        }));
+        slow.mail.delay_ms = 1_000;
+        slow.execute();
+        let slow_view = slow.mail.log.iter().find(|note| {
+            note.kind == SampleKind::Ready
+                && note.age_ms == Some(1_000)
+                && note
+                    .captured_ms
+                    .is_some_and(|captured| captured + 1_000 == note.decision_ms)
+                && (note.sensed_x != Some(note.truth_x) || note.sensed_y != Some(note.truth_y))
+        });
+        assert!(slow_view.is_some(), "no 1000 ms view differed from truth");
+        let slow_report = slow.report();
+        assert_eq!(slow_report.clock_ms, slow.world.now_ms());
+        assert!(slow_report.clock_ms > 1_000);
+        assert!(slow_report.clock_ms <= LIMIT_MS);
+
+        let mut dropped = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        }));
+        dropped.mail.miss_one = true;
+        dropped.execute();
+        assert!(
+            dropped
+                .mail
+                .log
+                .iter()
+                .any(|note| note.kind == SampleKind::Missing)
+        );
+        assert!(
+            dropped
+                .mail
+                .log
+                .iter()
+                .any(|note| note.kind == SampleKind::Ready)
+        );
+        let dropped_report = dropped.report();
+        assert_eq!(dropped_report.clock_ms, dropped.world.now_ms());
+        assert!(dropped.world.now_ms() > 0);
+        assert!(dropped_report.clock_ms <= LIMIT_MS);
+
+        let mut shifted = Episode::prepare(options(Script::Main {
+            seed: 1,
+            car: None,
+            then_return: false,
+            far_bag: false,
+        }));
+        shifted.mail.dx = 8;
+        shifted.mail.dy = -8;
+        shifted.execute();
+        let shift = shifted
+            .mail
+            .log
+            .iter()
+            .find(|note| note.kind == SampleKind::Ready && note.sensed_x.is_some());
+        let shift = shift.expect("no shifted sample");
+        assert_eq!(shift.sensed_x.unwrap() - shift.truth_x, 8);
+        assert_eq!(shift.sensed_y.unwrap() - shift.truth_y, -8);
+        let shift_report = shifted.report();
+        assert_eq!(shift_report.clock_ms, shifted.world.now_ms());
+        assert!(shift_report.clock_ms <= LIMIT_MS);
     }
 
     #[test]
