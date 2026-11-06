@@ -182,7 +182,20 @@ Workflow `.github/workflows/ci.yml` runs on pull requests and on pushes to `main
 
 The compiler install step reads `rust-toolchain.toml`. A later step refuses channel `stable`, `beta`, or `nightly`, and requires `rustc --version` to start with `rustc` plus that channel. Packages set `publish = false`. No crates.io dependency is declared.
 
-GitHub Actions had not been read at this commit. A green local command is not a green GitHub check. This note does not say the software is free of undiscovered defects.
+GitHub Actions was read for commit `82d8e4c78cfc91b9b5833a1a92f43b09c2772357` on pull request 5. The job failed before any step ran. The runner did not execute fmt, build, clippy, or test. This is not a green check. No billing setting was changed. A green local command is not a green GitHub check. This note does not say the software is free of undiscovered defects.
+
+```text
+gh pr checks 5
+check	fail	2s	https://github.com/clytie0x/robocup-home/actions/runs/42185539820/job/127784865147
+checks_exit:1
+
+gh api repos/clytie0x/robocup-home/actions/runs/42185539820/jobs
+steps: []
+conclusion: failure
+
+annotation on .github:
+The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+```
 
 Privacy, read only:
 
