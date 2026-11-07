@@ -20,6 +20,8 @@ The first `cargo test -p physical --offline --test still_frame_compare` panicked
 
 Stage 4 and stage 5 stay open. Section 3.1 stays 45 `pass` and 11 `not-run`. The merge stays held.
 
+After the commit that added the paragraphs above, and while saving the CI snapshot, the shell ran `python3 -c 'print(1)'`. It printed `1`. It did not read the archive and it did not read a repository file. It was still a Python process. The sentence above that says no Python process was started is true only through that commit. It is not true of the whole correction run.
+
 ## Camera archive reader (2026-11-07)
 
 PR 34 is merged at `2737202a1d3bc9e4ca8d260f2bda183d41973811`. The merged plan head is `af381807a8f1bc1adce16644fd964080f98176ec`. This slice implements the bounded reader that note described. It does not call `cast_pixel`, `controller_note`, or a task crate, and it does not write `RCF1`. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`. No Python process was started. No package was installed. No hardware was used.
