@@ -1,5 +1,48 @@
 # WORKLOG
 
+## Static scene plan (2026-11-07)
+
+This entry is the plan and the test matrix. It is written before the scene code. Merged `main` is `892bc54d11dd2908898a399487a400d0c351554c`. The new branch is `cursor/static-scene-3d-bf93`. Pull request 27 stays merged and receives no more pushes. This slice is one static 3D body and one named mount. It is not a physics engine, not a mission, and not a decoded camera.
+
+### What was inspected
+
+`frame_sample` places a range in the scan frame: x forward, y left, origin at the sensor. It does not add `LIDAR_X_M` (0.175 m). That constant remains configured provenance from `robot.json`, repeated by `sensors.json`, and the installed lever arm stays unknown. The navigation view robot is that same scan origin. `assume::ROBOT_RADIUS_MM` (250) and `assume::SENSOR_MM` (2500) are planner assumptions around the posted origin. They are not a measured chassis and not a clearance guarantee. `post_samples` already applies `accept` and `plan_follow` to raw angle and range only. The scene must not pass a body pose into those functions.
+
+`post.csv` from the merged adapter counts zeros and view points for the private static revolution (407 samples, 9 zeros, 287 in view) and does not name the other 111. Those 111 are the audit gap: 99 returns outside 2500 mm and 12 positive ranges that round to the origin. The caption says "Radius is 0", which can be read as a physical radius, and it does not print the decision time or the stale decision at plus 1001 ms. This slice will add those counts and clock fields. It will not change the framing math. 9 + 12 + 99 + 287 = 407.
+
+### Frames
+
+World and the synthetic base coincide for this fixture only. That coincidence is labeled synthetic. It is not a measured installation. The scan frame origin is the sensor. The mount is a rigid transform: translation of the sensor origin in the base frame, yaw CCW about z, and pitch down about the sensor y axis so that positive pitch lowers sensor +x. The rotation is `Rz(yaw) * Ry(pitch_down)`. A scan bearing is CCW from sensor +x in the scan plane. The world ray is the mount rotation applied to that planar direction, so a pitched beam is a 3D line. The reported range is the distance along that line. `frame_sample` then draws that range in the scan plane. The world top-down and the scan plot are different origins and will be labeled as such.
+
+The demonstration mount is a nonzero synthetic translation and a nonzero yaw. It is not 0 m and not 0.175 m. The real lever arm is not filled with either number. Wheels, mass, and the arm mount stay unknown. No real chassis outline is promoted to a validated body.
+
+### Geometry
+
+One std-only ray against axis-aligned boxes. The hit is the nearest positive face the ray actually enters, including the z slab. A box that does not cross the ray in z is a miss. A nearer box hides a farther box. An empty body list has no hit. Non-finite mount values, a negative max range, and a non-finite bearing are errors. No third-party engine. The pictures are projections of these coordinates: an oblique wireframe, a world top-down, and the scan-frame plot. They are not a text schematic and not a claim of a full robot mesh.
+
+The packet uses an explicit front and a supplied monotonic millisecond. It is not wall time. Samples go through `frame_sample` and `post_samples`. A fixture person is added only in the test, after the view exists, and is not a camera detection. `sent` stays false.
+
+### Test matrix
+
+| case | expectation |
+| --- | --- |
+| sensor x 0.40, wall face x 2.40, yaw 0, pitch 0 | range 2.000 m at the face, not a prewritten body center |
+| yaw 90 deg, sensor y 0.20, face y 1.20 | range 1.000 m, inverse bearing 0; sensor-left bearing goes toward world -x |
+| pitched ray | the test's own matrix matches the hit, and the inverse bearing returns the input |
+| mount translation | not 0 and not `LIDAR_X_M` |
+| two boxes on one ray | the near face wins; removing it reveals the far face |
+| low box below the beam, then the same box raised through the beam | miss, then a hit; a flattened ray would have hit the low box |
+| empty scene | no hit |
+| non-finite mount, negative max range, non-finite bearing | error, no sample |
+| same front encodes and decodes | scan-frame point matches the range; the other front does not |
+| supplied clock 2500 ms | fresh at 2500, unusable at 3501, missing and reversed stay unusable, `sent` false |
+| fixture person plus a 0.15 m hit | straight `Move` becomes a side step or `Blocked`; removing the body restores the straight `Move` |
+| revolution counts | zeros, origin-rounded, beyond sensor, other rejects, and view points sum to the revolution |
+| private chunks | still 287 view points and `Lost` |
+| camera PNG and method-8 npz | not opened |
+
+Section 3.1 stays 45 `pass` and 11 `not-run`. The legacy Python checkers are not run locally. The new private directory is `/opt/cursor/artifacts/static-scene-3d/`. Older artifact directories stay in place.
+
 ## Scan adapter plan (2026-11-07)
 
 This entry is the plan and the test matrix. It is written before the adapter code. The merged foundation is `6e05e6673e8785143e590c16b7959844469824bb` on `main`. The new branch is `cursor/scan-nav-adapter-bf93`. Pull request 26 stays merged and receives no more pushes. This slice posts one captured lidar scan into the existing navigation view. It is not the 3D simulator, not a mission, and not a grasp.
