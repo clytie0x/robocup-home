@@ -1,5 +1,51 @@
 # WORKLOG
 
+## Scan adapter plan (2026-11-07)
+
+This entry is the plan and the test matrix. It is written before the adapter code. The merged foundation is `6e05e6673e8785143e590c16b7959844469824bb` on `main`. The new branch is `cursor/scan-nav-adapter-bf93`. Pull request 26 stays merged and receives no more pushes. This slice posts one captured lidar scan into the existing navigation view. It is not the 3D simulator, not a mission, and not a grasp.
+
+### What was inspected
+
+`navigation::sense` builds `SensorView` from a robot point, an operator, bags, and obstacle disks. `navigation::accept` is the controller freshness rule: missing, stale above `MAX_SAMPLE_AGE_MS` (1000, documented there as an assumed delay profile), duplicate, reversed, and future. `plan_follow` reads that view and returns `Lost` when the followed person is absent. `domain::Mm::try_from_meters` rounds finite metres to `i32` millimetres and rejects non-finite and overflowing values. `within_reach` keeps a point at exactly `SENSOR_MM` (2500) and drops a farther point.
+
+`physical` already parses LDS-03 packets, keeps raw samples, and frames one sample with `base_xy(raw, range, front)`: x forward, y left, metres, angle `wrap(front - raw clockwise)`. `lidar.py` does the same wrap with `FRONT_LASER_DEG = 178.7` and does not add the lidar xyz. Its `ScanStream` drops a reading older than 0.5 s on `time.monotonic`. That 0.5 s value is reference-code for the live stream. This adapter does not adopt it and does not fit a new age. The controller gate stays `navigation::accept`.
+
+The configured lidar xyz `(0.175, 0, 0.22)` m is provenance from `robot.json`, repeated by `sensors.json`, not a second measurement. Wheel radius, mass, and installed calibration stay unknown. Camera `*.png` files and method-8 `camera.npz` stay blocked. No codec is added.
+
+`static_recording_pose9/lidar_chunks.bin` is the captured file whose records are `<f64 seconds><u32 length><bytes>`. Those seconds are the capture monotonic clock, not wall time. `raw_lidar/course_lidar.bin` has no per-sample clock, so it is not used as a freshness proof. No synthetic clock is disguised as hardware time.
+
+### Boundary
+
+`physical` will depend on `domain` and `navigation`. Nothing will depend on `physical`. `navigation` will not parse lidar and will not learn 178.7 or 183.5. The adapter calls `accept` and `plan_follow`. It does not copy those functions. It does not call the harness drive, `format_command`, a socket, or a serial port. `sent` stays false.
+
+The caller names `measured-front` or `configured-front`. There is no default. The view uses that front only. The other front is an audit count of how many framed points differ. It is not a second policy input. The mount xyz is written as configured provenance and is not added to the points. A 1 m return on the named front stays 1000 mm. No reference speed scale is applied.
+
+A posted hit is a `SeenBody` at the millimetre point with radius 0. The radius is not a measured object size. The view robot is the scan origin `(0, 0)`, which is the local frame, not a world pose. People, bags, and gesture stay empty because the scan does not contain them. `plan_follow` is still invoked on that view. With no person it returns `Lost`. That is the policy output, not a mission result. A test may add a fixture person locally after the view is built. That person is not an adapter input and not a capture field.
+
+Zeros, negative ranges, and a positive range that rounds to the origin are kept in the audit and are not bodies. Non-finite samples and millimetre overflow are not bodies. Points farther than `SENSOR_MM` stay in the audit and stay out of the view, using that existing constant. No chunk stamp, a non-finite stamp, or a reversed chunk order does not become a fresh view and does not become a clear field. Empty input is not sensor health.
+
+### Test matrix
+
+| case | expectation |
+| --- | --- |
+| raw 178.7 deg, range 1 m, measured front | view point `(1000, 0)` mm, not the configured-front point |
+| same sample, configured front 183.5 | `(996, 84)` mm from `cos(4.8°)` and `sin(4.8°)`, rounded, and not `(1000, 0)` |
+| raw 88.7 and 268.7 at 1 m, measured front | `(0, 1000)` and `(0, -1000)`, so left and right stay signed |
+| raw 358.7 at 1 m, measured front | `(-1000, 0)` behind the origin |
+| mount xyz or a speed scale applied | fails the 1000 mm expectation |
+| range 0, negative, sub-millimetre rounding to the origin | audit kept, no body |
+| non-finite and a range that overflows `i32` mm | no body |
+| 2.500 m and 2.501 m | both audited; only 2500 mm is in the view |
+| fresh capture clock | `accept` is Ready and `plan_follow` runs |
+| missing, stale at 1001 ms, duplicate, reversed, future, non-finite clock | unusable, policy not run, raw samples retained |
+| rejecting every sample | fails the measured-front 1000 mm test |
+| ignoring the named front or the clock | fails the configured-front point or the stale test |
+| fixture person added only in the test | a body on the forward segment changes `plan_follow` |
+| result flag | `sent` is false and there is no command text |
+| private chunks | one longest revolution, capture-monotonic clock zeroed at the first chunk, CSV counts from that run, SVG of the view points |
+
+Section 3.1 stays 45 `pass` and 11 `not-run`. The legacy Python checkers are not run. The private output directory is new and does not replace `/opt/cursor/artifacts/physical-foundation/` or `/opt/cursor/artifacts/physical-foundation-review/`.
+
 ## Physical foundation review fix (2026-11-07)
 
 Reviewed head `389f28e1244be35ac73578b669b9316af8c50534`. Each finding below was present in that source. None was rejected. This commit stays on `cursor/physical-foundation-bf93` and does not merge. It does not start the next adapter. Section 3.1 was counted from the markdown table: 45 lines contain `| pass |` and 11 contain `| not-run |`. GPSR is unchanged. The legacy Python checkers `artifacts/check_workspace.py`, `artifacts/check_m1_spec.py`, and `artifacts/check_m10_spec.py` were not run. That exclusion means this validation is not the historical full checker set. Those scripts were not rewritten.
