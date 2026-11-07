@@ -45,6 +45,31 @@ Tests, written to fail before the functions exist: plate z and the top-plate cor
 
 This plan commit has no geometry code. The red command is recorded with the implementation.
 
+## Robot base result (2026-11-07)
+
+The plan above was committed before this code. Red, before `collision_plates`, `integrate`, `cast_sensor`, and `BasePose` existed: `cargo test -p physical --offline --lib -- plates_use_the_taped_gaps`. The compiler stopped with unresolved imports for `BlockReason`, `BodyHit`, `StepFault`, `cast_sensor`, `collision_plates`, `integrate`, `resting_contact`, `scan_step_m`, `sense_policy`, `visual_placeholders`, and `BasePose`, and reported `could not compile physical (lib test) due to 3 previous errors`. Green, after the geometry: `cargo test -p physical --offline --lib -- base::` reported 13 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 61, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 256. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This implementation run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. Earlier sections record the `b5977b8` `python3 -c 'print("no")'` run and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/robot-base-kinematic/`. Older directories were not overwritten. A fresh static scene still has `rays.csv` `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` and `packets.bin` `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26`. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. The capture row is still 287 view points and `Lost`. The four PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. The side view shows the three slabs and the ray above the low box. The top view shows the attempted outline that was not accepted. The pose plot shows attempted x rising at step 1 while accepted x stays 0 until the box is removed. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/model.csv` | `b106b8b10a36fec92b027d0c90fed1281deeb6ef390ddece697f398d3516d2e4` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/trace.csv` | `530cc80b503c06d7fa21abfb63babb857597e05ce6fc9079176965574ffa9d5d` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/top.svg` | `720aa861f1e2936156752b7e0fbf1d50c2f8386289eb01c42afe9769a016bf32` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/side.svg` | `23092d084dc7fcdb30e695e527a7aa8e2553814070538d8e9557dcd559200771` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/oblique.svg` | `0c9a19f567328ac070b294b34e8cabdb1e517f7d7dab858d2be342e88efdfcd8` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/pose.svg` | `0e5b95869e87544ce88d6d6f43d99ba91c2a6034371c6e27870b0a939420d295` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/top.png` | `2f99c98a5470c747c201525443dd1c88e4436808c2dd3ceddeb8e569d3ff125d` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/side.png` | `dec9db7fb4c6bab7605a79cf797fd67bcffb92f75474eb858725b870a3ae5323` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/oblique.png` | `e38c0bcf1352d497e5d31bb78be06c4060ece0cbdf85adb7adbfe8c1783e65e3` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/pose.png` | `e8c550f228f02f38b95e0b24a52106d3e18d92f7ca0313990341d26156a8dbb6` |
+
+This is not merged. Camera depth and the mission are not started.
+
 ## Static scene tick strokes (2026-11-07)
 
 Reviewed head `3a1505277dedb4291fecde99193c0b6f7a6ab0f1`. The remaining drawing defect was in `plane_axes`. A scan number was placed at `protect_m * scale + 16` above the axis, about 102 px, and the picture had no tick stroke. Top and oblique numbers that stepped off the rays had no leader. Anchor-to-anchor spacing still passed if every number moved by the same extra 200 px. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged.
