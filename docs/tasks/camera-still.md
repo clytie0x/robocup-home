@@ -30,7 +30,7 @@ A PNG fails closed unless the signature matches, the only chunks are one `IHDR`,
 
 ## What this does not claim
 
-The pair is not registered colour and depth. The script did not set image registration, and these files do not store the two OpenNI timestamps. The stills have a laptop-local `saved` string. That string is not a capture clock. Mirror, field of view, and the two mounts stay the frozen pinhole values. They are not fields in these files. The optical row 153.6 is not in the arrays. `camera.npz` stays blocked. `zip_entries` still stops on method 8 and on a size of `u32::MAX`. Section 3.1 stays 45 pass and 11 not-run. Stage 4 is not complete. Stage 5 is not complete.
+The pair is not registered colour and depth. The script did not set image registration, and these files do not store the two OpenNI timestamps. The stills have a laptop-local `saved` string. That string is not a capture clock. Mirror, field of view, and the two mounts stay the frozen pinhole values. They are not fields in these files. The optical row 153.6 is not in the arrays. This still reader does not open `camera.npz`. `zip_entries` still stops on method 8 and on a size of `u32::MAX`. The separate archive reader is in [camera-archive.md](camera-archive.md). Section 3.1 stays 45 pass and 11 not-run. Stage 4 is not complete. Stage 5 is not complete.
 
 | requirement | source | test | result | gate |
 | --- | --- | --- | --- | --- |

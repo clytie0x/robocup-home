@@ -1,5 +1,37 @@
 # WORKLOG
 
+## Camera archive reader (2026-11-07)
+
+PR 34 is merged at `2737202a1d3bc9e4ca8d260f2bda183d41973811`. The merged plan head is `af381807a8f1bc1adce16644fd964080f98176ec`. This slice implements the bounded reader that note described. It does not call `cast_pixel`, `controller_note`, or a task crate, and it does not write `RCF1`. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`. No Python process was started. No package was installed. No hardware was used.
+
+### Decision
+
+`inflate_raw_capped` is a second entry beside `inflate_capped`. Both call the same private block decoder. The raw entry does not read a zlib header or an Adler32 trailer. A requested cap above 8985728 returns `StillError::Size` before allocation. `inflate_capped` still requires the zlib wrapper, the Adler32 trailer, and the PNG cap of 230640.
+
+`read_camera_npz` is a new module. `zip_entries` is unchanged and still stops on method 8 and on a 32-bit size of `u32::MAX`. The reader accepts exactly three local members, in order: `color.npy` at 8985728 bytes, `depth_mm.npy` at 5990528, and `t_monotonic.npy` at 440. Each local header must be version 45, flags 0, method 8, with both 32-bit sizes equal to `0xFFFFFFFF` and one zip64 extra of id `0x0001` and length 16. The central headers must carry the same flags, method, CRC, and resolved sizes as 32-bit fields, with an empty extra. A central offset that lands inside member data is an overlap. The end record must be the ordinary end record, one disk, matching entry count, central-directory size, and offset, and the file must end there. A ZIP64 end record or locator is rejected. Checked addition is used for offsets and lengths. The declared uncompressed size is checked before the raw inflater allocates.
+
+After inflate, the CRC-32 of the inflated bytes must match the header. Each member must be NumPy version bytes 1 and 0. Colour is `|u1`, C order, shape `[39, 240, 320, 3]`, payload 8985600. Depth is `<u2`, C order, shape `[39, 240, 320]`, payload 5990400, little-endian words. Stamps are `<f8`, C order, shape `[39]`, finite, and strictly increasing. A byte after the payload is trailing. The function returns the three arrays. It does not write them to a file. No private payload hash is a condition in the decoder.
+
+### Tests
+
+The red run is `cargo test -p physical --offline --lib -- raw_inflate:: camera_npz::`, saved before the reader existed. `/opt/cursor/artifacts/camera-npz/red.stdout.txt` ends with `test result: FAILED. 1 passed; 47 failed; 0 ignored; 0 measured; 108 filtered out`. `red.exit.txt` is `EXIT:101`. The one pass is `zip_entries_stays_closed_for_method_8_and_u32_max`. The failures are assertions, not compile errors. The same command after the reader, `green.stdout.txt`, ends with `test result: ok. 48 passed` and `green.exit.txt` is `EXIT:0`. The 48 include the stored, fixed, and dynamic raw fixtures above 64 KiB, the 32768-byte window, the corrupt raw cases, and the archive rejections. The three `.deflate` fixtures are synthetic. Their generator is `fixtures.mjs`.
+
+Seven temporary mutations were applied one at a time, each to a compiling assertion, then both sources were copied back from `/tmp/cursor/camera-npz-good`. Each `mut-*.exit.txt` is `EXIT:101`, and none of those logs contains `error[E`. The failing assertions are: cap, `Ok` of fifty 7s against `Err(Inflate)`; CRC, `Ok(())` against `Err(Crc)`; declared size, `Err(Truncated)` against `Err(Size)`; central size, `Err(Truncated)` against `Err(Conflict)`; depth endianness, left `62465` against right `500`; transposed shape, `Ok(())` against `Err(Shape)`; flat stamps, `Ok(())` against `Err(Stamp)`. `pre-mutation.sha256` and `post-mutation.sha256` are the same two source hashes. An earlier size edit that raised the colour length by one was vacuous, because the raw cap already returned `Size`. It was replaced by the size check above and is not cited as a failure.
+
+The private compare pipes Node `inflateRawSync` into `camera-archive --compare`. Stdout of the pipe is not saved. `compare.stdout.txt` records `frames=39`, `rgb_bytes=8985600`, `depth_bytes=5990400`, `stamp_bytes=312`, `rgb_distinct=39`, `depth_distinct=39`, and `compared=yes match=yes`. The three payload hashes on that line are the three already printed in the plan section. `compare.exit.txt` is `PIPE:0` then `NODE:0`. Node's own stderr is `compare-node.stderr.txt`. No pixel file was written.
+
+`suite.command.txt` ran, in order, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, the same with `--release`, `cargo test --workspace --offline --doc`, the same with `--release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`. Each `*.exit.txt` is `EXIT:0`. Both library logs report 351 passed: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 156, sim_runtime 30, task_3_1 32, task_3_2 3. Both doctest logs report 7 passed. Physical was 108 before the 48 new tests.
+
+`still-compare.mjs` is the seven-pair script with its output path moved into this artifact directory. `still-compare.stdout.txt` reports `pairs=7` and the same seven RGB and depth hashes as the still-reader note. `still-compare.exit.txt` is `EXIT:0`. The five regression binaries were run into `/tmp/cursor/camera-npz/regression`. `regression-compare.txt` reports `mismatches=0` for the measured, configured, and faulted `RCF` files and for the depth, scene, base, and scan products, against the hashes saved with the still reader.
+
+### Limits
+
+A decoded archive is not a fresh observation, not a device clock, not a registration, not a calibration, and not a person. The stamps are the host monotonic samples already described in the plan: `record_static.py` lines 12, 42, 43, and 47 to 52, and `person.py` lines 191 to 205 and 234 to 247, which do not copy `Frame.ts`. Colour channel order is the writer's `rgb` name and the PNG type-2 convention. No colour chart was measured. Mirror, field of view, and the two mounts stay the frozen pinhole. The constant odometry pose remains a third pose, and the pose note for `static_recording_pose9` still says not to register the recording to the course map. This reader does not close stage 4 or stage 5.
+
+### Known unknowns
+
+The host monotonic values were not compared with a wall clock or with an OpenNI device stamp. Whether colour and depth share a shutter is the writer's one-callback append, not a measured alignment. The optical row near 153.6 is not in the file. The about 0.4 m pose disagreement is unchanged. The model is not a claim of physical accuracy.
+
 ## Camera archive plan (2026-11-07)
 
 PR 33 is merged at `181e2c610794e3b4909be8a46385429997cce202`. The merged head is `4caf8141e4d9aa624aa15a1e2546539a559e8181`. CI run `42415568686`, job `128532772754`, succeeded on that head. The still reader remains the seven pairs only. This note plans `camera.npz`. It adds no decoder, no change to the inflater, and no fixture. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`. The library count stays 303 and the doctest count stays 7. Those counts were not rerun for this note.
@@ -8,7 +40,7 @@ PR 33 is merged at `181e2c610794e3b4909be8a46385429997cce202`. The merged head i
 
 This is the record of the independent review. It is not permission to repeat it.
 
-Run 28 called Python once, `print(no)`. That call did not read the archive and did not change a measured result. It was still a breach of the no-Python rule. The owner was informed. Run 29 closed the review with no Python process.
+Run 28 called Python once, `print("no")`. That call did not read the archive and did not change a measured result. It was still a breach of the no-Python rule. The owner was informed. Run 29 closed the review with no Python process.
 
 The first transpose mutant failed to compile. That compile failure is a real event. A later corrected mutant compiled, and the production assertion failed at exit 101: left `[1, 2, 3]`, right `[4, 5, 6]`. That assertion is the retained behavioural evidence. The mutant was then removed. The exported tree was clean, and the mutant strings are not in the blobs.
 

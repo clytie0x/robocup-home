@@ -54,26 +54,7 @@ pub(crate) fn inflate_capped(input: &[u8], cap: usize) -> Result<Vec<u8>, StillE
         buf: 0,
         nbits: 0,
     };
-    let fixed_lit = fixed_lit()?;
-    let fixed_dist = construct(&[5u8; 32])?;
-    let mut out = Vec::new();
-    let mut blocks = 0usize;
-    loop {
-        blocks += 1;
-        if blocks > input.len().saturating_add(1) {
-            return Err(StillError::Inflate);
-        }
-        let last = bits.bit()?;
-        match bits.bits(2)? {
-            0 => stored_block(&mut bits, &mut out, cap)?,
-            1 => coded_block(&mut bits, &fixed_lit, &fixed_dist, &mut out, cap)?,
-            2 => dynamic_block(&mut bits, &mut out, cap)?,
-            _ => return Err(StillError::Inflate),
-        }
-        if last == 1 {
-            break;
-        }
-    }
+    let out = inflate_blocks(&mut bits, cap)?;
     bits.align()?;
     if bits.pos.checked_add(4).ok_or(StillError::Size)? > input.len() {
         return Err(StillError::Truncated);
@@ -338,6 +319,52 @@ impl Bits<'_> {
     }
 }
 
+pub(crate) fn inflate_raw_capped(input: &[u8], cap: usize) -> Result<Vec<u8>, StillError> {
+    const MAX_OUTPUT: usize = 8_985_728;
+    if cap > MAX_OUTPUT {
+        return Err(StillError::Size);
+    }
+    if input.is_empty() {
+        return Err(StillError::Truncated);
+    }
+    let mut bits = Bits {
+        input,
+        pos: 0,
+        buf: 0,
+        nbits: 0,
+    };
+    let out = inflate_blocks(&mut bits, cap)?;
+    bits.align()?;
+    if bits.pos != input.len() {
+        return Err(StillError::Trailing);
+    }
+    Ok(out)
+}
+
+fn inflate_blocks(bits: &mut Bits<'_>, cap: usize) -> Result<Vec<u8>, StillError> {
+    let fixed_lit = fixed_lit()?;
+    let fixed_dist = construct(&[5u8; 32])?;
+    let mut out = Vec::with_capacity(cap);
+    let mut blocks = 0usize;
+    loop {
+        blocks += 1;
+        if blocks > bits.input.len().saturating_add(1) {
+            return Err(StillError::Inflate);
+        }
+        let last = bits.bit()?;
+        match bits.bits(2)? {
+            0 => stored_block(bits, &mut out, cap)?,
+            1 => coded_block(bits, &fixed_lit, &fixed_dist, &mut out, cap)?,
+            2 => dynamic_block(bits, &mut out, cap)?,
+            _ => return Err(StillError::Inflate),
+        }
+        if last == 1 {
+            break;
+        }
+    }
+    Ok(out)
+}
+
 fn adler32(data: &[u8]) -> u32 {
     let mut a = 1u32;
     let mut b = 0u32;
@@ -372,5 +399,202 @@ mod tests {
             0x78, 0x9c, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00, 0x06, 0x2c, 0x02, 0x15,
         ];
         assert!(inflate_capped(zlib, 4).is_err());
+    }
+}
+
+#[cfg(test)]
+mod raw_inflate {
+    use super::{inflate_capped, inflate_raw_capped};
+    use crate::still::StillError;
+
+    const PATTERN_LEN: usize = 70_000;
+    const STORED: &[u8] = include_bytes!("raw_stored.deflate");
+    const FIXED: &[u8] = include_bytes!("raw_fixed.deflate");
+    const DYNAMIC: &[u8] = include_bytes!("raw_dynamic.deflate");
+
+    fn pattern(len: usize) -> Vec<u8> {
+        (0..len).map(|i| ((i * 17 + 3) & 255) as u8).collect()
+    }
+
+    fn assert_same(got: &[u8], expected: &[u8]) {
+        assert_eq!(got.len(), expected.len());
+        if let Some(index) = got.iter().zip(expected).position(|(a, b)| a != b) {
+            assert_eq!(got[index], expected[index], "index {index}");
+        }
+    }
+
+    fn stored_final(data: &[u8]) -> Vec<u8> {
+        assert!(data.len() <= 65535);
+        let mut out = vec![1];
+        let len = data.len() as u16;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(data);
+        out
+    }
+
+    fn stored_prefix(data: &[u8]) -> Vec<u8> {
+        assert!(data.len() <= 65535);
+        let mut out = vec![0];
+        let len = data.len() as u16;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(data);
+        out
+    }
+
+    struct Pack {
+        out: Vec<u8>,
+        acc: u8,
+        n: u8,
+    }
+
+    impl Pack {
+        fn push(&mut self, value: u32, n: u8) {
+            for shift in 0..n {
+                self.acc |= (((value >> shift) & 1) as u8) << self.n;
+                self.n += 1;
+                if self.n == 8 {
+                    self.out.push(self.acc);
+                    self.acc = 0;
+                    self.n = 0;
+                }
+            }
+        }
+
+        fn push_code(&mut self, value: u32, n: u8) {
+            for shift in (0..n).rev() {
+                self.push((value >> shift) & 1, 1);
+            }
+        }
+
+        fn finish(mut self) -> Vec<u8> {
+            if self.n > 0 {
+                self.out.push(self.acc);
+            }
+            self.out
+        }
+    }
+
+    fn fixed_backref(distance: usize, length: usize) -> Vec<u8> {
+        assert_eq!(length, 3);
+        let mut pack = Pack {
+            out: Vec::new(),
+            acc: 0,
+            n: 0,
+        };
+        pack.push(0b011, 3);
+        pack.push_code(1, 7);
+        if distance == 32768 {
+            pack.push_code(29, 5);
+            pack.push(8191, 13);
+        } else if distance == 200 {
+            pack.push_code(15, 5);
+            pack.push(7, 6);
+        } else {
+            panic!("unsupported distance");
+        }
+        pack.push_code(0, 7);
+        pack.finish()
+    }
+
+    #[test]
+    fn stored_output_over_64k_matches_every_byte() {
+        assert!(STORED.len() > 70_000);
+        assert_eq!(STORED[0] & 7, 0);
+        let got = inflate_raw_capped(STORED, PATTERN_LEN).unwrap();
+        assert_same(&got, &pattern(PATTERN_LEN));
+    }
+
+    #[test]
+    fn fixed_output_over_64k_matches_every_byte() {
+        assert!(FIXED.len() < 20_000);
+        assert_eq!(FIXED[0] & 7, 3);
+        let got = inflate_raw_capped(FIXED, PATTERN_LEN).unwrap();
+        assert_same(&got, &pattern(PATTERN_LEN));
+    }
+
+    #[test]
+    fn dynamic_output_over_64k_matches_every_byte() {
+        assert!(DYNAMIC.len() < 20_000);
+        assert_eq!(DYNAMIC[0] & 7, 5);
+        let got = inflate_raw_capped(DYNAMIC, PATTERN_LEN).unwrap();
+        assert_same(&got, &pattern(PATTERN_LEN));
+    }
+
+    #[test]
+    fn a_backref_at_the_32k_window_is_copied() {
+        let mut stream = stored_prefix(&[0xa5; 32768]);
+        stream.extend_from_slice(&fixed_backref(32768, 3));
+        let got = inflate_raw_capped(&stream, 32768 + 3).unwrap();
+        assert_same(&got, &vec![0xa5; 32768 + 3]);
+    }
+
+    #[test]
+    fn a_distance_past_the_output_is_rejected() {
+        let mut stream = stored_prefix(&[0x11; 64]);
+        stream.extend_from_slice(&fixed_backref(200, 3));
+        assert_eq!(inflate_raw_capped(&stream, 128), Err(StillError::Inflate));
+    }
+
+    #[test]
+    fn a_distance_of_32768_without_that_history_is_rejected() {
+        let mut stream = stored_prefix(&[0xa5; 32767]);
+        stream.extend_from_slice(&fixed_backref(32768, 3));
+        assert_eq!(
+            inflate_raw_capped(&stream, 32767 + 3),
+            Err(StillError::Inflate)
+        );
+    }
+
+    #[test]
+    fn raw_output_past_the_cap_is_rejected() {
+        let stream = stored_final(&[7; 50]);
+        assert_eq!(inflate_raw_capped(&stream, 49), Err(StillError::Inflate));
+    }
+
+    #[test]
+    fn a_raw_cap_above_the_archive_maximum_is_rejected() {
+        let stream = stored_final(&[7; 4]);
+        assert_eq!(
+            inflate_raw_capped(&stream, 8_985_729),
+            Err(StillError::Size)
+        );
+    }
+
+    #[test]
+    fn a_truncated_raw_stream_is_rejected() {
+        let mut stream = stored_final(&[1, 2, 3, 4]);
+        stream.pop();
+        assert_eq!(inflate_raw_capped(&stream, 4), Err(StillError::Truncated));
+    }
+
+    #[test]
+    fn a_trailing_raw_byte_is_rejected() {
+        let mut stream = stored_final(&[1, 2, 3, 4]);
+        stream.push(0);
+        assert_eq!(inflate_raw_capped(&stream, 4), Err(StillError::Trailing));
+    }
+
+    #[test]
+    fn a_stored_length_complement_mismatch_is_rejected() {
+        let mut stream = stored_final(&[9, 8, 7]);
+        stream[3] ^= 0xff;
+        assert_eq!(inflate_raw_capped(&stream, 3), Err(StillError::Inflate));
+    }
+
+    #[test]
+    fn an_empty_raw_stream_is_rejected() {
+        assert_eq!(inflate_raw_capped(&[], 1), Err(StillError::Truncated));
+    }
+
+    #[test]
+    fn the_zlib_wrapper_rejects_a_raw_stream_that_raw_inflate_accepts() {
+        assert_eq!(
+            inflate_capped(STORED, PATTERN_LEN).unwrap_err(),
+            StillError::Inflate
+        );
+        let got = inflate_raw_capped(STORED, PATTERN_LEN).unwrap();
+        assert_same(&got, &pattern(PATTERN_LEN));
     }
 }

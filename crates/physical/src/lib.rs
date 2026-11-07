@@ -6,6 +6,7 @@
 mod arm;
 mod base;
 mod camera;
+mod camera_npz;
 mod chunk;
 mod command;
 mod frame;
@@ -31,6 +32,7 @@ pub use camera::{
     CameraViews, CastQuery, DepthRay, IMAGE_HEIGHT, IMAGE_WIDTH, apply_dropout, cast_axis,
     cast_pixel, demo_camera, pixel_for_tangent, post_depth,
 };
+pub use camera_npz::{ArchiveError, CameraArchive, read_camera_npz};
 pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
 pub use frame::{
