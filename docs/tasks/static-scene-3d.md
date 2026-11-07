@@ -8,7 +8,7 @@ World axes are x forward, y left, z up, metres, right-handed. For this fixture t
 
 The scan frame origin is the sensor. Scan x is sensor-forward, scan y is sensor-left, and scan z is sensor-up. A bearing is counterclockwise from sensor +x in the scan plane. The packet angle is clockwise, and `frame_sample` recovers the bearing with `wrap(front - raw)`.
 
-The mount is one named rigid transform: translation of the sensor in the base, yaw counterclockwise about z, and pitch down about the sensor y axis. The rotation is `Rz(yaw) * Ry(pitch_down)`. Positive pitch down tilts sensor +x toward -z. The world ray is that rotation applied to the scan-plane direction `(cos bearing, sin bearing, 0)`. The reported range is the distance along that 3D line. `frame_sample` then places the range back in the scan plane. A world top-down and a scan plot are different origins.
+The mount is one named rigid transform: translation of the sensor in the base, yaw counterclockwise about z, and pitch down about the sensor y axis. The rotation is `Rz(yaw) * Ry(pitch_down)`. Positive pitch down tilts sensor +x toward -z. The world ray is that rotation applied to the scan-plane direction `(cos bearing, sin bearing, 0)`. The reported range is the slant distance along that 3D line. It is not the horizontal run in base xy. `frame_sample` then places that same slant range back in the scan plane, so a pitched return is not a world-horizontal distance. The demonstration pitch is 0, so the pictured demonstration ranges happen to equal the horizontal distance. A pitched ray does not. A world top-down and a scan plot are different origins. Neither plot is a chassis outline, and base xy is not a measured chassis guarantee.
 
 The demonstration mount is `synthetic-lidar` at `(0.40, -0.12, 0.50)` m, yaw 15 deg, pitch 0. Its provenance string says it is a synthetic fixture. It is not the configured `LIDAR_X_M` of 0.175 m, and it is not an installed measurement. The installed lever arm stays unknown. This slice does not write 0 or 0.175 into that unknown. Wheels, mass, and the arm mount stay unknown. No chassis outline is drawn as a validated body.
 
@@ -24,10 +24,10 @@ The navigation policy never receives these boxes. It receives the posted scan po
 
 `static-scene` writes four SVG files from the 3D coordinates:
 
-- `oblique.svg` is a cabinet projection. Changing z moves the screen point. Red rays use the named mount yaw. Blue rays use yaw 0 at the same translation. Box edges, axes, the mount name, and the box dimensions are drawn.
-- `top.svg` is the world top-down. Its origin is the synthetic base, not the sensor.
-- `side.svg` is world x and z. The beam is horizontal, the plank is below it, and the pillar crosses it.
-- `scan.svg` is the scan frame after `frame_sample`. Its origin is the sensor. The dashed circle is the planner's 250 mm assumption around that posted origin. It is not a measured chassis and it does not certify clearance.
+- `oblique.svg` is a cabinet projection of the 3D coordinates. Changing z moves the screen point. Numeric ticks are metres along each world axis. That projection does not keep one screen scale on every axis, so a pixel distance on the oblique picture is not a metre on every axis. Red rays use the named mount yaw. Blue rays use yaw 0 at the same translation. A legend swatch names each colour. Box names sit off the edges, with leader lines.
+- `top.svg` is the world top-down at one equal metre scale on both axes. Its origin is the synthetic base, not the sensor. Rays can cross the plank footprint in this view while passing above the plank in z.
+- `side.svg` is world x and z at the same equal metre scale. The beam is horizontal, the plank is below it, and the pillar crosses it.
+- `scan.svg` is the scan frame after `frame_sample`. Its origin is the sensor. Both axes are signed and use one equal metre scale, and the ticks cover the returns, including negative scan y, and the circle. The dashed circle has radius 250 mm. That 250 mm is `ROBOT_RADIUS_MM`, a planner assumption around the sensor origin. It is not a diameter and it is not chassis clearance. It does not certify clearance.
 
 These files are projections of the coordinates. They are not a text schematic and not a photograph. `rays.csv` holds the geometric hit, in metres, and the scan-frame point. `packet-points.csv` holds the quantized packet range and the adapter classification. `posted.csv` is the `post_samples` result. `mount.csv` records the transform and says the installed lever arm is unknown.
 
@@ -45,9 +45,9 @@ The fresh post has no person, so `plan_follow` returns `Lost`. `sent` is false. 
 
 ## What a passing run shows
 
-A hit range is the distance to a box face along the 3D ray. The tests check a wall at 2.000 m, a yaw of 90 deg, a pitched ray against an independent matrix, occlusion of a far face by a near face, a low box that the beam misses until its top is raised through the beam, and an empty scene. The same tests post the resulting range through `frame_sample`. A 0.15 m hit becomes the scan point `(150, 0)` mm, not the world point `(550, 100)` mm. With a fixture person ahead, that point changes a straight `Move` into `Blocked` or a side step, and removing the point restores the straight `Move`.
+A hit range is the slant distance to a box face along the 3D ray. The tests check a wall at 2.000 m, a yaw of 90 deg with the hit x and z left unchanged, a 45 deg pitch where one metre of run drops one metre and the slant range is sqrt(2) rather than 1, occlusion of a far face by a near face, a low box that the beam misses until its top is raised through the beam, and an empty scene. The 45 deg case uses those literals. It does not copy the rotation formula. The same tests post a range through `frame_sample`. A 0.15 m hit becomes the scan point `(150, 0)` mm, not the world point `(550, 100)` mm. The policy proof encodes one sample, parses the packet, and posts the parsed sample. With a fixture person ahead, that point changes a straight `Move` into `Blocked`, `Stuck`, or a side step, and an empty scene restores the straight `Move`.
 
-The packet test encodes the cast ranges, parses them back, and checks the parsed range against the quantized ray. It does not store a hand-written hit list for the planner.
+The packet test encodes the cast ranges, parses them back, and checks the parsed range against the quantized ray. It does not store a hand-written hit list for the planner. The picture test checks numeric tick marks, legend swatches, a signed scan axis through the negative returns, equal scan scale, and a circle whose radius attribute is 0.25 m.
 
 ## What it does not show
 

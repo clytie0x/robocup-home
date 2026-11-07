@@ -1,5 +1,41 @@
 # WORKLOG
 
+## Static scene review fix (2026-11-07)
+
+Reviewed head `b5977b8ff1e3831a39a1fcda05dc4a304f554777`. The four findings were in that source. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged. The reported range stays the slant distance along the 3D ray. The demonstration pitch stays 0, so those pictured ranges happen to equal the horizontal run. A pitched ray does not. The manual says so.
+
+The oblique, top, side, and scan pictures now draw numeric metre ticks and a colour swatch for each ray meaning. Top, side, and scan use one equal metre scale on both axes. Oblique ticks are metres along each world axis, and the caption says that cabinet projection does not keep one screen scale on every axis. Body names and the sensor name sit off the edges, with leader lines. The scan axes are signed. Their ticks cover the returns, including negative scan y down to at least -0.5 m, and the 250 mm circle. The circle is labelled radius 250 mm, not a diameter, around the sensor origin. It is the planner assumption `ROBOT_RADIUS_MM`. It is not chassis clearance. The circle element carries `data-radius-m="0.25"`.
+
+The copied direction helper is gone. A sensor at height 1 m, pitch 45 degrees, and a wall at x = 1 m gives slant range sqrt(2) and the hit `(1, 0, 0)`. That is not the horizontal run of 1 m. A yaw of 90 degrees leaves the hit x and z at the sensor x and z. The policy test encodes one sample, parses that packet, and posts the parsed sample. The close body changes a straight `Move` into `Blocked`, `Stuck`, or a side step. An empty scene restores the straight `Move`.
+
+Red, before the drawers emitted ticks: `cargo test -p physical --offline --lib -- scene::` reported 11 passed and 1 failed. `the_pictures_have_ticks_swatches_and_a_signed_scan_frame` failed because the SVG did not contain `data-axis-tick`. On that same run the 45 degree pitch test and the parsed-packet test passed against the unchanged caster. Green, after the drawers: the same command reported 12 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 47, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 242. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This fix run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. The result section below records that `b5977b8` did execute `python3 -c 'print("no")'` and that the following echo was misleading. Earlier sections record Python artifact reads and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/static-scene-3d-review/`. Older directories were not overwritten. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. `rays.csv` and `packets.bin` match the previous scene hashes. The capture row is still 9 zeros, 12 boundary, 99 beyond, 287 view points, decision 5022 ms, stale decision 6023 ms. The five PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/mount.csv` | `3afbf976ad67efda747ec30befd5c7065e00bb061cd496f156459b2d97bc9236` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/rays.csv` | `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/packet-points.csv` | `0bdb6c1741f4de2bb418cef9b9ffc6a8d090d577c781ee7d8cffe6fd76ec87e5` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/posted.csv` | `c4779105fbab144de7e7e3c187d12079cdf5edf75929513f8728814f34fa6f86` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/packets.bin` | `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/oblique.svg` | `a1ea7eb313560899b03fa8400e3cdb3de8fc81601af2ca532080fdc32f6212d8` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/top.svg` | `36d701945415e39338e51bfcb0be60be464accc017c4f017716780071b8c727a` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/side.svg` | `8ae9349a15ad2ba8705a4095b8d2dc43216972945a96b08f54f5e6b685310306` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/scan.svg` | `cd8c03f8dd2b9e47f72222974131b5c06722d4cbb76852cc633d6ae794bcbbc2` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/oblique.png` | `95c4027f839eedbba67acec112e10cb9e4186a274fe3cf6d75036822893d2a36` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/top.png` | `e44492964e970f204ffe3f2636109a56d44e73558209cbd38a4d514907d3226e` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/side.png` | `0130e8eb8c570e8e19407d4985f2c512dd2731bed9767725e9efa0df50c47b37` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/scan.png` | `38815c4e2bbb4603e6b892d92819a995407dff5d4ead8bd2dae9549f91dee4d3` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.csv` | `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
+
 ## Static scene result (2026-11-07)
 
 The plan below was committed before this code. The red command, run before `Vec3`, `Mount`, `cast_bearing`, and `sensor_samples` existed, was `cargo test -p physical --lib --offline -- cast_bearing sensor_samples`. It failed to compile:
@@ -35,7 +71,7 @@ The synthetic scene cast 180 bearings at a 2 deg raw step, encoded five packets,
 | `/opt/cursor/artifacts/static-scene-3d/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
 | `/opt/cursor/artifacts/static-scene-3d/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
 
-Library tests, debug and release, are domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 44, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 239. Doctests are 7 in debug and 7 in release. `replay`, `post-scan`, and `static-scene` have no unit tests. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` exited 0. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps` exited 0. The legacy Python checkers were not run. One accidental `python3 -c` printed `no` and was not a checker and was not used for any result. CI runs the checkers separately.
+Library tests, debug and release, are domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 44, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 239. Doctests are 7 in debug and 7 in release. `replay`, `post-scan`, and `static-scene` have no unit tests. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` exited 0. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps` exited 0. The legacy Python checkers were not run in that slice. A command in that slice did execute `python3 -c 'print("no")'` and printed `no`. The following echo `python-not-used` was misleading, because the interpreter ran. That call read no packet and no repository file, and it was not a checker. Earlier runs in this history also ran Python, including artifact reads and `artifacts/check_workspace.py`, `artifacts/check_m1_spec.py`, and `artifacts/check_m10_spec.py`. Those runs are not relabeled. CI runs its checker separately from a local slice.
 
 The expected hit distances are literals or the test's own matrix. A flattened ray would hit the low box, and that test fails closed. The packet range is the quantized ray, checked against an independent bound of 2.0 m to 2.05 m for the near-forward sample, so a stored center or a constant would not pass. Ranges are metres. The posted view is millimetres. One hundred eighty rays against two boxes is the whole scene. No elapsed time is treated as a benchmark.
 

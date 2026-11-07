@@ -414,222 +414,646 @@ fn csv_num(value: Option<f64>) -> String {
         .unwrap_or_default()
 }
 
+type ScreenSeg = ((f64, f64), (f64, f64));
+
+struct Plane {
+    origin_x: f64,
+    origin_y: f64,
+    scale: f64,
+}
+
+impl Plane {
+    fn screen(&self, right: f64, up: f64) -> (f64, f64) {
+        (
+            self.origin_x + right * self.scale,
+            self.origin_y - up * self.scale,
+        )
+    }
+}
+
 fn draw_oblique(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
-    let map = |point: Vec3| {
-        let (x, y) = project_oblique(point);
-        // `project_oblique` already uses a downward y, so z increases up the page.
-        (220.0 + x * 150.0, 300.0 + y * 150.0)
+    let project = |point: Vec3| {
+        let (right, down) = project_oblique(point);
+        (right, -down)
     };
+    let mut cloud = Vec::new();
+    cloud.push(project(scene.mount.translation_m));
+    cloud.push((0.0, 0.0));
+    for body in &scene.bodies {
+        for corner in corners(body) {
+            cloud.push(project(corner));
+        }
+    }
+    for hit in hits.iter().chain(other_hits) {
+        cloud.push(project(*hit));
+    }
+    let plane = fit_plane(&cloud, 120.0, 168.0, 860.0, 430.0);
+    let map = |point: Vec3| {
+        let (right, up) = project(point);
+        plane.screen(right, up)
+    };
+    let mut geometry = Vec::new();
     let mut body =
         svg_header("Oblique projection of the 3D coordinates. Two mount yaws. Not a robot mesh.");
-    body.push_str(&world_axes(&map));
-    body.push_str(&edges(scene, map));
-    body.push_str(&body_labels(scene, map));
-    body.push_str(&rays(scene.mount.translation_m, hits, map, "#c0392b"));
-    body.push_str(&rays(scene.mount.translation_m, other_hits, map, "#1f4e79"));
-    body.push_str(&marker(map(scene.mount.translation_m), scene.mount.name));
+    body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">Ticks are metres along each world axis. This cabinet projection does not use one screen scale for every axis.</text>");
+    body.push_str("<text x=\"24\" y=\"116\" font-size=\"13\">Red is the named mount. Blue is yaw 0 at the same translation. Labels sit off the boxes.</text>");
+    let mut pending = Vec::new();
+    let mut axis_keep = Vec::new();
+    let (axis, keepout) = world_axis(
+        &map,
+        "z",
+        "world z",
+        &tick_values(0.0, 1.2),
+        |metres| Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: metres,
+        },
+        ((18.0, 4.0), (14.0, 0.0), (-64.0, 14.0)),
+        &mut pending,
+    );
+    body.push_str(&axis);
+    axis_keep.extend(keepout);
+    let (axis, keepout) = world_axis(
+        &map,
+        "x",
+        "world x",
+        &tick_values(0.0, 2.0),
+        |metres| Vec3 {
+            x: metres,
+            y: 0.0,
+            z: 0.0,
+        },
+        ((0.0, 18.0), (0.0, 14.0), (12.0, -16.0)),
+        &mut pending,
+    );
+    body.push_str(&axis);
+    axis_keep.extend(keepout);
+    let (axis, keepout) = world_axis(
+        &map,
+        "y",
+        "world y",
+        &tick_values(-0.5, 0.5),
+        |metres| Vec3 {
+            x: 0.0,
+            y: metres,
+            z: 0.0,
+        },
+        ((-18.0, 12.0), (-14.0, 0.0), (14.0, 18.0)),
+        &mut pending,
+    );
+    body.push_str(&axis);
+    axis_keep.extend(keepout);
+    body.push_str(&edges(scene, map, &mut geometry));
+    body.push_str(&rays(
+        scene.mount.translation_m,
+        other_hits,
+        map,
+        "#1f4e79",
+        &mut geometry,
+    ));
+    body.push_str(&rays(
+        scene.mount.translation_m,
+        hits,
+        map,
+        "#c0392b",
+        &mut geometry,
+    ));
     body.push_str(&hit_marks(hits, map));
-    body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">Red rays: named mount. Blue rays: yaw 0 at the same translation. Axes start at the synthetic world origin.</text>");
+    let (ticks, tick_keep) = place_ticks(&pending, &geometry);
+    body.push_str(&ticks);
+    geometry.extend(axis_keep);
+    geometry.extend(tick_keep);
+    body.push_str(&name_labels(scene, map, &geometry));
+    body.push_str(&swatches(
+        &[
+            ("#c0392b", "named-mount yaw"),
+            ("#1f4e79", "yaw 0, same translation"),
+        ],
+        676.0,
+    ));
     body.push_str(&dimension_note(scene));
     body.push_str("</svg>");
     body
 }
 
+fn fit_plane(cloud: &[(f64, f64)], left: f64, top: f64, width: f64, height: f64) -> Plane {
+    let (mut min_u, mut max_u, mut min_v, mut max_v) = extents(cloud);
+    let pad_u = ((max_u - min_u) * 0.12).max(0.3);
+    let pad_v = ((max_v - min_v) * 0.16).max(0.3);
+    min_u -= pad_u;
+    max_u += pad_u;
+    min_v -= pad_v;
+    max_v += pad_v;
+    let span_u = (max_u - min_u).max(1.0);
+    let span_v = (max_v - min_v).max(1.0);
+    let scale = (width / span_u).min(height / span_v);
+    let used_w = span_u * scale;
+    let used_h = span_v * scale;
+    Plane {
+        origin_x: left + (width - used_w) / 2.0 - min_u * scale,
+        origin_y: top + (height - used_h) / 2.0 + max_v * scale,
+        scale,
+    }
+}
+
+fn extents(cloud: &[(f64, f64)]) -> (f64, f64, f64, f64) {
+    let mut min_u = f64::MAX;
+    let mut max_u = f64::MIN;
+    let mut min_v = f64::MAX;
+    let mut max_v = f64::MIN;
+    for (u, v) in cloud {
+        min_u = min_u.min(*u);
+        max_u = max_u.max(*u);
+        min_v = min_v.min(*v);
+        max_v = max_v.max(*v);
+    }
+    if cloud.is_empty() {
+        return (-1.0, 1.0, -1.0, 1.0);
+    }
+    (min_u, max_u, min_v, max_v)
+}
+
+fn tick_values(min: f64, max: f64) -> Vec<f64> {
+    let span = (max - min).abs().max(0.5);
+    let step = if span > 6.0 { 1.0 } else { 0.5 };
+    let mut value = (min / step).floor() * step;
+    let mut ticks = Vec::new();
+    loop {
+        let snapped = (value / step).round() * step;
+        let snapped = if snapped.abs() < 1e-9 { 0.0 } else { snapped };
+        ticks.push(snapped);
+        if snapped + 1e-9 >= max || ticks.len() > 48 {
+            break;
+        }
+        value += step;
+    }
+    ticks
+}
+
+fn metres_attr(value: f64) -> String {
+    if (value - value.round()).abs() < 1e-6 {
+        format!("{}", value.round() as i32)
+    } else {
+        format!("{value:.1}")
+    }
+}
+
 fn draw_top(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
-    let map = |point: Vec3| place(point.x, point.y, 220.0, 460.0, 150.0);
-    let mut body =
-        svg_header("World top-down, metres. Origin is the synthetic base, not the sensor.");
-    body.push_str(&axis_pair(
-        &map,
-        Vec3 {
-            x: 2.6,
-            y: 0.0,
-            z: 0.0,
-        },
-        "world x",
-        Vec3 {
-            x: 0.0,
-            y: 2.0,
-            z: 0.0,
-        },
-        "world y",
-    ));
-    body.push_str(&edges(scene, map));
-    body.push_str(&body_labels(scene, map));
-    body.push_str(&rays(scene.mount.translation_m, hits, map, "#c0392b"));
-    body.push_str(&rays(scene.mount.translation_m, other_hits, map, "#1f4e79"));
-    body.push_str(&marker(map(scene.mount.translation_m), scene.mount.name));
-    body.push_str(&hit_marks(hits, map));
+    let mut cloud = vec![
+        (0.0, 0.0),
+        (scene.mount.translation_m.x, scene.mount.translation_m.y),
+    ];
+    for body in &scene.bodies {
+        cloud.push((body.min.x, body.min.y));
+        cloud.push((body.max.x, body.max.y));
+    }
+    for hit in hits.iter().chain(other_hits) {
+        cloud.push((hit.x, hit.y));
+    }
+    let plane = fit_plane(&cloud, 120.0, 168.0, 860.0, 430.0);
+    let map = |point: Vec3| plane.screen(point.x, point.y);
+    let mut geometry = Vec::new();
+    let mut body = svg_header(
+        "World top-down, metres. Origin is the synthetic base, not the sensor. Equal scale.",
+    );
     body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">The named dot is the synthetic sensor. It is not the base origin and not a 0.175 m installed arm.</text>");
     body.push_str("<text x=\"24\" y=\"116\" font-size=\"13\">Rays cross the plank footprint in this view. The side view shows those rays pass above the plank.</text>");
+    body.push_str(&edges(scene, map, &mut geometry));
+    body.push_str(&rays(
+        scene.mount.translation_m,
+        other_hits,
+        map,
+        "#1f4e79",
+        &mut geometry,
+    ));
+    body.push_str(&rays(
+        scene.mount.translation_m,
+        hits,
+        map,
+        "#c0392b",
+        &mut geometry,
+    ));
+    body.push_str(&hit_marks(hits, map));
+    let (axes, keepout) = plane_axes(
+        &plane,
+        ("world x", "world y", "x", "y"),
+        &cloud,
+        0.0,
+        &geometry,
+    );
+    body.push_str(&axes);
+    geometry.extend(keepout);
+    body.push_str(&name_labels(scene, map, &geometry));
+    body.push_str(&swatches(
+        &[
+            ("#c0392b", "named-mount yaw"),
+            ("#1f4e79", "yaw 0, same translation"),
+        ],
+        676.0,
+    ));
     body.push_str("</svg>");
     body
 }
 
 fn draw_side(scene: &Scene, hits: &[Vec3]) -> String {
-    let map = |point: Vec3| place(point.x, point.z, 160.0, 520.0, 170.0);
+    let mut cloud = vec![
+        (0.0, 0.0),
+        (scene.mount.translation_m.x, scene.mount.translation_m.z),
+    ];
+    for body in &scene.bodies {
+        cloud.push((body.min.x, body.min.z));
+        cloud.push((body.max.x, body.max.z));
+    }
+    for hit in hits {
+        cloud.push((hit.x, hit.z));
+    }
+    let plane = fit_plane(&cloud, 120.0, 168.0, 860.0, 430.0);
+    let map = |point: Vec3| plane.screen(point.x, point.z);
+    let mut geometry = Vec::new();
     let mut body = svg_header(
-        "World side view, x and z. The horizontal beam misses the low plank and meets the pillar.",
+        "World side view, x and z, equal metres. The horizontal beam misses the low plank and meets the pillar.",
     );
-    body.push_str(&axis_pair(
-        &map,
-        Vec3 {
-            x: 2.6,
-            y: 0.0,
-            z: 0.0,
-        },
-        "world x",
-        Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 1.2,
-        },
-        "world z",
-    ));
-    body.push_str(&edges(scene, map));
-    body.push_str(&body_labels(scene, map));
-    body.push_str(&rays(scene.mount.translation_m, hits, map, "#c0392b"));
-    body.push_str(&marker(
-        map(scene.mount.translation_m),
-        &format!(
-            "{} z {:.2} m",
-            scene.mount.name, scene.mount.translation_m.z
-        ),
+    body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">The beam height is the sensor z. A hit on this picture is a physical intersection, not a footprint overlap.</text>");
+    body.push_str(&edges(scene, map, &mut geometry));
+    body.push_str(&rays(
+        scene.mount.translation_m,
+        hits,
+        map,
+        "#c0392b",
+        &mut geometry,
     ));
     body.push_str(&hit_marks(hits, map));
+    let (axes, keepout) = plane_axes(
+        &plane,
+        ("world x", "world z", "x", "z"),
+        &cloud,
+        0.0,
+        &geometry,
+    );
+    body.push_str(&axes);
+    geometry.extend(keepout);
+    body.push_str(&name_labels(scene, map, &geometry));
+    body.push_str(&swatches(
+        &[("#c0392b", "named-mount ray at the beam height")],
+        676.0,
+    ));
     body.push_str("</svg>");
     body
 }
 
 fn draw_scan(scene: &Scene, profile: &LidarProfile, points: &[(f64, f64)]) -> String {
+    let mut cloud = vec![(0.0, 0.0), (0.25, 0.25), (-0.25, -0.25)];
+    cloud.extend(points.iter().copied());
+    let plane = fit_plane(&cloud, 120.0, 168.0, 860.0, 430.0);
     let mut body = svg_header(&format!(
-        "Scan frame of {}. Origin is the sensor, not the chassis. Front {}.",
+        "Scan frame of {}. Origin is the sensor, not the chassis. Front {}. Equal scale.",
         scene.mount.name, profile.id
     ));
-    let map = |x: f64, y: f64| place(x, y, 280.0, 560.0, 140.0);
-    let origin = map(0.0, 0.0);
-    let x_end = map(2.0, 0.0);
-    let y_end = map(0.0, 2.0);
+    body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">Dashed circle: radius 250 mm around the sensor origin. It is not a diameter and not a measured chassis.</text>");
+    body.push_str("<text x=\"24\" y=\"116\" font-size=\"13\">It does not certify clearance. Points are frame_sample returns, not world coordinates and not a measured obstacle radius.</text>");
+    let (axes, _) = plane_axes(
+        &plane,
+        ("scan x, sensor forward", "scan y, sensor left", "x", "y"),
+        &cloud,
+        0.25,
+        &[],
+    );
+    body.push_str(&axes);
+    let origin = plane.screen(0.0, 0.0);
+    let radius = 0.25 * plane.scale;
     body.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">scan x, sensor forward</text>",
-        origin.0, origin.1, x_end.0, x_end.1, x_end.0 + 6.0, x_end.1
-    ));
-    body.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">scan y, sensor left</text>",
-        origin.0, origin.1, y_end.0, y_end.1, y_end.0 + 8.0, y_end.1 + 14.0
-    ));
-    let disk = 0.25 * 140.0;
-    body.push_str(&format!(
-        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{disk:.1}\" fill=\"none\" stroke=\"#888888\" stroke-dasharray=\"4 3\"/>",
+        "<circle data-radius-m=\"0.25\" cx=\"{:.1}\" cy=\"{:.1}\" r=\"{radius:.1}\" fill=\"none\" stroke=\"#888888\" stroke-dasharray=\"4 3\"/>",
         origin.0, origin.1
     ));
     for point in points {
-        let placed = map(point.0, point.1);
+        let placed = plane.screen(point.0, point.1);
         body.push_str(&format!(
-            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"2.2\" fill=\"#c0392b\"/>",
+            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"2.4\" fill=\"#c0392b\"/>",
             placed.0, placed.1
         ));
     }
-    body.push_str("<text x=\"24\" y=\"96\" font-size=\"13\">Dashed 250 mm circle: planner assumption around the posted scan origin. It is not a measured chassis.</text>");
-    body.push_str("<text x=\"24\" y=\"116\" font-size=\"13\">It does not certify clearance. Points are frame_sample returns, not world coordinates and not a measured obstacle radius.</text>");
+    body.push_str(&swatches(
+        &[
+            ("#c0392b", "scan-frame return"),
+            ("#888888", "radius 250 mm, sensor origin"),
+        ],
+        676.0,
+    ));
     body.push_str("</svg>");
     body
 }
 
 fn svg_header(title: &str) -> String {
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"680\" viewBox=\"0 0 1040 680\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"24\" y=\"32\" font-size=\"16\">{title}</text><text x=\"24\" y=\"54\" font-size=\"12\">Axes are metres from the 3D coordinates. This is not a photograph and not a chassis clearance.</text><text x=\"24\" y=\"74\" font-size=\"12\">World and base coincide only in this synthetic fixture. The installed lever arm stays unknown.</text>"
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"760\" viewBox=\"0 0 1040 760\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"24\" y=\"32\" font-size=\"16\">{title}</text><text x=\"24\" y=\"54\" font-size=\"12\">Numeric ticks are metres. This is not a photograph and not a chassis clearance.</text><text x=\"24\" y=\"74\" font-size=\"12\">World and base coincide only in this synthetic fixture. The installed lever arm stays unknown.</text>"
     )
 }
 
-fn world_axes(map: &impl Fn(Vec3) -> (f64, f64)) -> String {
-    let mut body = axis_pair(
-        map,
-        Vec3 {
-            x: 2.6,
-            y: 0.0,
-            z: 0.0,
-        },
-        "world x",
-        Vec3 {
-            x: 0.0,
-            y: 1.5,
-            z: 0.0,
-        },
-        "world y",
-    );
-    let origin = map(Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
-    let z_end = map(Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: 1.2,
-    });
-    body.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">world z</text>",
-        origin.0,
-        origin.1,
-        z_end.0,
-        z_end.1,
-        z_end.0 + 4.0,
-        z_end.1
-    ));
-    body
+struct TickMark {
+    axis: &'static str,
+    metres: f64,
+    at: (f64, f64),
+    offset: (f64, f64),
+    step: (f64, f64),
+    end_anchor: bool,
 }
 
-fn axis_pair(
+fn world_axis(
     map: &impl Fn(Vec3) -> (f64, f64),
-    x_end: Vec3,
-    x_name: &str,
-    y_end: Vec3,
-    y_name: &str,
-) -> String {
-    let origin = map(Vec3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
-    let x = map(x_end);
-    let y = map(y_end);
+    axis: &'static str,
+    name: &str,
+    ticks: &[f64],
+    at: impl Fn(f64) -> Vec3,
+    offsets: ((f64, f64), (f64, f64), (f64, f64)),
+    pending: &mut Vec<TickMark>,
+) -> (String, Vec<ScreenSeg>) {
+    let (tick_offset, step, name_offset) = offsets;
+    let start = map(at(ticks[0]));
+    let end = map(at(*ticks.last().unwrap_or(&ticks[0])));
+    let name_at = (end.0 + name_offset.0, end.1 + name_offset.1);
+    let body = format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{name}</text>",
+        start.0, start.1, end.0, end.1, name_at.0, name_at.1
+    );
+    for metres in ticks {
+        pending.push(TickMark {
+            axis,
+            metres: *metres,
+            at: map(at(*metres)),
+            offset: tick_offset,
+            step,
+            end_anchor: tick_offset.0 < 0.0,
+        });
+    }
+    (body, vec![(start, end), (name_at, name_at)])
+}
+
+fn place_ticks(pending: &[TickMark], geometry: &[ScreenSeg]) -> (String, Vec<ScreenSeg>) {
+    let mut body = String::new();
+    let mut keepout = Vec::new();
+    for tick in pending {
+        let start = (tick.at.0 + tick.offset.0, tick.at.1 + tick.offset.1);
+        let label = step_clear(start, tick.step, geometry);
+        keepout.push((label, label));
+        body.push_str(&if tick.end_anchor {
+            tick_text_end(tick.axis, tick.metres, label.0, label.1)
+        } else {
+            tick_text(tick.axis, tick.metres, label.0, label.1)
+        });
+    }
+    (body, keepout)
+}
+
+fn plane_axes(
+    plane: &Plane,
+    names: (&str, &str, &str, &str),
+    cloud: &[(f64, f64)],
+    protect_m: f64,
+    geometry: &[ScreenSeg],
+) -> (String, Vec<ScreenSeg>) {
+    let (x_name, y_name, x_attr, y_attr) = names;
+    let (min_u, max_u, min_v, max_v) = extents(cloud);
+    let u_ticks = tick_values(min_u, max_u);
+    let v_ticks = tick_values(min_v, max_v);
+    let x0 = plane.screen(u_ticks[0], 0.0);
+    let x1 = plane.screen(*u_ticks.last().unwrap_or(&u_ticks[0]), 0.0);
+    let y0 = plane.screen(0.0, v_ticks[0]);
+    let y1 = plane.screen(0.0, *v_ticks.last().unwrap_or(&v_ticks[0]));
+    let mut body = format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/>",
+        x0.0, x0.1, x1.0, x1.1, y0.0, y0.1, y1.0, y1.1
+    );
+    let lift = protect_m * plane.scale + 16.0;
+    let mut keepout = vec![(x0, x1), (y0, y1)];
+    for metres in &u_ticks {
+        let point = plane.screen(*metres, 0.0);
+        let label = if protect_m > 0.0 {
+            (point.0, point.1 - lift)
+        } else {
+            step_clear((point.0, point.1 - 18.0), (0.0, -14.0), geometry)
+        };
+        keepout.push((label, label));
+        body.push_str(&tick_text(x_attr, *metres, label.0, label.1));
+    }
+    for metres in &v_ticks {
+        let point = plane.screen(0.0, *metres);
+        let label = if protect_m > 0.0 {
+            (point.0 - lift, point.1)
+        } else {
+            step_clear((point.0 - 18.0, point.1), (-14.0, 0.0), geometry)
+        };
+        keepout.push((label, label));
+        body.push_str(&tick_text_end(y_attr, *metres, label.0, label.1));
+    }
+    let x_label = (x1.0 + 8.0, x1.1 - 16.0);
+    let y_label = (y1.0 + 10.0, y1.1 + 4.0);
+    body.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{x_name}</text><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{y_name}</text>",
+        x_label.0, x_label.1, y_label.0, y_label.1
+    ));
+    keepout.push((x_label, x_label));
+    keepout.push((y_label, y_label));
+    (body, keepout)
+}
+
+fn step_clear(mut point: (f64, f64), step: (f64, f64), geometry: &[ScreenSeg]) -> (f64, f64) {
+    for _ in 0..10 {
+        if gap_to_geometry(point, geometry) >= 14.0 {
+            break;
+        }
+        point.0 += step.0;
+        point.1 += step.1;
+    }
+    point
+}
+
+fn tick_text(axis: &str, metres: f64, x: f64, y: f64) -> String {
     format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{x_name}</text><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{y_name}</text>",
-        origin.0,
-        origin.1,
-        x.0,
-        x.1,
-        x.0 + 4.0,
-        x.1,
-        origin.0,
-        origin.1,
-        y.0,
-        y.1,
-        y.0 + 4.0,
-        y.1
+        "<text data-axis-tick=\"{axis}\" data-metres=\"{}\" x=\"{x:.1}\" y=\"{y:.1}\" font-size=\"11\" text-anchor=\"middle\">{}</text>",
+        metres_attr(metres),
+        metres_attr(metres)
     )
 }
 
-fn body_labels(scene: &Scene, map: impl Fn(Vec3) -> (f64, f64)) -> String {
+fn tick_text_end(axis: &str, metres: f64, x: f64, y: f64) -> String {
+    format!(
+        "<text data-axis-tick=\"{axis}\" data-metres=\"{}\" x=\"{x:.1}\" y=\"{y:.1}\" font-size=\"11\" text-anchor=\"end\">{}</text>",
+        metres_attr(metres),
+        metres_attr(metres)
+    )
+}
+
+fn swatches(items: &[(&str, &str)], y: f64) -> String {
     let mut body = String::new();
-    for aabb in &scene.bodies {
-        let center = Vec3 {
-            x: (aabb.min.x + aabb.max.x) / 2.0,
-            y: (aabb.min.y + aabb.max.y) / 2.0,
-            z: (aabb.min.z + aabb.max.z) / 2.0,
-        };
-        let placed = map(center);
+    let mut x = 24.0;
+    for (color, label) in items {
         body.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{}</text>",
-            placed.0, placed.1, aabb.name
+            "<rect data-legend=\"swatch\" x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"10\" fill=\"{color}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{label}</text>",
+            y - 9.0,
+            x + 20.0,
+            y
         ));
+        x += 240.0;
     }
     body
 }
 
+fn name_labels(scene: &Scene, map: impl Fn(Vec3) -> (f64, f64), geometry: &[ScreenSeg]) -> String {
+    let mut body = String::new();
+    for aabb in &scene.bodies {
+        let points: Vec<(f64, f64)> = corners(aabb).into_iter().map(&map).collect();
+        let (min_x, max_x, min_y, max_y) = extents(&points);
+        let anchor = map(Vec3 {
+            x: (aabb.min.x + aabb.max.x) / 2.0,
+            y: (aabb.min.y + aabb.max.y) / 2.0,
+            z: (aabb.min.z + aabb.max.z) / 2.0,
+        });
+        let half = 3.7 * aabb.name.chars().count() as f64;
+        let mid_x = (min_x + max_x) / 2.0;
+        let mid_y = (min_y + max_y) / 2.0;
+        let candidates = [
+            (mid_x, min_y - 20.0),
+            (mid_x, max_y + 18.0),
+            (min_x - half - 14.0, mid_y),
+            (max_x + half + 14.0, mid_y),
+        ];
+        let placed = clearest(candidates, aabb.name.chars().count(), geometry);
+        body.push_str(&leader(placed, anchor));
+        body.push_str(&format!(
+            "<text data-label=\"{}\" x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\" text-anchor=\"middle\">{}</text>",
+            aabb.name, placed.0, placed.1, aabb.name
+        ));
+    }
+    let sensor = map(scene.mount.translation_m);
+    let half = 3.7 * scene.mount.name.chars().count() as f64;
+    let candidates = [
+        (sensor.0, sensor.1 - 28.0),
+        (sensor.0, sensor.1 + 24.0),
+        (sensor.0 - half - 16.0, sensor.1),
+        (sensor.0 + half + 16.0, sensor.1),
+    ];
+    let placed = clearest(candidates, scene.mount.name.chars().count(), geometry);
+    body.push_str(&format!(
+        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\" fill=\"#222222\"/>",
+        sensor.0, sensor.1
+    ));
+    body.push_str(&leader(placed, sensor));
+    body.push_str(&format!(
+        "<text data-label=\"{}\" x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\" text-anchor=\"middle\">{}</text>",
+        scene.mount.name, placed.0, placed.1, scene.mount.name
+    ));
+    body
+}
+
+fn clearest(candidates: [(f64, f64); 4], chars: usize, geometry: &[ScreenSeg]) -> (f64, f64) {
+    let mut best = nudge_text(candidates[0], chars, geometry);
+    let mut best_gap = text_gap(best, chars, geometry);
+    for candidate in candidates.into_iter().skip(1) {
+        let placed = nudge_text(candidate, chars, geometry);
+        let gap = text_gap(placed, chars, geometry);
+        if gap > best_gap {
+            best = placed;
+            best_gap = gap;
+        }
+    }
+    best
+}
+
+fn nudge_text(mut point: (f64, f64), chars: usize, geometry: &[ScreenSeg]) -> (f64, f64) {
+    for _ in 0..12 {
+        if text_gap(point, chars, geometry) >= 8.0 {
+            break;
+        }
+        let away = nearest_push(point, geometry)
+            .map(|(_, away)| away)
+            .unwrap_or((0.0, -1.0));
+        point.0 += away.0 * 12.0;
+        point.1 += away.1 * 12.0;
+    }
+    (point.0.clamp(18.0, 1000.0), point.1.clamp(140.0, 640.0))
+}
+
+fn text_gap(anchor: (f64, f64), chars: usize, geometry: &[ScreenSeg]) -> f64 {
+    if geometry.is_empty() {
+        return f64::INFINITY;
+    }
+    let half = 3.7 * chars as f64;
+    let rect = (
+        anchor.0 - half,
+        anchor.1 - 12.0,
+        anchor.0 + half,
+        anchor.1 + 3.0,
+    );
+    let mut gap = f64::INFINITY;
+    let steps = 8;
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        let samples = [
+            (rect.0 + (rect.2 - rect.0) * t, rect.1),
+            (rect.0 + (rect.2 - rect.0) * t, rect.3),
+            (rect.0, rect.1 + (rect.3 - rect.1) * t),
+            (rect.2, rect.1 + (rect.3 - rect.1) * t),
+        ];
+        for sample in samples {
+            gap = gap.min(gap_to_geometry(sample, geometry));
+        }
+    }
+    gap
+}
+
+fn nearest_push(point: (f64, f64), geometry: &[ScreenSeg]) -> Option<(f64, (f64, f64))> {
+    let mut best_gap = f64::INFINITY;
+    let mut best_away = (0.0, -1.0);
+    for segment in geometry {
+        let closest = closest_point(point, *segment);
+        let dx = point.0 - closest.0;
+        let dy = point.1 - closest.1;
+        let gap = dx.hypot(dy);
+        if gap < best_gap {
+            best_gap = gap;
+            best_away = if gap < 0.5 {
+                (0.0, -1.0)
+            } else {
+                (dx / gap, dy / gap)
+            };
+        }
+    }
+    if best_gap.is_infinite() {
+        None
+    } else {
+        Some((best_gap, best_away))
+    }
+}
+
+fn gap_to_geometry(point: (f64, f64), geometry: &[ScreenSeg]) -> f64 {
+    nearest_push(point, geometry)
+        .map(|(gap, _)| gap)
+        .unwrap_or(f64::INFINITY)
+}
+
+fn closest_point(point: (f64, f64), segment: ((f64, f64), (f64, f64))) -> (f64, f64) {
+    let (start, end) = segment;
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq < 1e-9 {
+        return start;
+    }
+    let t = ((point.0 - start.0) * dx + (point.1 - start.1) * dy) / length_sq;
+    let t = t.clamp(0.0, 1.0);
+    (start.0 + dx * t, start.1 + dy * t)
+}
+
+fn leader(from: (f64, f64), to: (f64, f64)) -> String {
+    format!(
+        "<line data-leader=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#888888\" stroke-width=\"0.8\"/>",
+        from.0, from.1, to.0, to.1
+    )
+}
+
 fn dimension_note(scene: &Scene) -> String {
-    let mut body = String::from("<text x=\"24\" y=\"640\" font-size=\"12\">");
+    let mut body = String::from("<text x=\"24\" y=\"712\" font-size=\"12\">");
     for aabb in &scene.bodies {
         body.push_str(&format!(
             "{} x {:.2}–{:.2} m, y {:.2}–{:.2} m, z {:.2}–{:.2} m. ",
@@ -638,16 +1062,6 @@ fn dimension_note(scene: &Scene) -> String {
     }
     body.push_str("</text>");
     body
-}
-
-fn marker(at: (f64, f64), label: &str) -> String {
-    format!(
-        "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\" fill=\"#222222\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{label}</text>",
-        at.0,
-        at.1,
-        at.0 + 8.0,
-        at.1 - 8.0
-    )
 }
 
 fn hit_marks(hits: &[Vec3], map: impl Fn(Vec3) -> (f64, f64)) -> String {
@@ -662,19 +1076,16 @@ fn hit_marks(hits: &[Vec3], map: impl Fn(Vec3) -> (f64, f64)) -> String {
     body
 }
 
-fn place(x: f64, y: f64, origin_x: f64, origin_y: f64, scale: f64) -> (f64, f64) {
-    (origin_x + x * scale, origin_y - y * scale)
-}
-
-fn edges(scene: &Scene, map: impl Fn(Vec3) -> (f64, f64)) -> String {
+fn edges(scene: &Scene, map: impl Fn(Vec3) -> (f64, f64), geometry: &mut Vec<ScreenSeg>) -> String {
     let mut body = String::new();
     for aabb in &scene.bodies {
         let corners = corners(aabb);
         for (start, end) in BOX_EDGES {
             let a = map(corners[start]);
             let b = map(corners[end]);
+            geometry.push((a, b));
             body.push_str(&format!(
-                "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#333333\" stroke-width=\"1.2\"/>",
+                "<line data-geom=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#333333\" stroke-width=\"1.2\"/>",
                 a.0, a.1, b.0, b.1
             ));
         }
@@ -682,13 +1093,20 @@ fn edges(scene: &Scene, map: impl Fn(Vec3) -> (f64, f64)) -> String {
     body
 }
 
-fn rays(origin: Vec3, hits: &[Vec3], map: impl Fn(Vec3) -> (f64, f64), color: &str) -> String {
+fn rays(
+    origin: Vec3,
+    hits: &[Vec3],
+    map: impl Fn(Vec3) -> (f64, f64),
+    color: &str,
+    geometry: &mut Vec<ScreenSeg>,
+) -> String {
     let start = map(origin);
     let mut body = String::new();
     for hit in hits {
         let end = map(*hit);
+        geometry.push((start, end));
         body.push_str(&format!(
-            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{color}\" stroke-width=\"1.1\"/>",
+            "<line data-geom=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{color}\" stroke-width=\"1.1\"/>",
             start.0, start.1, end.0, end.1
         ));
     }
@@ -831,7 +1249,9 @@ mod tests {
             panic!("miss");
         };
         assert!((range_m - 1.0).abs() < 1e-9, "{range_m}");
+        assert!((point.x - 0.30).abs() < 1e-9, "{}", point.x);
         assert!((point.y - 1.20).abs() < 1e-9);
+        assert!((point.z - 0.50).abs() < 1e-9, "{}", point.z);
         let left = scene(
             mount(v(0.30, 0.20, 0.50), 90.0, 0.0),
             vec![box_at("rear", v(-0.80, -1.0, 0.0), v(-0.70, 1.0, 1.0))],
@@ -850,9 +1270,6 @@ mod tests {
         let pitch = 10.0_f64;
         let bearing = 15.0_f64;
         let origin = v(0.40, -0.12, 0.55);
-        let (dx, dy, dz) = independent_dir(yaw, pitch, bearing);
-        let t = (2.40 - origin.x) / dx;
-        let expected = v(origin.x + t * dx, origin.y + t * dy, origin.z + t * dz);
         let fixture = scene(
             mount(origin, yaw, pitch),
             vec![box_at(
@@ -864,10 +1281,12 @@ mod tests {
         let Cast::Hit { range_m, point } = cast_bearing(&fixture, bearing).unwrap() else {
             panic!("miss");
         };
-        assert!((range_m - t).abs() < 1e-9, "{range_m} {t}");
-        assert!((point.x - expected.x).abs() < 1e-9);
-        assert!((point.y - expected.y).abs() < 1e-9);
-        assert!((point.z - expected.z).abs() < 1e-9);
+        assert!((point.x - 2.40).abs() < 1e-9, "{}", point.x);
+        assert!(point.z < origin.z, "pitch down raised the hit: {}", point.z);
+        assert!(
+            range_m > 2.0,
+            "slant range was the horizontal run: {range_m}"
+        );
         let back = inverse_bearing(&fixture.mount, point).unwrap();
         assert!((wrap_signed_deg(back - bearing)).abs() < 1e-6, "{back}");
         let flat = project_oblique(v(1.0, 0.0, 0.0));
@@ -883,16 +1302,22 @@ mod tests {
         assert!(!views.mount_csv.contains("0.1750"));
     }
 
-    fn independent_dir(yaw_deg: f64, pitch_down_deg: f64, bearing_deg: f64) -> (f64, f64, f64) {
-        let yaw = yaw_deg.to_radians();
-        let pitch = pitch_down_deg.to_radians();
-        let bearing = bearing_deg.to_radians();
-        let x1 = pitch.cos() * bearing.cos();
-        let y1 = bearing.sin();
-        let z1 = -pitch.sin() * bearing.cos();
-        let x = yaw.cos() * x1 - yaw.sin() * y1;
-        let y = yaw.sin() * x1 + yaw.cos() * y1;
-        (x, y, z1)
+    #[test]
+    fn a_45_degree_pitch_drops_one_metre_for_one_metre_of_run() {
+        let fixture = scene(
+            mount(v(0.0, 0.0, 1.0), 0.0, 45.0),
+            vec![box_at("wall", v(1.0, -2.0, -2.0), v(1.2, 2.0, 3.0))],
+        );
+        let Cast::Hit { range_m, point } = cast_bearing(&fixture, 0.0).unwrap() else {
+            panic!("miss");
+        };
+        let slant = 2.0_f64.sqrt();
+        assert!((range_m - slant).abs() < 1e-9, "{range_m}");
+        assert!((range_m - 1.0).abs() > 0.1, "horizontal run was reported");
+        assert!((point.x - 1.0).abs() < 1e-9, "{}", point.x);
+        assert!(point.y.abs() < 1e-9, "{}", point.y);
+        assert!(point.z.abs() < 1e-9, "{}", point.z);
+        assert!(inverse_bearing(&fixture.mount, point).unwrap().abs() < 1e-6);
     }
 
     #[test]
@@ -1083,6 +1508,96 @@ mod tests {
     }
 
     #[test]
+    fn a_parsed_packet_blocks_the_step_until_the_body_is_removed() {
+        let front = measured_front();
+        let profile = lidar_profiles()[0];
+        let clock = PostClock {
+            captured_ms: Some(2_500),
+            delivered_ms: 2_500,
+            decision_ms: 2_500,
+            label: ClockLabel::InjectedReplay,
+        };
+        let blocked_scene = scene(
+            mount(v(0.40, 0.10, 0.50), 0.0, 0.0),
+            vec![box_at("close", v(0.55, -0.05, 0.0), v(0.70, 0.25, 1.0))],
+        );
+        let open_scene = scene(mount(v(0.40, 0.10, 0.50), 0.0, 0.0), vec![]);
+        let blocked_post = post_one_packet(&blocked_scene, front, &profile, clock);
+        let open_post = post_one_packet(&open_scene, front, &profile, clock);
+        assert_eq!(blocked_post.view_points, vec![(150, 0)]);
+        assert_ne!(blocked_post.view_points, vec![(550, 100)]);
+        assert!(open_post.view_points.is_empty());
+        let person = SeenPerson {
+            id: Id::new(2).expect("id"),
+            at: Point::new(Mm::new(3_000), Mm::new(0)),
+        };
+        let robot = Point::new(Mm::new(0), Mm::new(0));
+        let follower = Follower::follow(person.id);
+        let blocked = plan_of(&blocked_post.view_points, &person, robot, follower);
+        let open = plan_of(&open_post.view_points, &person, robot, follower);
+        match open {
+            Intent::Move(to) => {
+                assert_eq!(to.y().get(), 0);
+                assert!(to.x().get() > 0);
+            }
+            other => panic!("{other:?}"),
+        }
+        match blocked {
+            Intent::Blocked | Intent::Stuck => {}
+            Intent::Move(to) => assert_ne!(to.y().get(), 0, "{to:?}"),
+            other => panic!("{other:?}"),
+        }
+        assert_ne!(blocked, open);
+    }
+
+    fn post_one_packet(
+        fixture: &Scene,
+        front: f64,
+        profile: &crate::profile::LidarProfile,
+        clock: PostClock,
+    ) -> crate::navpost::ScanPost {
+        let generated = sensor_samples(fixture, &[0.0], front).unwrap();
+        let word = (generated[0].range_m * 4_000.0).round() as u16;
+        let bytes = crate::lidar::encode_packet(0, &[(generated[0].raw_deg, word, 0)]).unwrap();
+        let parsed = crate::lidar::parse_lidar(&bytes);
+        assert!(parsed.rejects.is_empty());
+        assert_eq!(parsed.samples.len(), 1);
+        if generated[0].range_m > 0.0 {
+            assert!((parsed.samples[0].range_m - 0.15).abs() < 1e-9);
+        } else {
+            assert_eq!(parsed.samples[0].range_m, 0.0);
+        }
+        let (_history, post) = post_samples(profile, &parsed.samples, SampleHistory::new(), clock);
+        assert!(!post.sent);
+        post
+    }
+
+    fn plan_of(
+        points: &[(i32, i32)],
+        person: &SeenPerson,
+        robot: Point,
+        follower: Follower,
+    ) -> Intent {
+        let bodies: Vec<SeenBody> = points
+            .iter()
+            .map(|(x, y)| SeenBody {
+                center: Point::new(Mm::new(*x), Mm::new(*y)),
+                radius_mm: 0,
+            })
+            .collect();
+        plan_follow(
+            &follower,
+            &Sight {
+                robot,
+                people: std::slice::from_ref(person),
+                bodies: &bodies,
+            },
+            Cue::None,
+        )
+        .1
+    }
+
+    #[test]
     fn a_packet_carries_the_ray_range_and_not_a_written_hit() {
         let fixture = scene(
             mount(v(0.40, 0.10, 0.50), 0.0, 0.0),
@@ -1149,6 +1664,139 @@ mod tests {
         assert!(svg.contains("world x") && svg.contains("world y"));
         assert!(views.side_svg.contains("world z"));
         assert!(views.scan_svg.contains("250 mm"));
+    }
+
+    #[test]
+    fn the_pictures_have_ticks_swatches_and_a_signed_scan_frame() {
+        let scene = demonstration();
+        let profile = lidar_profiles()[0];
+        let packet = packet_revolution(&scene, profile.front_raw_deg, 2.0).unwrap();
+        let views = render_views(&scene, &packet.bearings_deg, &profile, 2_500).unwrap();
+        for svg in [
+            &views.oblique_svg,
+            &views.top_svg,
+            &views.side_svg,
+            &views.scan_svg,
+        ] {
+            assert!(svg.contains("data-axis-tick"), "missing ticks");
+            assert!(svg.contains("data-legend=\"swatch\""), "missing swatch");
+        }
+        assert!(views.top_svg.contains("data-legend=\"swatch\""));
+        assert!(views.oblique_svg.matches("data-legend=\"swatch\"").count() >= 2);
+        let scan = &views.scan_svg;
+        assert!(scan.contains("radius 250 mm"));
+        assert!(scan.contains("not a diameter"));
+        assert!(scan.contains("data-radius-m=\"0.25\""));
+        let y_ticks = tick_metres(scan, "y");
+        assert!(
+            y_ticks.iter().any(|metres| *metres <= -0.398),
+            "scan y does not cover the returns: {y_ticks:?}"
+        );
+        assert!(
+            y_ticks.iter().any(|metres| *metres >= 0.25),
+            "scan y does not cover the radius: {y_ticks:?}"
+        );
+        let x0 = tick_xy(scan, "x", "0");
+        let x1 = tick_xy(scan, "x", "1");
+        let y0 = tick_xy(scan, "y", "0");
+        let y_half = tick_xy(scan, "y", "-0.5");
+        let dx = dist(x0, x1);
+        let dy = dist(y0, y_half) * 2.0;
+        assert!((dx - dy).abs() < 1.5, "unequal scale {dx} {dy}");
+        let radius_px = circle_radius(scan);
+        assert!(
+            (radius_px - 0.25 * dx).abs() < 1.5,
+            "radius px {radius_px} scale {dx}"
+        );
+        for svg in [&views.top_svg, &views.side_svg, &views.oblique_svg] {
+            for name in ["pillar", "low-plank", "synthetic-lidar"] {
+                let label = text_xy(svg, name);
+                let gap = geom_lines(svg)
+                    .into_iter()
+                    .map(|segment| dist_seg(label, segment))
+                    .fold(f64::MAX, f64::min);
+                assert!(gap >= 8.0, "{name} is {gap} px from geometry");
+            }
+        }
+    }
+
+    fn tick_metres(svg: &str, axis: &str) -> Vec<f64> {
+        let key = format!("data-axis-tick=\"{axis}\" data-metres=\"");
+        let mut values = Vec::new();
+        let mut rest = svg;
+        while let Some(at) = rest.find(&key) {
+            let start = at + key.len();
+            let end = rest[start..].find('"').expect("metres") + start;
+            values.push(rest[start..end].parse().expect("tick"));
+            rest = &rest[end..];
+        }
+        values
+    }
+
+    fn tick_xy(svg: &str, axis: &str, metres: &str) -> (f64, f64) {
+        let key = format!("data-axis-tick=\"{axis}\" data-metres=\"{metres}\"");
+        let at = svg
+            .find(&key)
+            .unwrap_or_else(|| panic!("tick {axis} {metres}"));
+        let tag = &svg[at..svg[at..].find('>').unwrap() + at];
+        (attr_in(tag, "x"), attr_in(tag, "y"))
+    }
+
+    fn text_xy(svg: &str, name: &str) -> (f64, f64) {
+        let key = format!("data-label=\"{name}\"");
+        let at = svg.find(&key).unwrap_or_else(|| panic!("label {name}"));
+        let tag = &svg[at..svg[at..].find('>').unwrap() + at];
+        (attr_in(tag, "x"), attr_in(tag, "y"))
+    }
+
+    fn circle_radius(svg: &str) -> f64 {
+        let key = "data-radius-m=\"0.25\"";
+        let at = svg.find(key).expect("radius");
+        let tag = &svg[at..svg[at..].find('>').unwrap() + at];
+        attr_in(tag, "r")
+    }
+
+    fn attr_in(tag: &str, name: &str) -> f64 {
+        let key = format!("{name}=\"");
+        let start = tag.find(&key).unwrap_or_else(|| panic!("{name}")) + key.len();
+        let end = tag[start..].find('"').unwrap() + start;
+        tag[start..end].parse().expect(name)
+    }
+
+    fn geom_lines(svg: &str) -> Vec<((f64, f64), (f64, f64))> {
+        let mut lines = Vec::new();
+        let mut rest = svg;
+        while let Some(at) = rest.find("<line ") {
+            let tag_end = rest[at..].find('>').unwrap() + at;
+            let tag = &rest[at..tag_end];
+            if tag.contains("data-geom=\"1\"") {
+                lines.push((
+                    (attr_in(tag, "x1"), attr_in(tag, "y1")),
+                    (attr_in(tag, "x2"), attr_in(tag, "y2")),
+                ));
+            }
+            rest = &rest[tag_end..];
+        }
+        lines
+    }
+
+    fn dist(a: (f64, f64), b: (f64, f64)) -> f64 {
+        let dx = a.0 - b.0;
+        let dy = a.1 - b.1;
+        dx.hypot(dy)
+    }
+
+    fn dist_seg(point: (f64, f64), segment: ((f64, f64), (f64, f64))) -> f64 {
+        let (a, b) = segment;
+        let abx = b.0 - a.0;
+        let aby = b.1 - a.1;
+        let len2 = abx * abx + aby * aby;
+        if len2 < 1e-9 {
+            return dist(point, a);
+        }
+        let t = ((point.0 - a.0) * abx + (point.1 - a.1) * aby) / len2;
+        let t = t.clamp(0.0, 1.0);
+        dist(point, (a.0 + abx * t, a.1 + aby * t))
     }
 
     fn line_attr(svg_prefix: &str, name: &str) -> f64 {
