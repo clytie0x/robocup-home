@@ -26,7 +26,7 @@ EXPECTED = {
     "manipulation": {"domain"},
     "navigation": {"domain"},
     "perception": {"domain"},
-    "physical": set(),
+    "physical": {"domain", "navigation"},
     "sim_runtime": {"domain"},
     "task_3_1": {"domain", "hri", "manipulation", "navigation", "perception"},
     "task_3_2": {"domain"},

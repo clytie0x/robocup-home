@@ -5,6 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[dependencies]
+domain.workspace = true
+navigation.workspace = true
+
 [[bin]]
 name = "replay"
 path = "src/bin/replay.rs"
+
+[[bin]]
+name = "post-scan"
+path = "src/bin/post_scan.rs"
