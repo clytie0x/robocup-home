@@ -469,7 +469,7 @@ fn draw_oblique(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
             y: 0.0,
             z: metres,
         },
-        ((18.0, 4.0), (14.0, 0.0), (-64.0, 14.0)),
+        ((16.0, 0.0), (-64.0, 14.0)),
         &mut pending,
     );
     body.push_str(&axis);
@@ -484,7 +484,7 @@ fn draw_oblique(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
             y: 0.0,
             z: 0.0,
         },
-        ((0.0, 18.0), (0.0, 14.0), (12.0, -16.0)),
+        ((0.0, 16.0), (12.0, -16.0)),
         &mut pending,
     );
     body.push_str(&axis);
@@ -499,7 +499,7 @@ fn draw_oblique(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
             y: metres,
             z: 0.0,
         },
-        ((-18.0, 12.0), (-14.0, 0.0), (14.0, 18.0)),
+        ((-16.0, 8.0), (14.0, 18.0)),
         &mut pending,
     );
     body.push_str(&axis);
@@ -755,8 +755,6 @@ struct TickMark {
     metres: f64,
     at: (f64, f64),
     offset: (f64, f64),
-    step: (f64, f64),
-    end_anchor: bool,
 }
 
 fn world_axis(
@@ -765,15 +763,15 @@ fn world_axis(
     name: &str,
     ticks: &[f64],
     at: impl Fn(f64) -> Vec3,
-    offsets: ((f64, f64), (f64, f64), (f64, f64)),
+    offsets: ((f64, f64), (f64, f64)),
     pending: &mut Vec<TickMark>,
 ) -> (String, Vec<ScreenSeg>) {
-    let (tick_offset, step, name_offset) = offsets;
+    let (tick_offset, name_offset) = offsets;
     let start = map(at(ticks[0]));
     let end = map(at(*ticks.last().unwrap_or(&ticks[0])));
     let name_at = (end.0 + name_offset.0, end.1 + name_offset.1);
     let body = format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{name}</text>",
+        "<line data-axis-line=\"{axis}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{name}</text>",
         start.0, start.1, end.0, end.1, name_at.0, name_at.1
     );
     for metres in ticks {
@@ -782,8 +780,6 @@ fn world_axis(
             metres: *metres,
             at: map(at(*metres)),
             offset: tick_offset,
-            step,
-            end_anchor: tick_offset.0 < 0.0,
         });
     }
     (body, vec![(start, end), (name_at, name_at)])
@@ -793,14 +789,19 @@ fn place_ticks(pending: &[TickMark], geometry: &[ScreenSeg]) -> (String, Vec<Scr
     let mut body = String::new();
     let mut keepout = Vec::new();
     for tick in pending {
-        let start = (tick.at.0 + tick.offset.0, tick.at.1 + tick.offset.1);
-        let label = step_clear(start, tick.step, geometry);
-        keepout.push((label, label));
-        body.push_str(&if tick.end_anchor {
-            tick_text_end(tick.axis, tick.metres, label.0, label.1)
-        } else {
-            tick_text(tick.axis, tick.metres, label.0, label.1)
-        });
+        let (svg, label) = emit_tick(
+            tick.axis,
+            tick.metres,
+            tick.at,
+            tick.offset,
+            geometry,
+            tick.at,
+            0.0,
+        );
+        body.push_str(&svg);
+        if let Some(label) = label {
+            keepout.push((label, label));
+        }
     }
     (body, keepout)
 }
@@ -821,35 +822,55 @@ fn plane_axes(
     let y0 = plane.screen(0.0, v_ticks[0]);
     let y1 = plane.screen(0.0, *v_ticks.last().unwrap_or(&v_ticks[0]));
     let mut body = format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/>",
+        "<line data-axis-line=\"{x_attr}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/><line data-axis-line=\"{y_attr}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.4\"/>",
         x0.0, x0.1, x1.0, x1.1, y0.0, y0.1, y1.0, y1.1
     );
-    let lift = protect_m * plane.scale + 16.0;
+    let origin = plane.screen(0.0, 0.0);
+    let protect = protect_m * plane.scale;
     let mut keepout = vec![(x0, x1), (y0, y1)];
     for metres in &u_ticks {
         let point = plane.screen(*metres, 0.0);
-        let label = if protect_m > 0.0 {
-            (point.0, point.1 - lift)
-        } else {
-            step_clear((point.0, point.1 - 18.0), (0.0, -14.0), geometry)
-        };
-        keepout.push((label, label));
-        body.push_str(&tick_text(x_attr, *metres, label.0, label.1));
+        let (svg, label) = emit_tick(
+            x_attr,
+            *metres,
+            point,
+            (0.0, -16.0),
+            geometry,
+            origin,
+            protect,
+        );
+        body.push_str(&svg);
+        if let Some(label) = label {
+            keepout.push((label, label));
+        }
     }
     for metres in &v_ticks {
         let point = plane.screen(0.0, *metres);
-        let label = if protect_m > 0.0 {
-            (point.0 - lift, point.1)
-        } else {
-            step_clear((point.0 - 18.0, point.1), (-14.0, 0.0), geometry)
-        };
-        keepout.push((label, label));
-        body.push_str(&tick_text_end(y_attr, *metres, label.0, label.1));
+        let (svg, label) = emit_tick(
+            y_attr,
+            *metres,
+            point,
+            (-16.0, 0.0),
+            geometry,
+            origin,
+            protect,
+        );
+        body.push_str(&svg);
+        if let Some(label) = label {
+            keepout.push((label, label));
+        }
     }
-    let x_label = (x1.0 + 8.0, x1.1 - 16.0);
+    let name_px = 6.6 * x_name.chars().count() as f64;
+    let x_past_end = x1.0 + 12.0 + name_px > 1024.0;
+    let x_label = if x_past_end {
+        (1020.0, x1.1 + 16.0)
+    } else {
+        (x1.0 + 12.0, x1.1 + 16.0)
+    };
+    let x_anchor = if x_past_end { "end" } else { "start" };
     let y_label = (y1.0 + 10.0, y1.1 + 4.0);
     body.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{x_name}</text><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{y_name}</text>",
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\" text-anchor=\"{x_anchor}\">{x_name}</text><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{y_name}</text>",
         x_label.0, x_label.1, y_label.0, y_label.1
     ));
     keepout.push((x_label, x_label));
@@ -857,31 +878,97 @@ fn plane_axes(
     (body, keepout)
 }
 
-fn step_clear(mut point: (f64, f64), step: (f64, f64), geometry: &[ScreenSeg]) -> (f64, f64) {
-    for _ in 0..10 {
-        if gap_to_geometry(point, geometry) >= 14.0 {
+fn emit_tick(
+    axis: &str,
+    metres: f64,
+    at: (f64, f64),
+    mut label_offset: (f64, f64),
+    geometry: &[ScreenSeg],
+    origin: (f64, f64),
+    protect_px: f64,
+) -> (String, Option<(f64, f64)>) {
+    let zero = metres.abs() < 1e-6;
+    let draw_number = !zero || axis == "x";
+    if zero && draw_number {
+        label_offset = (-12.0, -12.0);
+    }
+    let span = label_offset.0.hypot(label_offset.1).max(1.0);
+    let dir = (label_offset.0 / span, label_offset.1 / span);
+    let stroke = (at.0 + dir.0 * 8.0, at.1 + dir.1 * 8.0);
+    let preferred = settle_label(at, label_offset, dir, geometry, origin, protect_px);
+    let flipped = settle_label(
+        at,
+        (-label_offset.0, -label_offset.1),
+        (-dir.0, -dir.1),
+        geometry,
+        origin,
+        protect_px,
+    );
+    let label = if !geometry.is_empty()
+        && gap_to_geometry(flipped, geometry) >= 12.0
+        && point_gap(flipped, at) + 4.0 < point_gap(preferred, at)
+    {
+        flipped
+    } else {
+        preferred
+    };
+    let metres_s = metres_attr(metres);
+    let mut body = format!(
+        "<g data-axis-tick=\"{axis}\" data-metres=\"{metres_s}\"><line data-tick-stroke=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#222222\" stroke-width=\"1.2\"/>",
+        at.0, at.1, stroke.0, stroke.1
+    );
+    if draw_number {
+        if point_gap(label, at) > 22.0 {
+            body.push_str(&format!(
+                "<line data-tick-leader=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#888888\" stroke-width=\"0.7\"/>",
+                at.0, at.1, label.0, label.1
+            ));
+        }
+        let anchor = if label.0 < at.0 - 4.0 {
+            "end"
+        } else {
+            "middle"
+        };
+        body.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"11\" text-anchor=\"{anchor}\">{metres_s}</text>",
+            label.0, label.1
+        ));
+    }
+    body.push_str("</g>");
+    (body, draw_number.then_some(label))
+}
+
+fn settle_label(
+    at: (f64, f64),
+    label_offset: (f64, f64),
+    dir: (f64, f64),
+    geometry: &[ScreenSeg],
+    origin: (f64, f64),
+    protect_px: f64,
+) -> (f64, f64) {
+    let mut label = (at.0 + label_offset.0, at.1 + label_offset.1);
+    if protect_px > 0.0 {
+        let dx = label.0 - origin.0;
+        let dy = label.1 - origin.1;
+        let distance = dx.hypot(dy);
+        let need = protect_px + 18.0;
+        if distance < need && distance > 0.5 {
+            let scale = need / distance;
+            label = (origin.0 + dx * scale, origin.1 + dy * scale);
+        }
+    }
+    for _ in 0..6 {
+        if gap_to_geometry(label, geometry) >= 12.0 {
             break;
         }
-        point.0 += step.0;
-        point.1 += step.1;
+        label.0 += dir.0 * 12.0;
+        label.1 += dir.1 * 12.0;
     }
-    point
+    label
 }
 
-fn tick_text(axis: &str, metres: f64, x: f64, y: f64) -> String {
-    format!(
-        "<text data-axis-tick=\"{axis}\" data-metres=\"{}\" x=\"{x:.1}\" y=\"{y:.1}\" font-size=\"11\" text-anchor=\"middle\">{}</text>",
-        metres_attr(metres),
-        metres_attr(metres)
-    )
-}
-
-fn tick_text_end(axis: &str, metres: f64, x: f64, y: f64) -> String {
-    format!(
-        "<text data-axis-tick=\"{axis}\" data-metres=\"{}\" x=\"{x:.1}\" y=\"{y:.1}\" font-size=\"11\" text-anchor=\"end\">{}</text>",
-        metres_attr(metres),
-        metres_attr(metres)
-    )
+fn point_gap(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (a.0 - b.0).hypot(a.1 - b.1)
 }
 
 fn swatches(items: &[(&str, &str)], y: f64) -> String {
@@ -1177,8 +1264,8 @@ const BOX_EDGES: [(usize, usize); 12] = [
 #[cfg(test)]
 mod tests {
     use super::{
-        Aabb, Cast, Mount, Scene, SceneError, Vec3, cast_bearing, demonstration, inverse_bearing,
-        packet_revolution, project_oblique, render_views, sensor_samples,
+        Aabb, Cast, Mount, Scene, SceneError, ScreenSeg, Vec3, cast_bearing, demonstration,
+        inverse_bearing, packet_revolution, project_oblique, render_views, sensor_samples,
     };
     use crate::kind::Kind;
     use crate::navpost::{ClockLabel, PostClock, PostOutcome, UnusableKind, post_samples};
@@ -1696,10 +1783,11 @@ mod tests {
             y_ticks.iter().any(|metres| *metres >= 0.25),
             "scan y does not cover the radius: {y_ticks:?}"
         );
-        let x0 = tick_xy(scan, "x", "0");
-        let x1 = tick_xy(scan, "x", "1");
-        let y0 = tick_xy(scan, "y", "0");
-        let y_half = tick_xy(scan, "y", "-0.5");
+        let marks = anchored_ticks(scan);
+        let x0 = tick_mark(&marks, "x", 0.0);
+        let x1 = tick_mark(&marks, "x", 1.0);
+        let y0 = tick_mark(&marks, "y", 0.0);
+        let y_half = tick_mark(&marks, "y", -0.5);
         let dx = dist(x0, x1);
         let dy = dist(y0, y_half) * 2.0;
         assert!((dx - dy).abs() < 1.5, "unequal scale {dx} {dy}");
@@ -1708,6 +1796,12 @@ mod tests {
             (radius_px - 0.25 * dx).abs() < 1.5,
             "radius px {radius_px} scale {dx}"
         );
+        let scan_faults = tick_anchor_faults(scan, radius_px);
+        assert!(scan_faults.is_empty(), "scan ticks: {scan_faults:?}");
+        for svg in [&views.top_svg, &views.side_svg, &views.oblique_svg] {
+            let faults = tick_anchor_faults(svg, 0.0);
+            assert!(faults.is_empty(), "ticks: {faults:?}");
+        }
         for svg in [&views.top_svg, &views.side_svg, &views.oblique_svg] {
             for name in ["pillar", "low-plank", "synthetic-lidar"] {
                 let label = text_xy(svg, name);
@@ -1733,13 +1827,190 @@ mod tests {
         values
     }
 
-    fn tick_xy(svg: &str, axis: &str, metres: &str) -> (f64, f64) {
-        let key = format!("data-axis-tick=\"{axis}\" data-metres=\"{metres}\"");
-        let at = svg
-            .find(&key)
-            .unwrap_or_else(|| panic!("tick {axis} {metres}"));
-        let tag = &svg[at..svg[at..].find('>').unwrap() + at];
-        (attr_in(tag, "x"), attr_in(tag, "y"))
+    #[test]
+    fn a_tick_label_lifted_clear_of_its_mark_fails() {
+        let ok = sample_ticks(16.0, 200.0, false);
+        assert!(
+            tick_anchor_faults(&ok, 0.0).is_empty(),
+            "{:?}",
+            tick_anchor_faults(&ok, 0.0)
+        );
+        let lifted = sample_ticks(216.0, 200.0, true);
+        assert!(
+            !tick_anchor_faults(&lifted, 0.0).is_empty(),
+            "a 200 px lift still counted as anchored"
+        );
+        let moved = sample_ticks(16.0, 260.0, false);
+        assert!(
+            !tick_anchor_faults(&moved, 0.0).is_empty(),
+            "a mark off the axis still counted"
+        );
+    }
+
+    fn sample_ticks(label_lift: f64, mark_y: f64, leader: bool) -> String {
+        let leader_tag = if leader {
+            format!(
+                "<line data-tick-leader=\"1\" x1=\"300\" y1=\"200\" x2=\"300\" y2=\"{label_y}\"/>",
+                label_y = 200.0 - label_lift
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "<svg><line data-axis-line=\"x\" x1=\"0\" y1=\"200\" x2=\"400\" y2=\"200\"/><g data-axis-tick=\"x\" data-metres=\"0\"><line data-tick-stroke=\"1\" x1=\"100\" y1=\"{mark_y}\" x2=\"100\" y2=\"192\"/><text x=\"88\" y=\"188\">0</text></g><g data-axis-tick=\"x\" data-metres=\"1\"><line data-tick-stroke=\"1\" x1=\"300\" y1=\"200\" x2=\"300\" y2=\"192\"/>{leader_tag}<text x=\"300\" y=\"{label_y}\">1</text></g></svg>",
+            label_y = 200.0 - label_lift
+        )
+    }
+
+    struct AnchoredTick {
+        axis: String,
+        metres: f64,
+        mark: (f64, f64),
+        label: Option<(f64, f64)>,
+        leader: bool,
+    }
+
+    fn tick_mark(ticks: &[AnchoredTick], axis: &str, metres: f64) -> (f64, f64) {
+        ticks
+            .iter()
+            .find(|tick| tick.axis == axis && (tick.metres - metres).abs() < 1e-6)
+            .unwrap_or_else(|| panic!("mark {axis} {metres}"))
+            .mark
+    }
+
+    fn tick_anchor_faults(svg: &str, protect_px: f64) -> Vec<String> {
+        let mut faults = Vec::new();
+        let ticks = anchored_ticks(svg);
+        if ticks.is_empty() {
+            faults.push("no tick strokes".to_string());
+            return faults;
+        }
+        let lines = axis_lines(svg);
+        let origin = ticks
+            .iter()
+            .find(|tick| tick.metres.abs() <= 1e-6)
+            .map(|tick| tick.mark)
+            .unwrap_or((0.0, 0.0));
+        let mut origin_labels = 0;
+        for tick in &ticks {
+            let Some((_, segment)) = lines.iter().find(|(axis, _)| axis == &tick.axis) else {
+                faults.push(format!("no axis for {}", tick.axis));
+                continue;
+            };
+            let gap = dist_seg(tick.mark, *segment);
+            if gap > 1.5 {
+                faults.push(format!(
+                    "{} {:.1} mark is {gap:.1} px off its axis",
+                    tick.axis, tick.metres
+                ));
+            }
+            let Some(label) = tick.label else {
+                if tick.metres.abs() > 1e-6 {
+                    faults.push(format!("missing number {} {:.1}", tick.axis, tick.metres));
+                }
+                continue;
+            };
+            if tick.metres.abs() <= 1e-6 {
+                origin_labels += 1;
+            }
+            let separation = dist(label, tick.mark);
+            let near_origin = dist(tick.mark, origin) <= protect_px + 8.0;
+            let cap = if near_origin {
+                (protect_px + 30.0).max(26.0)
+            } else {
+                96.0
+            };
+            if separation > 26.0 && !tick.leader {
+                faults.push(format!(
+                    "{} {:.1} label is {separation:.0} px away without a leader",
+                    tick.axis, tick.metres
+                ));
+            }
+            if separation > cap {
+                faults.push(format!(
+                    "{} {:.1} label is {separation:.0} px from its mark, cap {cap:.0}",
+                    tick.axis, tick.metres
+                ));
+            }
+        }
+        if origin_labels != 1 {
+            faults.push(format!("origin labels {origin_labels}, want 1"));
+        }
+        faults
+    }
+
+    fn anchored_ticks(svg: &str) -> Vec<AnchoredTick> {
+        let mut ticks = Vec::new();
+        let mut rest = svg;
+        let key = "<g data-axis-tick=\"";
+        while let Some(at) = rest.find(key) {
+            let open_end = rest[at..].find('>').unwrap() + at;
+            let open = &rest[at..open_end];
+            let close = rest[open_end..].find("</g>").unwrap() + open_end;
+            let inner = &rest[open_end + 1..close];
+            let axis = quoted_attr(open, "data-axis-tick");
+            let metres = quoted_attr(open, "data-metres").parse().unwrap_or(0.0);
+            let stroke_at = inner.find("data-tick-stroke=\"1\"").expect("stroke");
+            let stroke_start = inner[..stroke_at].rfind("<line").unwrap();
+            let stroke_end = inner[stroke_at..].find('>').unwrap() + stroke_at;
+            let stroke = &inner[stroke_start..stroke_end];
+            let mark = (attr_in(stroke, "x1"), attr_in(stroke, "y1"));
+            let label = inner.find("<text ").map(|text_at| {
+                let text_end = inner[text_at..].find('>').unwrap() + text_at;
+                let text = &inner[text_at..text_end];
+                (attr_in(text, "x"), attr_in(text, "y"))
+            });
+            let leader = label.is_some_and(|label| leader_joins(inner, mark, label));
+            ticks.push(AnchoredTick {
+                axis,
+                metres,
+                mark,
+                label,
+                leader,
+            });
+            rest = &rest[close + 4..];
+        }
+        ticks
+    }
+
+    fn leader_joins(inner: &str, mark: (f64, f64), label: (f64, f64)) -> bool {
+        let Some(at) = inner.find("data-tick-leader=\"1\"") else {
+            return false;
+        };
+        let start = inner[..at].rfind("<line").unwrap();
+        let end = inner[at..].find('>').unwrap() + at;
+        let tag = &inner[start..end];
+        let a = (attr_in(tag, "x1"), attr_in(tag, "y1"));
+        let b = (attr_in(tag, "x2"), attr_in(tag, "y2"));
+        (dist(a, mark) < 4.0 || dist(b, mark) < 4.0)
+            && (dist(a, label) < 8.0 || dist(b, label) < 8.0)
+    }
+
+    fn axis_lines(svg: &str) -> Vec<(String, ScreenSeg)> {
+        let mut lines = Vec::new();
+        let mut rest = svg;
+        let key = "data-axis-line=\"";
+        while let Some(at) = rest.find(key) {
+            let start = rest[..at].rfind("<line").unwrap();
+            let end = rest[at..].find('>').unwrap() + at;
+            let tag = &rest[start..end];
+            lines.push((
+                quoted_attr(tag, "data-axis-line"),
+                (
+                    (attr_in(tag, "x1"), attr_in(tag, "y1")),
+                    (attr_in(tag, "x2"), attr_in(tag, "y2")),
+                ),
+            ));
+            rest = &rest[end..];
+        }
+        lines
+    }
+
+    fn quoted_attr(tag: &str, name: &str) -> String {
+        let key = format!("{name}=\"");
+        let start = tag.find(&key).unwrap_or_else(|| panic!("{name}")) + key.len();
+        let end = tag[start..].find('"').unwrap() + start;
+        tag[start..end].to_string()
     }
 
     fn text_xy(svg: &str, name: &str) -> (f64, f64) {

@@ -1,5 +1,41 @@
 # WORKLOG
 
+## Static scene tick strokes (2026-11-07)
+
+Reviewed head `3a1505277dedb4291fecde99193c0b6f7a6ab0f1`. The remaining drawing defect was in `plane_axes`. A scan number was placed at `protect_m * scale + 16` above the axis, about 102 px, and the picture had no tick stroke. Top and oblique numbers that stepped off the rays had no leader. Anchor-to-anchor spacing still passed if every number moved by the same extra 200 px. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged.
+
+Each tick is now a short stroke. The stroke starts on the axis at that metre. The number sits 16 px from the stroke. The shared origin is one 0, drawn on the x axis on a short diagonal. A number that has to move clear of the 250 mm circle or of a ray keeps a leader back to its stroke. Side numbers stay 16 px off the stroke. Swatches and body-name leaders are unchanged.
+
+Red, before any stroke existed: `cargo test -p physical --offline --lib -- scene::tests::the_pictures_have_ticks_swatches_and_a_signed_scan_frame scene::tests::a_tick_label_lifted_clear_of_its_mark_fails`. `a_tick_label_lifted_clear_of_its_mark_fails` passed, so a label 200 px off its mark and a mark moved off the axis already failed the checker. `the_pictures_have_ticks_swatches_and_a_signed_scan_frame` panicked at `crates/physical/src/scene.rs:1790:32` with `mark x 0` because the SVG had no stroke group. That run was 1 passed and 1 failed. Green, after the strokes: `cargo test -p physical --offline --lib -- scene::` reported 13 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 48, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 243. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This fix run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. The review-fix section below records that `b5977b8` did execute `python3 -c 'print("no")'`. Earlier sections record Python artifact reads and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/static-scene-3d-ticks/`. Older directories were not overwritten. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. `rays.csv` and `packets.bin` match the previous scene hashes. The capture row is still 9 zeros, 12 boundary, 99 beyond, 287 view points, decision 5022 ms, stale decision 6023 ms. The five PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+On the rendered scan SVG the x axis is y = 357.5 and the y axis is x = 378.4. Marks for -0.5, 0, 0.5, 1, and 1.5 sit on that x axis. Their numbers are 16 px above the stroke, except the one origin 0, which is 104.1 px up-left of the crossing with a leader, outside the circle. The y marks -0.5, 0, and 0.5 sit on x = 378.4. -0.5 and 0.5 are 16 px left of the stroke. The y origin has the stroke and no second 0. On the top view the x axis is y = 383.0. The 0, 0.5, and 2 numbers are 16 or 17 px from the stroke. The 1 is 40 px above its stroke with a leader. The 1.5 is 88 px above its stroke with a leader. On the side view every number is 16 or 17 px from its stroke and none has a leader. On the oblique view the z numbers and the x numbers 0, 0.5, and 1 are 16 or 17 px from the stroke. The x 1.5 is 40 px from its stroke with a leader. The x 2 is 28 px from its stroke with a leader. The y numbers are 17.9 px from the stroke.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/mount.csv` | `3afbf976ad67efda747ec30befd5c7065e00bb061cd496f156459b2d97bc9236` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/rays.csv` | `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/packet-points.csv` | `0bdb6c1741f4de2bb418cef9b9ffc6a8d090d577c781ee7d8cffe6fd76ec87e5` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/posted.csv` | `c4779105fbab144de7e7e3c187d12079cdf5edf75929513f8728814f34fa6f86` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/packets.bin` | `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/oblique.svg` | `fe5e2a56b39089d448159dc12c479c29e7fbc06043390e28f9a8e7168ffb6358` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/top.svg` | `033daa171216adcdb72b47b5f5eb4bdc0e2a2a165fcd13057ae8fca263b60772` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/side.svg` | `d855165167ba588c480bc28ba17da78a0d950efcba4ffbc80b2dce376edd719c` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/scan.svg` | `76ed761e91346e5ca969d5a70e0399d42f2fa4baec6c6170d1fe7d88b601e416` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/oblique.png` | `83a7516640e4b7040c031546fd775379b3d317eabc34d04d391f8defd0ecffce` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/top.png` | `91e5bd4edf3124a163803dbb96268334a75842cbf10344a5693d708f99e2d0c9` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/side.png` | `62d90239a949e844a9447715ea475671b66b006d276c5be20e9278f0bf09c743` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/scan.png` | `6401e402b875ad641eaa0fbd41ff58f7a4fea0a9e5bbf7f60c06a23f14109f31` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.csv` | `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
+
 ## Static scene review fix (2026-11-07)
 
 Reviewed head `b5977b8ff1e3831a39a1fcda05dc4a304f554777`. The four findings were in that source. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged. The reported range stays the slant distance along the 3D ray. The demonstration pitch stays 0, so those pictured ranges happen to equal the horizontal run. A pitched ray does not. The manual says so.
