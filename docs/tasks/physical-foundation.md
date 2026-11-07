@@ -45,9 +45,9 @@ The footprint width derived from the octagon is 0.400 m. The front face at x 0.2
 
 `npy` inspects version 1, 2, and 3 headers. Depth loads only little-endian `u16`, rank 2, and `fortran_order` false. Zeros stay. Fortran order can be inspected and cannot be loaded as depth.
 
-`zipnote` reads a local zip header. Method 0 can be skipped. Method 8, a data-descriptor flag, or an unknown size stops the listing and is labeled blocked. The course `camera.npz` begins with method 8 on `color.npy`. No frame is invented. This milestone does not inflate.
+`zipnote` reads a local zip header. Method 0 can be skipped. Method 8, a data-descriptor flag, or a compressed size of `u32::MAX` stops the listing and is labeled blocked. The size is compared as a `u32` before it is widened. The course `camera.npz` begins with method 8 on `color.npy`. No frame is invented. This milestone does not inflate.
 
-`speed` reads runs of request, duration, two odometry triples, and two scans. The file does not name odometry units. The report gives raw dx, dy, dyaw, the chord, and a body-forward value that uses the start yaw. Body-forward is inferred. The scans are already in the capture script's base frame at front 178.7 deg. The configured front cannot be recovered from those lists. A sensitivity column shifts both scans by the 4.8000 deg disagreement and is not a correction.
+`speed` reads runs of request, duration, two odometry triples, and two scans. The file does not name odometry units. The report gives raw dx, dy, dyaw, the chord, and a body-forward value that uses the start yaw. Body-forward is inferred. The stored scan angles are already `wrap(measured front 178.7 deg - raw clockwise)`. Adding the 4.8000 deg disagreement reconstructs configured-front angles for the same ranges. That reconstruction is unselected. The shifted column is that alternative profile. It is not an adopted speed estimate, and the stored angles and the reference scales stay as they were.
 
 Scan correspondence uses 1 deg bins and ranges in (0.05, 20) m. Three gates are assumed, and none is a calibration: ±20 deg with range change under 0.40 m, ±30 deg under 0.80 m, and ±45 deg under 1.50 m. Fewer than 8 pairs produces no speed. Two projections are both derived. Ray projection divides the range change by cos(angle). It matches a small move when the same bearing still sees the same point. Frontal plane multiplies the range change by cos(angle). It matches a wall perpendicular to the forward axis. The median absolute deviation is inside one model. It does not include the gap between the models. The crate does not select a model.
 
@@ -55,7 +55,7 @@ Scan correspondence uses 1 deg bins and ranges in (0.05, 20) m. Three gates are 
 
 `arm` names SO-ARM100 from TheRobotStudio, commit `a758567c3978dfeefe282ede0500085a48fe8f78`. The recorded URDF SHA-256 is `f7050417ebbb79358f113ddd4bca2b457b2c6d5048193331db5a04a0066439ed`. The license at that commit is Apache-2.0. The repository root listing contained `LICENSE` and no `NOTICE` file. This commit does not add the meshes or the URDF. Upstream joint limits and the phrase `Approximate inertial values` are upstream-nominal. Link masses are not summed into a robot weight. Mount to this base, installed calibration, payload, and grasp stay unknown or not validated. `simulated_gripper_is_this_arm` is false. Grasp status is always `NotValidated`, including when a test URDF has a different hash.
 
-`plot` writes SVG with the standard library. A scan plot, grouped bars, and a text frame schematic are the pictures. The schematic is not a mesh and not a photograph. Every title carries the dataset, the unit, and the kind.
+`plot` writes SVG with the standard library. The scan is a plan in metres whose axis cross is the robot origin `(0 m, 0 m)`, with numeric ticks on an equal scale. It is not the center of the plotted points. Other charts use data bounds, numeric ticks, wrapped titles and captions, and a legend swatch for each series. The frame schematic is text, not a photograph and not a mesh. Every title names the dataset, the unit, and the kind. PNG inventory for the replay is `camera/*.png` only. `figures/` is not read.
 
 `sha256` is the hash used to compare a passed URDF with the recorded digest. The empty-string and `abc` vectors are tested.
 
@@ -75,7 +75,7 @@ These numbers come from one replay of the 2026-11-07 course session. They are no
 | static later | 1576 zeros in 62167 samples | derived split |
 | static pose | 49 rows, max absolute step 0, duration field 15.0 | recorded odometry, idle |
 | depth frames | seven `320x240` `u16` frames, zeros retained | measured, gate configured |
-| PNG | seven files, bytes counted, pixels not decoded | blocked |
+| PNG | seven `camera/*.png` files, bytes counted, pixels not decoded. `figures/` was not read | blocked, camera inventory only |
 | `camera.npz` | `color.npy` method 8 | blocked |
 | URDF | 9110 bytes, hash match true, 6 revolute joints including the gripper, 7 mass tags | upstream-nominal |
 | logs | four files transcribed, `sent=false` on every command row | captured, not sent |
@@ -124,10 +124,12 @@ The first scan formula divided a frontal-wall range change by cos(angle) and did
 
 Edition 2024 format strings do not accept a path or a call inside the braces. Those strings were rewritten before the crate compiled. Clippy 1.99 required `as_chunks` and collapsed `if` forms. Both are in the committed code.
 
-The first report printed floor ranges with debug `Some(...)` text and called a word count `lost-lines`. The report now prints metres or `no floor hit`, and it says the word `lost` is captured text.
+The first report printed floor ranges with debug `Some(...)` text and called a word count `lost-lines`. The report body then printed metres or `no floor hit`. The frame schematic and the static duration line still printed `Some("0.4980")`, `Some("0.6417")`, and `Some(15.0)` on `389f28e`. Those lines now use metres, `no floor hit`, or `missing`.
+
+The scan cross on that commit was the center of the nonzero points, about 2 m forward of the robot, and the grey lines had no tick labels. Captions on the scan, speed, and depth pictures ran past the right edge. Bar legends had no colour swatches. The yaw-sensitivity axis ran into the caption. The shared plot layout now wraps text, keeps axes inside the plot box, and labels ticks in the axis unit. Raster checks use `ffmpeg` with the librsvg decoder. They are layout checks. They are not a claim that the room geometry was accepted.
 
 Deflate stayed blocked. Adding an inflate implementation would decode private frames this milestone does not need.
 
 ## What this does not claim
 
-No 3D body, no scene raycast, no mission score, no hardware motion, and no selected lidar front or camera mount. PNG pixels and deflate frames are absent. Wheel radius and mass are unknown. The arm mount and grasp are not validated. The existing section 3.1 table is unchanged.
+No 3D body, no scene raycast, no mission score, no hardware motion, and no selected lidar front or camera mount. PNG pixels in `camera/` are not decoded, and `figures/` is not read. Deflate frames are absent. Wheel radius and mass are unknown. The arm mount and grasp are not validated. The existing section 3.1 table is unchanged: 45 `pass` and 11 `not-run`, counted from that table. The legacy Python spec checkers were not run for this fix. That exclusion means this validation is not the historical full checker set.

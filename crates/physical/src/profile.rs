@@ -192,6 +192,19 @@ mod tests {
     };
 
     #[test]
+    fn adding_the_disagreement_rebuilds_the_unselected_front() {
+        for raw in [0.0, 10.0, 178.7, 183.5, 350.0, 359.9] {
+            let measured = base_deg(raw, 178.7);
+            let configured = base_deg(raw, 183.5);
+            let shifted = wrap_signed_deg(measured + yaw_disagreement_deg());
+            assert!(
+                (shifted - configured).abs() < 1e-9,
+                "raw {raw} measured {measured} shifted {shifted} configured {configured}"
+            );
+        }
+    }
+
+    #[test]
     fn the_two_fronts_stay_apart() {
         let profiles = lidar_profiles();
         assert_eq!(profiles.len(), 2);

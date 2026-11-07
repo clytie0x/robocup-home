@@ -100,7 +100,7 @@ pub fn write_replay(session: &Path, out: &Path, arm_urdf: Option<&Path>) -> Resu
         &session.join("static_recording_pose9/camera.npz"),
     );
     report.push_str("\n## Limitations\n\n");
-    report.push_str("This foundation does not render a 3D body, does not raycast a scene, does not run the section 3.1 controller on these scans, and does not send wheel or arm commands. PNG pixels and deflate NPZ frames are blocked. Wheel radius and robot mass are unknown, so no rolling or contact claim is made. The SO-ARM100 mount, joint calibration, payload, and grasp are not validated. The two lidar fronts and the two camera mounts are both reported. Disagreeing reference-code scales are not adopted.\n");
+    report.push_str("This foundation does not render a 3D body, does not raycast a scene, does not run the section 3.1 controller on these scans, and does not send wheel or arm commands. PNG inventory scope is `camera/` files whose names end in `.png`. Those pixels are not decoded. `figures/` is outside this inventory and was not read. Deflate NPZ frames are blocked. Wheel radius and robot mass are unknown, so no rolling or contact claim is made. The SO-ARM100 mount, joint calibration, payload, and grasp are not validated. The two lidar fronts and the two camera mounts are both reported. Disagreeing reference-code scales are not adopted.\n");
     report.push_str(&format!(
         "\nElapsed milliseconds: {}.\n",
         started.elapsed().as_millis()
@@ -432,13 +432,11 @@ fn write_scan_plot(
         }
     }
     std::fs::write(out.join("scan-longest.csv"), csv)?;
-    let svg = plot::xy_plot(
+    let svg = plot::robot_plan(
         &format!("Longest revolution in `{name}`. Dataset: that file. x forward, y left, metres."),
         &format!(
             "Red is the measured front {measured} deg. Blue is the configured front {configured} deg. Ranges use the protocol divisor and are not tape-calibrated. Zero returns in this revolution: {zeros}. They are in the CSV and are not drawn as hits."
         ),
-        "x metres, derived from protocol range and a named front",
-        "y metres, robot left positive",
         &[
             XySeries {
                 name: format!("measured front {measured} deg"),
@@ -553,16 +551,19 @@ fn push_depth(report: &mut String, out: &Path, dir: &Path) -> Result<(), Error> 
             ));
         }
     }
+    report.push_str("PNG inventory scope is `camera/` files whose names end in `.png`. Those bytes are counted and pixels are not decoded. `figures/` is outside this inventory and was not read.\n");
     let mut notes = Vec::new();
     for profile in camera_profiles() {
         let hit = floor_hit(profile);
         notes.push(format!(
-            "{} z={:.3} m pitch down {:.1} deg lower-ray floor {:?} m ({})",
+            "{} lower-ray {} optical {}",
             profile.id,
-            profile.z_m,
-            profile.pitch_down_deg,
-            hit.ground_range_m.map(|value| format!("{value:.4}")),
-            profile.kind.as_str()
+            opt_metres(hit.ground_range_m),
+            opt_metres(hit.optical_ground_range_m)
+        ));
+        notes.push(format!(
+            "{} z={:.3} m pitch down {:.1} deg",
+            profile.id, profile.z_m, profile.pitch_down_deg
         ));
     }
     notes.push(format!(
@@ -587,12 +588,13 @@ fn push_depth(report: &mut String, out: &Path, dir: &Path) -> Result<(), Error> 
 
 fn push_speed(report: &mut String, out: &Path, session: &Path) -> Result<(), Error> {
     report.push_str("\n## Speed runs\n\n");
-    report.push_str("JSON angles are already in the capture script's base frame (measured front 178.7 deg). The configured front is not recoverable from these lists. A shifted column adds the frozen yaw disagreement as a sensitivity, not as a correction. Odometry units are not named in the file. The reference code treats the third value as radians and hypot(dx, dy) as a length. DIST_SCALE is not applied to the main columns.\n\n");
+    report.push_str("JSON angles are already wrap(measured front 178.7 deg - raw clockwise). Adding the frozen yaw disagreement reconstructs configured-front angles for the same ranges. That reconstruction is unselected. The shifted column uses it and is not an adopted speed estimate, not a correction, and not a change to the stored angles or to the reference scales. Odometry units are not named in the file. The reference code treats the third value as radians and hypot(dx, dy) as a length. DIST_SCALE is not applied to the main columns.\n\n");
     report.push_str("Two scan models are both derived. Ray projection uses (range before - range after) / cos(angle). It matches a small move when the same bearing still sees the same point. Frontal plane uses (range before - range after) * cos(angle). It matches a wall perpendicular to the forward axis. The median absolute deviation does not include the disagreement between the models. Neither model is selected.\n\n");
     let mut csv = String::from(
-        "file,index,request_m_s,duration_s,commanded_distance_m,odom_dx,odom_dy,odom_dyaw,odom_chord,odom_forward,odom_left,chord_if_dist_scale_not_adopted,wire_not_sent,scan_gate,projection,scan_median_m,scan_mad_m,scan_pairs,shifted_same_projection_mid_median_m\n",
+        "file,index,request_m_s,duration_s,commanded_distance_m,odom_dx,odom_dy,odom_dyaw,odom_chord,odom_forward,odom_left,chord_if_dist_scale_not_adopted,wire_not_sent,scan_gate,projection,scan_median_m,scan_mad_m,scan_pairs,unselected_configured_front_mid_median_m\n",
     );
     let mut groups = Vec::new();
+    let mut plotted = Vec::new();
     for name in ["speed_test.json", "speed_test2.json"] {
         let path = session.join("experiments").join(name);
         if !path.is_file() {
@@ -605,6 +607,9 @@ fn push_speed(report: &mut String, out: &Path, session: &Path) -> Result<(), Err
                 "`{name}` malformed: {err}. No speed was invented.\n"
             )),
             Ok(runs) => {
+                if !runs.is_empty() {
+                    plotted.push(name);
+                }
                 for (index, run) in runs.iter().enumerate() {
                     let commanded = run.request_m_s * run.duration_s;
                     let delta = odom_delta(run.odom0, run.odom1);
@@ -717,7 +722,7 @@ fn push_speed(report: &mut String, out: &Path, session: &Path) -> Result<(), Err
                         }
                         if let Some(item) = shifted_mid {
                             report.push_str(&format!(
-                            "  sensitivity, angles shifted by the yaw disagreement, projection `{}` mid gate median {:.4} m. This is not a second measurement.\n",
+                            "  unselected configured-front reconstruction, projection `{}` mid gate median {:.4} m. Same ranges. Not an adopted speed estimate.\n",
                             projection.as_str(),
                             item.median_m
                         ));
@@ -730,8 +735,15 @@ fn push_speed(report: &mut String, out: &Path, session: &Path) -> Result<(), Err
     }
     std::fs::write(out.join("speed.csv"), csv)?;
     if !groups.is_empty() {
+        let dataset = if plotted.is_empty() {
+            "no plotted speed file".to_string()
+        } else {
+            plotted.join(" and ")
+        };
         let svg = plot::bar_groups(
-            "Commanded distance, raw odom chord, and two mid-gate scan models. Dataset: speed_test JSON. Unit: metres.",
+            &format!(
+                "Commanded distance, raw odom chord, and two mid-gate scan models. Dataset: {dataset}. Unit: metres."
+            ),
             "Blue commanded is request times recorded duration. Green chord is raw odometry. Amber is ray projection. Dark red is a frontal plane. Whisker is the median absolute deviation of one model. Scales in wheels.py are not applied.",
             "metres",
             &groups,
@@ -934,10 +946,10 @@ fn meta_summary(text: &str) -> Result<String, String> {
     }
     let duration = value.get("duration_s").and_then(Value::as_f64);
     Ok(format!(
-        "meta.json odometry rows {}. Max absolute pose step {:.6}. Duration field {:?}. Idle means the step is zero. The pose values are recorded odometry, not a map name.\n",
+        "meta.json odometry rows {}. Max absolute pose step {:.6}. Duration field {}. Idle means the step is zero. The pose values are recorded odometry, not a map name.\n",
         poses.len(),
         max_step,
-        duration
+        duration_text(duration)
     ))
 }
 
@@ -996,6 +1008,13 @@ fn push_logs(report: &mut String, out: &Path, dir: &Path) -> Result<(), Error> {
     std::fs::write(out.join("commands.csv"), csv)?;
     report.push_str("Wrote commands.csv. sent is false on every row.\n");
     Ok(())
+}
+
+fn duration_text(value: Option<f64>) -> String {
+    match value {
+        Some(seconds) if seconds.is_finite() => format!("{seconds:.1} s"),
+        _ => "missing".to_string(),
+    }
 }
 
 fn opt_metres(value: Option<f64>) -> String {
@@ -1136,6 +1155,11 @@ fn csv_field(text: &str) -> String {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn duration_line_for_test(text: &str) -> Result<String, String> {
+    meta_summary(text)
+}
+
 fn median(values: &mut [f64]) -> Option<f64> {
     if values.is_empty() {
         return None;
@@ -1200,16 +1224,29 @@ mod tests {
         npz.resize(30, 0);
         npz.extend_from_slice(b"color.npy");
         std::fs::write(root.join("static_recording_pose9/camera.npz"), npz).unwrap();
+        std::fs::write(
+            root.join("static_recording_pose9/meta.json"),
+            r#"{"duration_s":15.0,"odometry":[[0,[0,0,0]],[1,[0,0,0]]]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("figures")).unwrap();
+        std::fs::write(root.join("figures/hidden.png"), b"FIGURES-NOT-READ").unwrap();
         let out = root.join("out");
         write_replay(&root, &out, None).unwrap();
         let report = std::fs::read_to_string(out.join("report.md")).unwrap();
-        assert!(report.contains("178.7"), "{report}");
-        assert!(report.contains("183.5"), "{report}");
         assert!(
-            report.contains("not sent")
-                || report.contains("not validated")
-                || report.contains("Wire preview")
+            report.contains("File lidar yaw 183.5000 deg matches configured 183.5000: true. Matches measured 178.7000: false."),
+            "{report}"
         );
+        assert!(!report.contains("not recoverable"), "{report}");
+        assert!(report.contains("unselected"), "{report}");
+        assert!(!report.contains("Some("), "{report}");
+        assert!(report.contains("Duration field 15.0 s"), "{report}");
+        assert!(
+            report.contains("PNG inventory scope is `camera/`"),
+            "{report}"
+        );
+        assert!(!report.contains("FIGURES-NOT-READ"), "{report}");
         assert!(report.contains("reversed") || report.contains("Reversed"));
         assert!(
             report.contains("blocked") || report.contains("Blocked") || report.contains("method 8")
@@ -1228,12 +1265,37 @@ mod tests {
         assert!(svg.contains("measured"));
         assert!(svg.contains("configured"));
         assert!(svg.contains("metres"));
-        assert!(
-            std::fs::read_to_string(out.join("commands.csv"))
-                .unwrap()
-                .contains(",false")
-        );
+        assert!(svg.contains("data-origin=\"robot\""), "{svg}");
+        let frame = std::fs::read_to_string(out.join("frame-geometry.svg")).unwrap();
+        assert!(!frame.contains("Some("), "{frame}");
+        assert!(frame.contains("0.4980 m"), "{frame}");
+        assert!(frame.contains("0.6417 m"), "{frame}");
+        assert!(frame.contains("no floor hit"), "{frame}");
+        let speed_svg = std::fs::read_to_string(out.join("speed.svg")).unwrap();
+        assert!(speed_svg.contains("speed_test.json"), "{speed_svg}");
+        assert!(!speed_svg.contains("speed_test2.json"), "{speed_svg}");
+        let commands = std::fs::read_to_string(out.join("commands.csv")).unwrap();
+        let mut command_rows = 0;
+        for line in commands.lines().skip(1).filter(|line| !line.is_empty()) {
+            command_rows += 1;
+            assert!(line.ends_with(",false"), "{line}");
+            assert!(!line.contains(",true"), "{line}");
+        }
+        assert!(command_rows >= 4, "{commands}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_duration_is_labelled_and_a_missing_duration_is_not_debug_text() {
+        let present = super::duration_line_for_test(
+            r#"{"duration_s":15.0,"odometry":[[0,[1,2,3]],[1,[1,2,3]]]}"#,
+        )
+        .unwrap();
+        assert!(present.contains("Duration field 15.0 s"), "{present}");
+        assert!(!present.contains("Some("), "{present}");
+        let missing = super::duration_line_for_test(r#"{"odometry":[[0,[0,0,0]]]}"#).unwrap();
+        assert!(missing.contains("Duration field missing"), "{missing}");
+        assert!(!missing.contains("Some("), "{missing}");
     }
 
     fn contains_anywhere(dir: &std::path::Path, needle: &str) -> bool {
