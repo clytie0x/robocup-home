@@ -35,7 +35,31 @@ Dropout is a caller-supplied list of pixel indexes forced to 0 after the cast. T
 
 Tests, written to fail before the cast exists: the center pixel on a frontal wall has axial depth equal to the gap and equal to the range; an edge pixel on that wall keeps the same axial depth and a longer range; the optical-axis floor hit matches `z / sin(pitch)` and disagrees with `floor_hit`'s horizontal distance; a low box missed by the level lidar is hit by a downward pixel, and raising that box out of the ray restores the miss; a near box is `BelowGate` and a miss is `NoReturn`; a box behind the camera is a miss; a near wall hides a far wall until the near wall is removed; a base yaw of 90 deg hits the wall that is in front of the camera and misses the wall that was in front of the unturned base; measured and configured pitches do not return the same floor range; a dropout index becomes 0 while its neighbour does not; a stale view keeps its samples and contributes no fresh valid depth, with `sent` false. The static scene hashes, the capture `points.csv`, and the base `model.csv` and `trace.csv` stay as they are.
 
-This plan commit has no camera cast. The red command is recorded with the implementation.
+Red, before the cast returned a hit: `cargo test -p physical --offline --lib -- camera::` exited 101. The log is `/tmp/cursor/camera-depth/red.txt`. It recorded 2 passed and 10 failed. The two passes were the behind-camera miss and the rejected pixel, which a cast that always misses still satisfies. That count is this writer's log. It is not an independent replay.
+
+Green, after the cast: the same filter reported 13 passed and 0 failed. Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 79, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 274. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target.
+
+Each command below was run on its own, with its exit taken from that command. No pipe was used. `cargo fmt --all -- --check` exited 0. `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` exited 0. `cargo test --workspace --offline --lib` exited 0. `cargo test --workspace --offline --lib --release` exited 0. `cargo test --workspace --offline --doc` exited 0. `cargo test --workspace --offline --doc --release` exited 0. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps` exited 0.
+
+Three mutations were applied on this tree and then removed. Replacing axial depth with the Euclidean range failed `a_frontal_wall_keeps_axial_depth_and_lengthens_the_range` because the edge pixel was no longer 1.0 m. Skipping the plates failed `the_top_plate_occludes_a_wall_when_the_ray_meets_it` because the range was no longer under 0.25 m. A dropout that left the posted sample unchanged failed `dropout_zeros_the_posted_sample_and_leaves_the_cast` with 1000 mm against 0. The restored tests passed.
+
+This implementation started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history.
+
+The new private directory is `/opt/cursor/artifacts/camera-depth-sensor/`. Older directories were not overwritten. A fresh static scene still has `rays.csv` `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` and `packets.bin` `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26`. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. The base `model.csv` and `trace.csv` are still `b106b8b10a36fec92b027d0c90fed1281deeb6ef390ddece697f398d3516d2e4` and `530cc80b503c06d7fa21abfb63babb857597e05ce6fc9079176965574ffa9d5d`. The three PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. The side view shows the plates, the low box, the downward ray, and the level lidar, with metre ticks. The row plot's horizontal ticks are column indexes and its vertical ticks are axial metres. The grid is a stride of 16, one cast per cell, with a metre legend and a no-return swatch. The x = 0 label on the side view sits on the plate marks. That overlap is a picture limit. It is not a depth result, and the shared tick walker was not changed.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/model.csv` | `b3547dc36b486f4331d2c1b82ef12ebca0afe844de9a724307a93a47c015afa7` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/trace.csv` | `49e97f5e534a3cf3368c742642dd610dd0dce7335e59cd8f28a4019744de67d4` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/fault.csv` | `21d535ca85e81617326e87a10d8d4285c43e5de9357c7ab293ac998f7eba2e47` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/side.svg` | `9f27a35e6aed66c58fed7ecd968c290f7a339d1212fbdb18985fc56dcf851786` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/depth-row.svg` | `4c278bbf18329586e383390f3d1d6e8717dace7061f7dade65c0b59a8d8e0415` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/depth-grid.svg` | `e89913342b667af2aee59a4d00ebe3e23b2cb93f5ae756d6531b4748d4cb196e` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/side.png` | `ae6a79b1f5bb5e528d7f69f33775b5a9ecce35c995377903ffb9e25529ef351c` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/depth-row.png` | `e9289a251cd28e551bbfa76da6fb8414fc5965d4a4f20addf9dce2e4fcd29f24` |
+| `/opt/cursor/artifacts/camera-depth-sensor/camera/depth-grid.png` | `6d41a53ea305eb17f02cde311dafc3131056848be724da7659e7843b57a27c49` |
+
+`fault.csv` posts 0 mm on column 0 and keeps the range 2.1479 m. The next column stays 1873 mm. Both rows say stale and `sent` false. `trace.csv` has no box name and no plate name. This is not merged. Stage 5, a real recording through this path, is not built. Stages 6 and 7 are not closed. The sweep picture limits in the plan above stay deferred.
 
 ## Robot base sweep bound (2026-11-07)
 

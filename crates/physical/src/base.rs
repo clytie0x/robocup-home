@@ -579,7 +579,7 @@ fn shifted(pose: BasePose, dx: f64, dy: f64, dyaw: f64) -> BasePose {
     }
 }
 
-fn base_to_world(pose: &BasePose, point: Vec3) -> Vec3 {
+pub(crate) fn base_to_world(pose: &BasePose, point: Vec3) -> Vec3 {
     let yaw = pose.yaw_deg.to_radians();
     Vec3 {
         x: pose.x_m + point.x * yaw.cos() - point.y * yaw.sin(),
@@ -588,7 +588,7 @@ fn base_to_world(pose: &BasePose, point: Vec3) -> Vec3 {
     }
 }
 
-fn world_to_base(pose: &BasePose, point: Vec3) -> Vec3 {
+pub(crate) fn world_to_base(pose: &BasePose, point: Vec3) -> Vec3 {
     let yaw = pose.yaw_deg.to_radians();
     let dx = point.x - pose.x_m;
     let dy = point.y - pose.y_m;
@@ -599,7 +599,7 @@ fn world_to_base(pose: &BasePose, point: Vec3) -> Vec3 {
     }
 }
 
-fn rotate_to_base(pose: &BasePose, direction: Vec3) -> Vec3 {
+pub(crate) fn rotate_to_base(pose: &BasePose, direction: Vec3) -> Vec3 {
     let yaw = pose.yaw_deg.to_radians();
     Vec3 {
         x: yaw.cos() * direction.x + yaw.sin() * direction.y,
@@ -758,7 +758,7 @@ fn keep(best: &mut Option<(f64, Vec3, &'static str)>, range: f64, point: Vec3, n
     }
 }
 
-fn enter_prism(origin: Vec3, direction: Vec3, plate: &Plate) -> Option<f64> {
+pub(crate) fn enter_prism(origin: Vec3, direction: Vec3, plate: &Plate) -> Option<f64> {
     let mut near = 0.0;
     let mut far = f64::INFINITY;
     if !clip_slab(

@@ -5,6 +5,7 @@
 
 mod arm;
 mod base;
+mod camera;
 mod chunk;
 mod command;
 mod json;
@@ -23,6 +24,10 @@ mod zipnote;
 
 pub use arm::{ArmIdentity, UrdfRead, grasp_status, identity, read_urdf};
 pub use base::{BaseViews, demo_views};
+pub use camera::{
+    CameraViews, CastQuery, DepthRay, IMAGE_HEIGHT, IMAGE_WIDTH, apply_dropout, cast_axis,
+    cast_pixel, demo_camera, pixel_for_tangent, post_depth,
+};
 pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
 pub use kind::Kind;
