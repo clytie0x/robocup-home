@@ -1,5 +1,92 @@
 # WORKLOG
 
+## Camera frame documentation correction (2026-11-07)
+
+Independent review of `53bff5866f75049cbd37e94aaeec138350c1f6eb` accepted the ideal 320 by 240 geometry, the file, the injected faults, and the suite of 286 library tests and 7 doctests. The box bytes and the pictures also passed. Merge stays held for this note. The manual said a coloured pixel with posted 0 is a depth dropout. That inference is false.
+
+A disposable probe, not committed, cast the configured mount at a wall named `wall` whose face is 70 m ahead of the camera. The center pixel has axial depth 70 m, posts millimetre 0, and keeps RGB 156, 156, 188. It is not on a fault list. 192 pixels of that finite wall do the same, and the rest of the field misses the box. The cause is the existing `u16` word, which already stores 0 for a hit past 65.535 m. The colour and the posted word do not identify that cause. The fault list identifies an injected dropout.
+
+The same probe counted the configured bottom rows with the plates on. Row 238 is 320 pixels of `top_plate` at 60 mm. Row 239 is 320 pixels of `top_plate` at 59 mm. The demonstration scene matches the empty plate scene on those 640 pixels. A cast with no plates and no obstacle leaves those 640 pixels black and posted 0. No ray met a floor. Those are the existing fixture, not defects, and this note does not change them.
+
+`camera.rs` and `frame.rs` are not edited. The raw frame files stay the hashes in the result section below. `measured.rcf` is still `a3acd31dae0e5196e611b74b537588ee9f615a235e709eb19a469b3ab60c0482`. After this note, each of these commands exited 0 on its own: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, debug and release `cargo test --workspace --offline --lib`, debug and release `cargo test --workspace --offline --doc`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`. Debug library counts stay domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 91, sim_runtime 30, task_3_1 32, task_3_2 3, total 286. Doctests stay 7 and 7. No Python process was started. This is not merged. Stage 5 is not started.
+
+## Full camera frame plan (2026-11-07)
+
+PR 30 is merged at `efeb5522b3b0b8668e65c1d99f215af94ef075f1`. The merged head is `a8f10933fd83e93e7ec0629108d9803e3c62abaa`. CI run `42406384245` was green on that head. This branch is `cursor/camera-frame-bf93`, cut from that merge. It fills the 320 by 240 frame that the depth slice did not cast. It does not start stage 5, the mission, or an application. Older artifact directories and branches stay in place.
+
+### Closure of the picture head
+
+Independent closure of `a8f10933` accepted the ideal cast and the class pictures of that cast. It was not a 320 by 240 frame, not RGB, not a decoded recording, and not stage 4 closed. Direct debug and release counts were domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 82, sim_runtime 30, task_3_1 32, task_3_2 3, total 277, with 7 doctests in each profile. Nine core and drawing mutations failed and were restored. A disposable probe, not in the commit, compared the production SVG with a fresh `cast_pixel` of the same pixels. The row, the stride grid, and the fault marks matched that cast. The CI job checked out merge tree `48148f2733fce91b24291ecb6577e6d36d0e1986` and the head tree; both contents hashed `9e84667245cf58f0bd9028a5e5a665198ecd5fd9`.
+
+The posted-0 gray square is at (24, 700). That is the table margin, below and left of the depth axis. It is not the index-0 plot mark. The index-0 tick is at x = 464.4. The hollow circle at (464.4, 233.4) is the ideal range 2.1479 m and is not a posted depth. A second gray chip at (430, 710) is the legend. A posted millimetre of 0 means no return. It does not mean a distance of 0 m.
+
+These picture limits stay and are not blockers: the fault legend has an unused below-gate swatch, the dropout gray is drawn twice and neither copy is the index-0 mark, the side plate stroke does not match its swatch, the far wall uses the unnamed fallback colour, and the x = 0 tick sits on the plates. The PR 29 picture limits stay deferred: fractional step ticks, `sweep.svg` not drawing the hull, and the pure-yaw chip sentence against the translated end pose. Stage 4 is not complete.
+
+### What was read, and not copied into git
+
+Read again as text, and not decoded: `robot3d/sensors.json`, `robot3d/robot.urdf`, `robot3d/README.md`, `robot3d/build.py`, `pi_config/robot.json`, the session README, the pi-drive README, and `camera/index.json`. The seven `camera/*.png` files and `camera.npz` stay blocked. No pixel from them is used. `zipnote` already records that `camera.npz` begins with method 8 on `color.npy` and is not inflated.
+
+| item | value | kind | source |
+| --- | --- | --- | --- |
+| stored image | 320 by 240 | cited | `sensors.json` model string. `camera/index.json` size `[320, 240]`. Not measured by opening a PNG |
+| stored colour | 240 by 320 by 3, `uint8` | cited file description | session README for `camera.npz`. This run does not open the archive, so channel order and alignment are not verified from the bytes |
+| stored depth | `uint16` millimetres, 0 means no reading | cited | session README and the depth-slice manual. Not a decoded `.npy` |
+| colour and depth together | one npz, one `t_monotonic` array | cited description | session README. Not a verified extrinsic calibration and not a verified shutter pair |
+| fields, mirror, gate, mounts | unchanged from the depth slice | cited or configured, as already frozen | `sensors.json`, the session README, `pi robot.json`. Not remeasured |
+| optical row 153.6 | not used | recorded fit | session README. The pinhole center stays `(width-1)/2` |
+| material colour | no measured reflectance | unknown | no palette in the sensor files. This slice assumes flat fixture colours |
+
+The pinhole, the two mounts, axial depth, plate occlusion, and `classify_depth_mm` stay the functions already reviewed. This slice calls `cast_pixel`. It does not rewrite `tangents`, `ray_direction`, `axial_word`, or the classifier. `navigation` and `task_3_1` stay untouched. `demo_camera`, its CSV bytes, and the depth-slice pictures stay as merged.
+
+### Frame
+
+One call fills both buffers from the same rays. Width is 320 and height is 240. The count is 76800. There is no argument for a larger image. Row 0 is the top row: image down grows with the row index, which is the tangent already used by `cast_pixel`. Index `row * 320 + col` is that pixel's center. Image right is robot left, already inside the ray. Depth is a little-endian `u16` in millimetres. 0 is no return, not a distance of 0 m. 1 to 499 stays `BelowGate` and is not usable. 500 and above is `Valid`. The word still saturates through `axial_word`, so a hit past 65.535 m posts 0 while the ray's metre value can remain on the `DepthRay`. That is the existing word, not a new cutoff.
+
+RGB is three bytes, R then G then B, at the same index as the depth word. The colour is an assumed flat colour of the nearest solid. It is not lighting, texture, noise, or a photograph. A miss is `(0, 0, 0)`. An unlisted solid is one shared grey, not a hash of its name. The posted buffers and the fault table do not contain a body name, a box id, or a class label. `controller_note` still does not read RGB and still reports no person.
+
+The two mounts stay side by side. The same function takes either profile. The synthetic stamp is 0. It is not a capture clock. Depth freshness and RGB freshness are separate bytes. Marking one stale does not change the other and does not change the stamp. That is not a claim that a real colour stream and a real depth stream share a shutter. The session file is described as one archive with one time array. This slice did not open it and does not treat that description as a calibration.
+
+Depth dropout zeros the posted millimetre and leaves the RGB bytes. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists, so the two faults do not collapse into a black miss with no record of which channel failed. The fault list names the injected indexes. The colour and the posted word do not, by themselves, say why the sample looks empty. A coloured pixel with posted 0 can be an injected depth dropout, or a hit past 65.535 m that `axial_word` already stores as 0. A geometric miss is black and posted 0, and it is absent from the fault list.
+
+The export is a fixed little-endian file, magic `RCF1`, version 1. It is not an `.npy`, not a PNG from the camera, and not a new codec. A PPM is only a view of the RGB bytes or of the class colours for a person reading the artifact. The class picture uses the posted class, not a metre ramp and not the fixture colour. Its legend sits outside the 320 by 240 buffer. Gray there means posted 0, which is no return.
+
+Tests compare frame pixels with `cast_pixel` of the same column and row. They do not reimplement the tangent. They cover the center, the field edge, an off-axis pixel whose range is longer than its axial depth, a 90 deg yaw, a near wall in front of a far wall, a plate in front of a wall, a miss, a below-gate word, a low box the level lidar misses, and both mounts. They also require a pixel off the stride-16 lattice, the row-major index, opposite columns that the scene makes different, and the colour of a pixel to match the same ray as its depth word. A fault past the last pixel is rejected.
+
+No timing number is chosen in advance. The binary records the cast duration of the two profiles after the pixels are checked. That number is not an acceptance threshold. Section 3.1 stays 45 pass and 11 not-run. Stage 5, replaying a recording through this path, is not this slice. Stage 4 is not complete.
+
+## Full camera frame result (2026-11-07)
+
+The frame calls `cast_pixel` once per pixel. It does not reimplement the tangent. `demo_camera` and `camera.rs` are unchanged. The depth-slice CSV and SVG hashes below match the picture head.
+
+Nine tests compare the buffer with that cast: center, field edge, and an off-axis pixel whose range word is not the axial word; a 90 deg yaw; a near wall in front of a far wall; a plate in front of a wall; a low box missed by the level lidar; a miss; a 300 mm below-gate word that stays 300 and is not the class colour; a 500 mm word; both mounts at the same pixel; row-major indexes; a pixel off the stride-16 lattice; opposite columns the scene makes different; colour tied to the same ray as the depth word; separate depth and RGB dropout; a stale depth buffer with fresh colour; and a class picture whose pixels are the posted class. The posted file and the fault table contain no body name.
+
+Seven mutations were applied and then removed. Filling every depth word with 0 failed the frontal-wall comparison, 0 against 1000. Column-major order failed the row-major index, 1 against 320. Mirroring the column failed the asymmetric scene, 342 against 1873. Copying row 0 into later rows failed, 0 against 1873. A depth dropout that also cleared the colour failed, black against the wall colour. An RGB dropout that also cleared the depth word failed, 0 against 1000. Painting every class with the valid blue failed the class picture, that blue against the no-return gray. The restored tests passed.
+
+Each command below was run on its own, with its exit taken from that command. No pipe was used. `cargo fmt --all -- --check` exited 0. `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` exited 0. `cargo test --workspace --offline --lib` exited 0. `cargo test --workspace --offline --lib --release` exited 0. `cargo test --workspace --offline --doc` exited 0. `cargo test --workspace --offline --doc --release` exited 0. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps` exited 0.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 91, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 286. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. The nine added tests are the frame tests.
+
+This implementation started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history.
+
+The new private directory is `/opt/cursor/artifacts/camera-frame/`. Older directories were not overwritten. A fresh static scene still has `rays.csv` `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` and `packets.bin` `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26`. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. The base `model.csv` and `trace.csv` are still `b106b8b10a36fec92b027d0c90fed1281deeb6ef390ddece697f398d3516d2e4` and `530cc80b503c06d7fa21abfb63babb857597e05ce6fc9079176965574ffa9d5d`. The depth-slice `model.csv`, `trace.csv`, and `fault.csv` are still `b3547dc36b486f4331d2c1b82ef12ebca0afe844de9a724307a93a47c015afa7`, `49e97f5e534a3cf3368c742642dd610dd0dce7335e59cd8f28a4019744de67d4`, and `21d535ca85e81617326e87a10d8d4285c43e5de9357c7ab293ac998f7eba2e47`. Its four SVG hashes match the picture head.
+
+Each `RCF1` file is 384032 bytes: a 32-byte header, 76800 little-endian depth words, and 76800 RGB triples. Debug casts of the demonstration scene took 59 ms for the measured mount and 58 ms for the configured mount. The same release binary took 9 ms and 9 ms, and its measured file hashed the same. Those times are not an acceptance threshold. The fault table posts 0 at index 38400, which is column 0 of row 120, and keeps colour 206, 198, 176. The ideal 1873 mm is labeled not posted and is not a column in `fault.csv`. Index 38719, column 319 of row 120, keeps posted 342 mm and has colour 0, 0, 0. Depth is stale and RGB is fresh. The RGB picture is flat fixture colour, including black misses. The class picture is a different image: blue, amber, and gray. Its legend is outside the 320 by 240 buffer and says posted 0 is not a distance of 0 m. The PNGs were rendered with ffmpeg and read. This is not merged. Stage 4 is not complete. Stage 5 is not built. The picture limits named in the plan stay deferred.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/camera-frame/camera/measured.rcf` | `a3acd31dae0e5196e611b74b537588ee9f615a235e709eb19a469b3ab60c0482` |
+| `/opt/cursor/artifacts/camera-frame/camera/configured.rcf` | `ce5d1315e6a69099d0729aee56278b9bfd48f0e6da58598f598ffbd56188dacd` |
+| `/opt/cursor/artifacts/camera-frame/camera/faulted.rcf` | `a50bbc863216e453eb917d244ecb1aa0329fc3706bff9ef8b6b94ca2ff2c0c14` |
+| `/opt/cursor/artifacts/camera-frame/camera/measured-rgb.ppm` | `374fe2f416c85780a07d910d5f3457415cb96e0e01d5538a477d853150f755d5` |
+| `/opt/cursor/artifacts/camera-frame/camera/measured-class.ppm` | `18303c47d7039f232d178d18bd9f03f738777cb454332a785aa5e2751bbd41f7` |
+| `/opt/cursor/artifacts/camera-frame/camera/configured-rgb.ppm` | `08bc3fd79d31bb4bdbb92f8f859aab1682a8291204571168bfcc807801743367` |
+| `/opt/cursor/artifacts/camera-frame/camera/configured-class.ppm` | `b33a26143ff1e4dc2b89ae8299f3e42bf173e73f4d96848d16f75384b9c8b4b8` |
+| `/opt/cursor/artifacts/camera-frame/camera/fault.csv` | `0fc2bf1c413708e28498c4c4e739190d11beaae0717c4026791b113badaf1c09` |
+| `/opt/cursor/artifacts/camera-frame/camera/measured-rgb.png` | `163d19cdd2a5060833b19f0b08b1251e5cd1dda82ad0a49d2e6bfee1fb02dc8e` |
+| `/opt/cursor/artifacts/camera-frame/camera/measured-class.png` | `f01e94056cb222a09af7ffae1c74fb7f90242831c6d9bdae6855f3c068340bdc` |
+| `/opt/cursor/artifacts/camera-frame/camera/configured-class.png` | `de06f5fe4234c22fd915428ac92f509039a188ec4bbd8ce305f71ad107ce4ae0` |
+| `/opt/cursor/artifacts/camera-frame/camera/fault.png` | `220a720cdfb7d5a4e6a981a086efd329d862ed3f04808e81f35bfa5ab9db3294` |
+
 ## Camera picture acceptance (2026-11-07)
 
 Independent review of `cf7a868b2aacc587839af792324dc17d0f8036bf` accepted the ideal cast and the posted classes. CI run `42403988242` was green on that head. It did not accept the pictures. The row chart drew every returned sample in one blue, including axial depth under 0.5 m, and it had no gate line. The grid coloured axial metres, so a below-gate cell and a valid cell were close, and it did not label rows or state class bounds. `fault.csv` already had eight stale samples: column 0 posts 0 while the ideal range stays 2.1479 m, and the other seven stay 1873 mm and valid. None of that was drawn. This is a picture fix. The cast, the classifier, the dropout, and the CSV bytes are unchanged. It is not a new physics defect.

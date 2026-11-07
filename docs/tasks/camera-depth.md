@@ -46,7 +46,7 @@ Dropout is a list of sample indexes. Those posted millimetre values become 0. Th
 
 `side.svg` is an equal-metre side view. The three plates are drawn by their x extent, so the corner cut is not in that view. The red ray is image row 239 and meets the low box. The green ray is the level lidar at 0.22 m and does not. `depth-row.svg` plots posted axial metres against the column index of row 120. The horizontal ticks are indexes, not metres. Blue marks are `valid`. Amber marks are `below-gate` and sit under the 0.5 m gate line. Their height is still the posted axial depth. A no-return is omitted rather than drawn as 0 m. `depth-grid.svg` casts every 16th pixel. Each cell is that cast. Colour is the posted class: valid at or above 500 mm, below gate from 1 to 499 mm, and no return for posted 0. Row indexes are labeled. The stride does not interpolate. `fault.svg` lists the eight stale samples. Fresh valid depth on that delivery is 0. The seven stale valid words keep their posted metres and are crossed, so that colour is not usable depth. The dropout posts 0. That word is drawn off the axis. Its ideal range is a hollow mark and is not a posted word.
 
-There is no RGB image, no full 320 by 240 frame, and no decoded camera recording. The demo does not cast all 320 by 240 pixels. That cap is not a timing benchmark. Stage 4 is not complete.
+This demo has no RGB image and does not cast all 320 by 240 pixels. That cap is not a timing benchmark. The full synthetic frame is [camera-frame.md](camera-frame.md). It is not a decoded camera recording. Stage 4 is not complete.
 
 ## What this does not claim
 
