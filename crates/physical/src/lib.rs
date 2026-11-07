@@ -9,6 +9,7 @@ mod camera;
 mod chunk;
 mod command;
 mod frame;
+mod inflate_zlib;
 mod json;
 mod kind;
 mod lidar;
@@ -21,6 +22,7 @@ mod replay;
 mod scene;
 mod sha256;
 mod speed;
+mod still;
 mod zipnote;
 
 pub use arm::{ArmIdentity, UrdfRead, grasp_status, identity, read_urdf};
@@ -62,5 +64,9 @@ pub use sha256::{sha256, sha256_hex};
 pub use speed::{
     ForwardEstimate, ForwardGate, GATES, Projection, SpeedRun, odom_delta, parse_speed_runs,
     scan_forward,
+};
+pub use still::{
+    STILL_DEPTH_WORDS, STILL_HEIGHT, STILL_RGB_BYTES, STILL_WIDTH, StillError, StillPair,
+    depth_bins, read_still_depth, read_still_pair, read_still_png,
 };
 pub use zipnote::{ZipEntry, zip_entries};
