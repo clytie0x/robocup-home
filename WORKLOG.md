@@ -1,5 +1,106 @@
 # WORKLOG
 
+## Robot base sweep bound (2026-11-07)
+
+Independent review of `0d6d95c8c73dc53cdb2d016c23fdaf2a57372845` did not accept the kinematic step. Two holes were reproduced. A yaw at or under `1e-9` deg used the translation hull. Any larger yaw sampled the pose every 5 deg and padded each sample by 0.5 mm. On the committed thin wall, x 0.30–0.34 m and z 0.025–0.035 m, a 0.80 m step with yaw 0 stayed put as `sweep`. Yaw `1e-6`, `0.01`, and 5 deg were accepted at x 0.80 m. The 0.5 mm pad does not cross the gap from the front face at 0.20 m. A 3 mm chip centred at `(0.1943, 0.1699)` m, z 0.025–0.035 m, is clear at yaw 0 and yaw 5 and overlaps `chassis_bottom` at yaw 2.5. `integrate` of 5 deg returned clear. The 90 deg fixture hits a sample, so it did not prove the arc between samples. This section does not rewrite the plan or the result that follow. Those paragraphs still describe the sampler that was reviewed.
+
+The replacement is one bound for every supported translation and yaw. The origin moves in a straight line and yaw changes linearly on the same parameter `t` in `[0, 1]`. Yaw stays at most 90 deg, so each vertex arc is the minor arc. A vertex at radius `r` from `base_link` stays within `σ = r (1 - cos(|δ| / 2))` of the chord between its ends. The code evaluates that as `r * 2 * sin²(|δ| / 4)` so a tiny yaw does not round `σ` to 0. The plate is the convex hull of its vertices, so the whole plate stays in the Euclidean `σ` neighbourhood of the convex hull of the plate at the two ends. The obstacle rectangle is expanded by `σ` in x and in y. That square contains the disk of radius `σ`, so a real hit is not missed. On a diagonal the square can also block a point as far as `σ√2`. For the footprint, `r = hypot(0.20, 0.16)` m. At 90 deg, `σ` is about 0.075 m. At 12 deg it is about 0.0014 m. At 5 deg it is about 0.00024 m. The hull of a pure translation is the swept plate and `σ` is 0. The hull of a turn is larger than the true sweep, and the square is larger than the disk. Those extra blocks are the conservatism. They are not mass, torque, slip, or a measured clearance. A step past 1.0 m or 90 deg is still rejected. It is not clamped.
+
+Red, on the sampler, before this bound: `cargo test -p physical --offline --lib -- a_thin_wall_blocks_through_the_yaw_threshold a_pure_turn_through_the_corner_chip_is_blocked a_vertex_bulge_past_half_a_millimetre_still_blocks translation_with_yaw_blocks_off_the_axis_and_in_a_gap the_largest_supported_step the_demo_trace_rejects_the_low_box`. The log recorded exit 101, 2 passed and 4 failed. The thin wall was accepted at x 0.8. The 5 deg chip was accepted. The world-yaw wall was accepted at x 0.6928. The pose picture had no `data-step-mark`. The 12 deg bulge and the 1 m / 90 deg step already passed on the sampler; the bulge assertion is that the box is more than 0.5 mm outside the endpoint hull and less than `σ`, so a fixed 0.5 mm pad on that hull still fails it. Green, after the bound: `cargo test -p physical --offline --lib -- base::` reported 18 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 66, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 261. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. The result section later in this file lists the same command names as exit 0. The review of that run found pipes into `rg`, including clippy and test, so a later `rg` could exit 0 after a failing compiler. This paragraph does not delete that section. This fix re-ran the suite with `set -euo pipefail` and one log per command, and each command's own exit was 0: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This fix started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. Earlier sections record the `b5977b8` `python3 -c 'print("no")'` run and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/robot-base-kinematic-corrected/`. The older `robot-base-kinematic` directory was not overwritten. `model.csv` and `trace.csv` are unchanged. Side and oblique SVG and PNG hashes are unchanged. A fresh static scene still has `rays.csv` `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` and `packets.bin` `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26`. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. The capture row is still 287 view points and `Lost`. The five PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. Top, side, and oblique still show the plates, the missed low box, and the ticks. The pose marks have no line between steps. Step 1 is captioned `blocked as sweep`. `sweep.svg` shows the 0.80 m and 5 deg end pose with the thin wall between the clear ends, and a leader to the corner chip. The chip is a dot at that scale. The x = 1 label sits on the top edge of the dashed end pose. That overlap is recorded here and is not a collision result.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/model.csv` | `b106b8b10a36fec92b027d0c90fed1281deeb6ef390ddece697f398d3516d2e4` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/trace.csv` | `530cc80b503c06d7fa21abfb63babb857597e05ce6fc9079176965574ffa9d5d` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/top.svg` | `9064273b1da7480d125c7bff8b1f1505afcb31e668ff9ad454f0398d8644ebbd` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/side.svg` | `23092d084dc7fcdb30e695e527a7aa8e2553814070538d8e9557dcd559200771` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/oblique.svg` | `0c9a19f567328ac070b294b34e8cabdb1e517f7d7dab858d2be342e88efdfcd8` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/pose.svg` | `008cff5eaf337914c19d482fb7f9d99be1a8eb703c55f08a4427791fc5918c47` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/sweep.svg` | `2507719ebe4b25b4b20b7f764bb8f88cf4ce7394bc11939f7080165518059b8e` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/top.png` | `ba48f13dad8a0de2e434e025400a7e406f0cf77715b5df2c521059fa1d058ecb` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/side.png` | `dec9db7fb4c6bab7605a79cf797fd67bcffb92f75474eb858725b870a3ae5323` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/oblique.png` | `e38c0bcf1352d497e5d31bb78be06c4060ece0cbdf85adb7adbfe8c1783e65e3` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/pose.png` | `0a0689c43710c4aa10abe0f7ca7f2e55f83576dbb6b675b117e880e77b56276e` |
+| `/opt/cursor/artifacts/robot-base-kinematic-corrected/base/sweep.png` | `941b013620765b7dd7eb7889e61ae7979d927bb0a4143dd10acb9844be587ef1` |
+
+This is not merged. Camera depth and the mission are not started.
+
+## Robot base plan (2026-11-07)
+
+PR 28 is merged at `ef0febbe56d2ac043f636e6bd229d68c2868da3d`. This branch is `cursor/robot-base-kinematic-bf93`, cut from that merge. It is the base slice of stage 3. It is not a finished robot, not dynamics, not a mission, and not an application. Camera depth, wheels, mass, the caster, and the arm stay out. No sanctioned Issue tool is available. That limit stays as already recorded.
+
+The sources read before this plan, and not copied into git, are `pi-drive/robot3d/README.md`, `robot.urdf`, `robot.json`, `sensors.json`, `footprint.json`, and `pi_config/robot.json`. The summary numbers were checked against those files.
+
+| item | value | kind | source |
+| --- | --- | --- | --- |
+| `base_link` | wheel-midpoint name, floor, x forward, y left, z up, metres | model frame | robot3d README. The wheels themselves are not in the model |
+| layers 1 and 2 plan | octagon, front and rear 0.20 m, half width 0.20 m, corner cut 0.04 m, front face 0.32 m | configured | `pi_config/robot.json` footprint and `footprint.json`. The same eight vertices are in `robot.json` |
+| circumscribed radius | `hypot(0.20, 0.16)` m, printed 0.2561 | derived | `footprint.json` |
+| layer 1 underside | 0.030 m | measured | robot3d README, tape, assuming layer 1 is the lowest plate |
+| layer 1 and 2 thickness | 0.002 m | assumed | robot3d `unknown` list, not a tape reading |
+| layer 1 centre z | 0.031 m | derived | underside plus half the assumed thickness. Matches `robot.json` xyz |
+| facing gap, layer 3 underside above layer 1 top | 0.21 m | measured | robot3d README, tape between facing surfaces |
+| layer 3 underside | 0.242 m | derived | layer 1 top 0.032 m plus the 0.21 m tape gap |
+| layer 3 thickness | 0.003 m | assumed | photos, robot3d `unknown` list |
+| layer 3 centre z | 0.2435 m | derived | underside plus half the assumed thickness. Matches `robot.json` xyz |
+| layer 3 corner cut | 0.05 m | inferred | photos. Vertices use 0.20 m minus that cut |
+| layer 2 top | 0.122 m | derived | README: 0.12 m tape below the layer 3 underside. The 9 cm gap over layer 1 is derived, not taped |
+| layer 2 centre z | 0.121 m | derived | top minus half the assumed thickness |
+| lidar xyz | (0.175, 0, 0.22) m | configured | `pi_config/robot.json`. `sensors.json` repeats it. Not a second measurement and not an installed lever arm |
+| measured front | 178.7 deg | measured | `lidar.py` and `sensors.json`. URDF `lidar_link` rpy z is 3.1189 rad, the same angle |
+| configured front | 183.5 deg | configured | `pi_config/robot.json` `lidar.yaw_deg` |
+| lidar head radius 0.028 m and height 0.04 m | placeholder | assumed | photos. Not a collision solid |
+| camera xyz and 6.7 deg | recorded, not modelled here | measured pose, later slice | `sensors.json`. Configured camera z is 0.27 m and pitch 0. This slice does not cast depth |
+| half track 0.155 m | not used | driver constant | robot3d README. Not a measured wheel |
+| wheel radius, mass, friction, caster, arm mount, calibration | unknown | unknown | README omitted list and the arm note. No value is invented |
+| motion 0.15 m/s and 15 deg/s | not a clamp | configured | `pi_config/robot.json` motion. This slice does not apply it as a motor model |
+| `ROBOT_RADIUS_MM` 250 | planner disk at the scan origin | assumed | navigation. Not the base centre and not chassis clearance |
+
+Collision solids are the three plate prisms only. The lidar head is a dashed non-collision placeholder. The camera, wheels, caster, standoffs, and arm are omitted. Plate z intervals are the derived slabs above: layer 1 is z 0.030–0.032 m, layer 2 is z 0.120–0.122 m, layer 3 is z 0.242–0.245 m.
+
+Frames. World and `base_link` share the axis directions. A base pose is `(x, y, yaw)` of `base_link` on the floor. The sensor translation is the configured xyz in `base_link`. Bearing 0 for the measured profile is `base_link` +x. The URDF yaw 178.7 deg is the raw-angle zero already consumed by `frame_sample`. It is not added again. Bearing 0 for the configured profile is 4.8 deg off `base_link` +x, the named disagreement. `frame_sample` output stays in the scan frame. A `Move` is a translation of that scan frame. The rigid base takes the same translation. The adapter does not add or subtract 0.175 m.
+
+Kinematics, not dynamics. One call may translate at most 1.0 m and yaw at most 90 deg. A larger or non-finite request is rejected and the pose stays. Those caps are not the configured 0.15 m/s and not a motor limit. Translation uses the convex hull of the plate at the start and the end, so a thin wall between two clear poses is a block. Yaw is sampled every 5 deg, and each sample is padded by 0.5 mm. That pad is the stated bound on the short arc, not a clearance measurement. Interior overlap at the start is `overlap`. A shared boundary with no interior is `contact`. Either blocks the step. A sweep that meets a solid on the way is `sweep`. The pose does not change on a block or a reject. Removing the solid lets the same step through. A step that never meets a plate is accepted, including a solid that sits in a vertical gap. The 250 mm disk is not the test.
+
+The policy sees posted scan points only. A low solid below z 0.22 m can block the body and still be absent from the scan. `plan_follow` is not given that solid. `sent` stays false. No command text is produced.
+
+Pictures reuse the scene tick strokes. Top and side are equal-metre views of the plates, the sensor point, one low solid, and the rays. The oblique view uses per-axis metre ticks and says the cabinet scale is not one scale. A pose plot shows attempted and accepted x against the step index. The index is not a measured clock.
+
+Tests, written to fail before the functions exist: plate z and the top-plate corner from the literals above; measured ray range `(1 - 0.175) / 1` against a wall at x 1 m, and the configured ray not equal to it; a downward ray hits a plate and a level ray does not; a gap solid misses and a solid in the layer 1 slab hits; a rear solid outside the 250 mm disk still blocks; a 0.80 m step whose ends are clear of a thin wall is blocked, and the same step is accepted after the wall is removed; a 90 deg yaw into a corner is blocked while both end poses are clear; 120 deg and a non-finite step are rejected rather than clamped; grazing the front face is contact; the low solid is missing from the posted view while the body step is blocked. The static scene tests and the capture hashes stay as they are. Section 3.1 stays 45 pass and 11 not-run.
+
+This plan commit has no geometry code. The red command is recorded with the implementation.
+
+## Robot base result (2026-11-07)
+
+The plan above was committed before this code. Red, before `collision_plates`, `integrate`, `cast_sensor`, and `BasePose` existed: `cargo test -p physical --offline --lib -- plates_use_the_taped_gaps`. The compiler stopped with unresolved imports for `BlockReason`, `BodyHit`, `StepFault`, `cast_sensor`, `collision_plates`, `integrate`, `resting_contact`, `scan_step_m`, `sense_policy`, `visual_placeholders`, and `BasePose`, and reported `could not compile physical (lib test) due to 3 previous errors`. Green, after the geometry: `cargo test -p physical --offline --lib -- base::` reported 13 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 61, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 256. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This implementation run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. Earlier sections record the `b5977b8` `python3 -c 'print("no")'` run and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/robot-base-kinematic/`. Older directories were not overwritten. A fresh static scene still has `rays.csv` `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` and `packets.bin` `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26`. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. The capture row is still 287 view points and `Lost`. The four PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. The side view shows the three slabs and the ray above the low box. The top view shows the attempted outline that was not accepted. The pose plot shows attempted x rising at step 1 while accepted x stays 0 until the box is removed. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/model.csv` | `b106b8b10a36fec92b027d0c90fed1281deeb6ef390ddece697f398d3516d2e4` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/trace.csv` | `530cc80b503c06d7fa21abfb63babb857597e05ce6fc9079176965574ffa9d5d` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/top.svg` | `720aa861f1e2936156752b7e0fbf1d50c2f8386289eb01c42afe9769a016bf32` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/side.svg` | `23092d084dc7fcdb30e695e527a7aa8e2553814070538d8e9557dcd559200771` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/oblique.svg` | `0c9a19f567328ac070b294b34e8cabdb1e517f7d7dab858d2be342e88efdfcd8` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/pose.svg` | `0e5b95869e87544ce88d6d6f43d99ba91c2a6034371c6e27870b0a939420d295` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/top.png` | `2f99c98a5470c747c201525443dd1c88e4436808c2dd3ceddeb8e569d3ff125d` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/side.png` | `dec9db7fb4c6bab7605a79cf797fd67bcffb92f75474eb858725b870a3ae5323` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/oblique.png` | `e38c0bcf1352d497e5d31bb78be06c4060ece0cbdf85adb7adbfe8c1783e65e3` |
+| `/opt/cursor/artifacts/robot-base-kinematic/base/pose.png` | `e8c550f228f02f38b95e0b24a52106d3e18d92f7ca0313990341d26156a8dbb6` |
+
+This is not merged. Camera depth and the mission are not started.
+
 ## Static scene tick strokes (2026-11-07)
 
 Reviewed head `3a1505277dedb4291fecde99193c0b6f7a6ab0f1`. The remaining drawing defect was in `plane_axes`. A scan number was placed at `protect_m * scale + 16` above the axis, about 102 px, and the picture had no tick stroke. Top and oblique numbers that stepped off the rays had no leader. Anchor-to-anchor spacing still passed if every number moved by the same extra 200 px. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged.

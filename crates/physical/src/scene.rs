@@ -16,7 +16,7 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    fn add(self, other: Self) -> Self {
+    pub(crate) fn add(self, other: Self) -> Self {
         Self {
             x: self.x + other.x,
             y: self.y + other.y,
@@ -24,7 +24,7 @@ impl Vec3 {
         }
     }
 
-    fn sub(self, other: Self) -> Self {
+    pub(crate) fn sub(self, other: Self) -> Self {
         Self {
             x: self.x - other.x,
             y: self.y - other.y,
@@ -32,7 +32,7 @@ impl Vec3 {
         }
     }
 
-    fn scale(self, factor: f64) -> Self {
+    pub(crate) fn scale(self, factor: f64) -> Self {
         Self {
             x: self.x * factor,
             y: self.y * factor,
@@ -40,7 +40,7 @@ impl Vec3 {
         }
     }
 
-    fn finite(self) -> bool {
+    pub(crate) fn finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
     }
 }
@@ -337,7 +337,7 @@ fn mount_csv(mount: &Mount, captured_ms: u64) -> String {
     )
 }
 
-fn scan_direction(mount: &Mount, bearing_deg: f64) -> Result<Vec3, SceneError> {
+pub(crate) fn scan_direction(mount: &Mount, bearing_deg: f64) -> Result<Vec3, SceneError> {
     let yaw = mount.yaw_deg.to_radians();
     let pitch = mount.pitch_down_deg.to_radians();
     let bearing = bearing_deg.to_radians();
@@ -368,7 +368,7 @@ fn world_to_scan(mount: &Mount, point: Vec3) -> Vec3 {
     }
 }
 
-fn enter_box(origin: Vec3, direction: Vec3, body: &Aabb) -> Option<f64> {
+pub(crate) fn enter_box(origin: Vec3, direction: Vec3, body: &Aabb) -> Option<f64> {
     let mut near = 0.0_f64;
     let mut far = f64::INFINITY;
     let axes = [
@@ -397,7 +397,7 @@ fn enter_box(origin: Vec3, direction: Vec3, body: &Aabb) -> Option<f64> {
     (near > 1e-9).then_some(near)
 }
 
-fn range_word(range_m: f64) -> Result<u16, SceneError> {
+pub(crate) fn range_word(range_m: f64) -> Result<u16, SceneError> {
     if !range_m.is_finite() || range_m < 0.0 {
         return Err(SceneError::NonFinite);
     }
@@ -414,16 +414,16 @@ fn csv_num(value: Option<f64>) -> String {
         .unwrap_or_default()
 }
 
-type ScreenSeg = ((f64, f64), (f64, f64));
+pub(crate) type ScreenSeg = ((f64, f64), (f64, f64));
 
-struct Plane {
+pub(crate) struct Plane {
     origin_x: f64,
     origin_y: f64,
     scale: f64,
 }
 
 impl Plane {
-    fn screen(&self, right: f64, up: f64) -> (f64, f64) {
+    pub(crate) fn screen(&self, right: f64, up: f64) -> (f64, f64) {
         (
             self.origin_x + right * self.scale,
             self.origin_y - up * self.scale,
@@ -537,7 +537,13 @@ fn draw_oblique(scene: &Scene, hits: &[Vec3], other_hits: &[Vec3]) -> String {
     body
 }
 
-fn fit_plane(cloud: &[(f64, f64)], left: f64, top: f64, width: f64, height: f64) -> Plane {
+pub(crate) fn fit_plane(
+    cloud: &[(f64, f64)],
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+) -> Plane {
     let (mut min_u, mut max_u, mut min_v, mut max_v) = extents(cloud);
     let pad_u = ((max_u - min_u) * 0.12).max(0.3);
     let pad_v = ((max_v - min_v) * 0.16).max(0.3);
@@ -574,7 +580,7 @@ fn extents(cloud: &[(f64, f64)]) -> (f64, f64, f64, f64) {
     (min_u, max_u, min_v, max_v)
 }
 
-fn tick_values(min: f64, max: f64) -> Vec<f64> {
+pub(crate) fn tick_values(min: f64, max: f64) -> Vec<f64> {
     let span = (max - min).abs().max(0.5);
     let step = if span > 6.0 { 1.0 } else { 0.5 };
     let mut value = (min / step).floor() * step;
@@ -744,20 +750,20 @@ fn draw_scan(scene: &Scene, profile: &LidarProfile, points: &[(f64, f64)]) -> St
     body
 }
 
-fn svg_header(title: &str) -> String {
+pub(crate) fn svg_header(title: &str) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"760\" viewBox=\"0 0 1040 760\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"24\" y=\"32\" font-size=\"16\">{title}</text><text x=\"24\" y=\"54\" font-size=\"12\">Numeric ticks are metres. This is not a photograph and not a chassis clearance.</text><text x=\"24\" y=\"74\" font-size=\"12\">World and base coincide only in this synthetic fixture. The installed lever arm stays unknown.</text>"
     )
 }
 
-struct TickMark {
+pub(crate) struct TickMark {
     axis: &'static str,
     metres: f64,
     at: (f64, f64),
     offset: (f64, f64),
 }
 
-fn world_axis(
+pub(crate) fn world_axis(
     map: &impl Fn(Vec3) -> (f64, f64),
     axis: &'static str,
     name: &str,
@@ -785,7 +791,10 @@ fn world_axis(
     (body, vec![(start, end), (name_at, name_at)])
 }
 
-fn place_ticks(pending: &[TickMark], geometry: &[ScreenSeg]) -> (String, Vec<ScreenSeg>) {
+pub(crate) fn place_ticks(
+    pending: &[TickMark],
+    geometry: &[ScreenSeg],
+) -> (String, Vec<ScreenSeg>) {
     let mut body = String::new();
     let mut keepout = Vec::new();
     for tick in pending {
@@ -806,7 +815,7 @@ fn place_ticks(pending: &[TickMark], geometry: &[ScreenSeg]) -> (String, Vec<Scr
     (body, keepout)
 }
 
-fn plane_axes(
+pub(crate) fn plane_axes(
     plane: &Plane,
     names: (&str, &str, &str, &str),
     cloud: &[(f64, f64)],
@@ -971,7 +980,7 @@ fn point_gap(a: (f64, f64), b: (f64, f64)) -> f64 {
     (a.0 - b.0).hypot(a.1 - b.1)
 }
 
-fn swatches(items: &[(&str, &str)], y: f64) -> String {
+pub(crate) fn swatches(items: &[(&str, &str)], y: f64) -> String {
     let mut body = String::new();
     let mut x = 24.0;
     for (color, label) in items {

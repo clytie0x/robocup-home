@@ -20,3 +20,7 @@ path = "src/bin/post_scan.rs"
 [[bin]]
 name = "static-scene"
 path = "src/bin/static_scene.rs"
+
+[[bin]]
+name = "robot-base"
+path = "src/bin/robot_base.rs"

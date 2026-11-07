@@ -4,6 +4,7 @@
 //! treat the simulated gripper as an installed arm.
 
 mod arm;
+mod base;
 mod chunk;
 mod command;
 mod json;
@@ -21,6 +22,7 @@ mod speed;
 mod zipnote;
 
 pub use arm::{ArmIdentity, UrdfRead, grasp_status, identity, read_urdf};
+pub use base::{BaseViews, demo_views};
 pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
 pub use kind::Kind;
