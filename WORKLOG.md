@@ -1,5 +1,63 @@
 # WORKLOG
 
+## Camera recording decode plan (2026-11-07)
+
+PR 31 is merged at `10bbe92cc409af286cb5d93e0c7a2993767fc9d4`. The merged head is `fcbb58310141fdd89e175573a8837277f3347ee9`. This note is research for a later offline decode. It adds no decoder, no dependency, and no fixture file. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`.
+
+The private files stay out of git. The inspection used Node 22.23.4, which was already installed, and its built-in `zlib`. No Python process ran. Nothing was installed. The long table is also in `/opt/cursor/artifacts/camera-recording-research/`. That copy is not a commit.
+
+### What was read
+
+Packet A is the robot description already used for the pinhole: `robot3d/sensors.json`, `robot3d/robot.urdf` as previously read, and `camera.py` / `person.py` for the OpenNI calls. Packet B is the course session: `camera/*.png`, `camera/*_depth_mm.npy`, `camera/index.json`, `static_recording_pose9/camera.npz`, `static_recording_pose9/meta.json`, `static_recording_pose9/lidar_chunks.bin` timestamps only, `poses.json`, `MANIFEST.sha256`, `README.md`, and `scripts/record_static.py`. The seven colour PNGs and `camera.npz` had not been inflated before this note. `figures/` and the user photos were not opened.
+
+SHA-256 of the seven PNG files, the seven depth files, `index.json`, `camera.npz`, and `meta.json` match `MANIFEST.sha256`. `camera.npz` is `d3319c4f0e8a5ffc7f65fb3c0f7dd9a9a992a5874c0297b9e8b0a4e5d7895c9a`, 6565292 bytes.
+
+### Formats, measured from the bytes
+
+Official layouts used to read the bytes: NumPy `.npy` version 1.0 ([numpy.lib.format](https://numpy.org/doc/stable/reference/generated/numpy.lib.format.html), NEP 1), PNG IHDR and filter method 0 ([PNG specification](https://www.w3.org/TR/png-3/)), and ZIP local headers, method 8, and the zip64 extra id `0x0001` ([APPNOTE 6.3.10](https://pkwaredownloads.blob.core.windows.net/pem/APPNOTE-6.3.10.txt)). OpenNI names format 100 as depth in millimetres and format 200 as `RGB888`, and it numbers the colour sensor 2 and the depth sensor 3 ([OniEnums.h](https://documentation.help/OpenNI-2.0/_oni_enums_8h_source.html)).
+
+Each of the seven PNGs is signature `89 50 4E 47 0D 0A 1A 0A`, then `IHDR`, one `IDAT`, and `IEND`. There is no `sRGB`, `gAMA`, or text chunk. IHDR is width 320, height 240, bit depth 8, colour type 2, compression 0, filter method 0, interlace 0. Colour type 2 is an R, G, B triple in the PNG specification. The IDAT is zlib-wrapped deflate. A raw-deflate inflate fails on these files. The inflated scanlines are 230640 bytes, which is 240 rows of one filter byte plus 960 colour bytes. Every filter byte is 0, so each row is stored without prediction. The three channel means differ in every file, so the buffer is not one grey value repeated. That is not a colour chart.
+
+Each depth file is 153728 bytes. The header is NumPy 1.0, little-endian, header length 118, data at offset 128. The text is `{'descr': '<u2', 'fortran_order': False, 'shape': (240, 320), }`. The 76800 words that follow are little-endian and the file ends there. Shape axis 0 is 240 and axis 1 is 320. `index.json` stores `size` as `[320, 240]`. Those two orders are not the same tuple. The array is C order, so index `row * 320 + col` addresses the same place as the synthetic frame only when row 0 is the same edge. PNG puts scanline 0 at the top of the image. The depth writer copies the device buffer in that same loop order. A vertical flip is not recorded.
+
+Posted 0 remains 0 in every file. It is not rewritten. Six of the stills have no word in 1..499. Their smallest positive words are course 928, v2 618, v3 613, v4 694, rotA 869, and rotB 873. `img3` has 24672 zeros, 1227 words from 486 through 499, and 50901 words at or above 500. The index note that img3 is mostly 0 inside 0.5 m does not match that count. Zeros are about a third of that frame.
+
+`camera.npz` is a ZIP with the general-purpose flag 0, so there is no data descriptor. Each local header stores compressed size and uncompressed size as `0xFFFFFFFF`. The zip64 extra is id `0x0001`, length 16, then the 8-byte uncompressed size and the 8-byte compressed size. Method is 8. Inflating that raw deflate yields three NumPy 1.0 members:
+
+| member | descr | fortran | shape | uncompressed bytes |
+| --- | --- | --- | --- | --- |
+| `color.npy` | `\|u1` | false | `(39, 240, 320, 3)` | 8985728 |
+| `depth_mm.npy` | `<u2` | false | `(39, 240, 320)` | 5990528 |
+| `t_monotonic.npy` | `<f8` | false | `(39,)` | 440 |
+
+`meta.json` says `camera_frames` 39. The depth member has 2995200 words: 386382 zeros, no word in 1..499, and 2608818 words at or above 500. Per frame, the smallest positive word is 862 to 891 and the largest is 6146 to 8019. The colour member is 2995200 pixels, the same 39 by 240 by 320 grid, with channel means 109.95, 114.68, and 115.37. Those means only show that the channels are not identical.
+
+The 39 stamps are little-endian `f64`, strictly increasing, from 42268.713697426 to 42282.695698289. The span is 13.982 s. Successive gaps are 0.364 to 0.369 s. `meta.json` records `duration_s` 15, `recording_start` 42267.829120567, and `t_monotonic_start` 42265.222502616. The stamp span fits inside that 15 s window, so these numbers are seconds. `lidar_chunks.bin` walks as 343 chunks of `<dI` plus payload, which matches `lidar_chunks` in the meta file, from 42267.741026568 to 42285.177230448. The camera stamps sit inside that range. The odometry list has 49 samples and every pose is `[1.2, 3.02, 1.36]`.
+
+The current `zip_entries` stops on method 8 and on a size of `u32::MAX`. It does not read the zip64 extra, so it cannot step from `color.npy` to the later members. That block stays.
+
+### Cited, inferred, and unknown
+
+Cited from the session README and the capture script, and not remeasured as a calibration: the device is described as an ASUS Xtion class at 320 by 240; depth of format 100 is millimetres; `record_static.py` stores one host `time.monotonic()` value per pair; the seven `saved` strings are laptop-local labels and the README calls that zone UTC+7; the two clocks were not compared by the session. `person.py` opens sensors 2 and 3, keeps the first frame whose format is 200 as the colour buffer, and the first whose format is 100 as depth. It does not store `frame.ts`. It does not set `IMAGE_REGISTRATION_DEPTH_TO_COLOR`. The pair is whichever two frames were both present in that poll. `np.savez_compressed` is the call that wrote the archive.
+
+Inferred, and labeled as inference: PNG colour type 2 plus OpenNI format 200 means the file channels are R, then G, then B of the device buffer. No chart in this run checks a known red object. The same row order for colour and depth is the writer's loop, not a measured homography. The 0.36 s gap is the script's 0.35 s throttle, not a stored frames-per-second field.
+
+Unknown, and required before a recording can take the synthetic controller path: there is no per-frame device timestamp. The stills have only the `saved` string. The npz stamp is the host monotonic second of the pair, not the two OpenNI timestamps, and it was not aligned with a wall clock. Colour and depth share an index because the script appended them together, which is not an extrinsic calibration and not a shutter measurement. Mirror, field of view, and the two mounts are the values already frozen for the pinhole. They are not fields in these pixel files. The optical row 153.6 is not in the arrays. `poses.json` gives course view A as the origin by definition, lidar poses for v2 and v3, and both a lidar pose and a wheel pose for v4. It gives no pose for rotA, rotB, or img3. For `static_recording_pose9` it records two wheel estimates about 0.4 m apart and says not to register that recording to the course map. The constant odometry `[1.2, 3.02, 1.36]` is a third pose and is not either of those estimates. Distortion, focal length, and which mount was installed are still unknown. A decoded frame is not a fresh observation and not a person.
+
+`RCF1` is the synthetic container: one 320 by 240 frame, stamp 0, and a header that these files do not have. A later decoder must not write these bytes back out as `RCF1` and call that the recording.
+
+### Smallest later change
+
+Not this commit. The first implementation can decode the seven still pairs and leave `camera.npz` blocked.
+
+Depth already matches `load_depth_u16`: `<u2`, not Fortran, rank 2. The loader was read against this header and was not executed on the private bytes in this run. The first test of the implementation is that execution, on a generated file with this header, and then on the private file outside git.
+
+Colour needs a bounded PNG reader for the measured subset only: 320 by 240, 8-bit colour type 2, compression 0, filter method 0, no interlace, and filter byte 0 on every row. Any other PNG fails closed. The IDAT needs zlib-wrapped inflate, which is not the raw deflate inside the npz and not a new picture codec. OpenCV is allowed by the repository rules and is not needed for this subset. It is not installed. No PNG crate is proposed. A maintained inflate can be chosen when that implementation is approved. This note does not add one.
+
+The output is width, height, the depth words, and the RGB bytes, plus the zero, below-gate, and valid counts. It is not an `RCF1` file. It does not call `cast_pixel`, `controller_note`, or the task crates. `camera.rs`, `frame.rs`, and the zip block stay. The npz zip64 raw-deflate decode waits until the stills have a reviewed reader, because the stills already hold saved colour and depth and the recording's course pose is the low-confidence one.
+
+Tests for that later change, all on generated bytes: the `(240, 320)` `<u2` header loads 76800 words and a `(320, 240)` shape is not described as these files; Fortran order is still refused; a filter-0 colour-type-2 PNG round-trips known RGB bytes; colour type 6, a non-zero filter byte, or a transposed size fails; a word of 486 stays 486 and a word of 0 stays 0; the result is not `RCF1` and does not receive the synthetic stamp 0; a method-8 zip64 local header still stops `zip_entries`. No private image is committed. The section 3.1 table is not edited.
+
 ## Camera frame documentation correction (2026-11-07)
 
 Independent review of `53bff5866f75049cbd37e94aaeec138350c1f6eb` accepted the ideal 320 by 240 geometry, the file, the injected faults, and the suite of 286 library tests and 7 doctests. The box bytes and the pictures also passed. Merge stays held for this note. The manual said a coloured pixel with posted 0 is a depth dropout. That inference is false.
