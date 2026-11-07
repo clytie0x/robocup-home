@@ -4,11 +4,14 @@
 
 use std::collections::BTreeSet;
 use std::env;
-use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Write};
+use std::path::Path;
 use std::process::ExitCode;
 
-use physical::{read_camera_npz, sha256_hex};
+use physical::{
+    ARCHIVE_FILE_LIMIT, BoundError, COMPARE_FRAME_LIMIT, read_bounded, read_camera_npz,
+    read_file_bounded, sha256_hex, split_compare_frame,
+};
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
@@ -23,12 +26,17 @@ fn main() -> ExitCode {
     if args.next().is_some() {
         return usage();
     }
-    let bytes = match fs::read(&path) {
+    let bytes = match read_file_bounded(Path::new(&path), ARCHIVE_FILE_LIMIT) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            eprintln!("camera-archive: {err}");
-            return ExitCode::from(1);
+        Err(err) => return bound_exit(err),
+    };
+    let framed = if compare {
+        match read_bounded(&mut io::stdin(), COMPARE_FRAME_LIMIT) {
+            Ok(framed) => Some(framed),
+            Err(err) => return bound_exit(err),
         }
+    } else {
+        None
     };
     let archive = match read_camera_npz(&bytes) {
         Ok(archive) => archive,
@@ -66,14 +74,9 @@ fn main() -> ExitCode {
     for (index, frame) in depth.chunks(240 * 320 * 2).enumerate() {
         println!("depth_frame={index} sha256={}", sha256_hex(frame));
     }
-    if !compare {
+    let Some(framed) = framed else {
         return ExitCode::from(0);
-    }
-    let mut framed = Vec::new();
-    if let Err(err) = io::stdin().read_to_end(&mut framed) {
-        eprintln!("camera-archive: {err}");
-        return ExitCode::from(1);
-    }
+    };
     match compare_framed(&framed, &archive.rgb, &depth, &stamps) {
         Ok(()) => {
             println!("compared=yes match=yes");
@@ -95,53 +98,24 @@ fn distinct(bytes: &[u8], frame: usize) -> usize {
 }
 
 fn compare_framed(framed: &[u8], rgb: &[u8], depth: &[u8], stamps: &[u8]) -> Result<(), String> {
-    if framed.len() < 4 || &framed[..4] != b"NPZ1" {
-        return Err("frame header".to_string());
-    }
-    let mut pos = 4;
-    let rgb_in = section(&mut pos, framed, "rgb")?;
-    let depth_in = section(&mut pos, framed, "depth")?;
-    let stamp_in = section(&mut pos, framed, "stamps")?;
-    if pos != framed.len() {
-        return Err(format!("frame trailing offset={pos}"));
-    }
-    same("rgb", &rgb_in, rgb)?;
-    same("depth", &depth_in, depth)?;
-    same("stamps", &stamp_in, stamps)?;
+    let parts = split_compare_frame(framed)?;
+    same("rgb", parts.rgb, rgb)?;
+    same("depth", parts.depth, depth)?;
+    same("stamps", parts.stamps, stamps)?;
     Ok(())
 }
 
-fn section(pos: &mut usize, framed: &[u8], expect: &str) -> Result<Vec<u8>, String> {
-    if *pos + 2 > framed.len() {
-        return Err(format!("{expect} truncated name"));
+fn bound_exit(err: BoundError) -> ExitCode {
+    match err {
+        BoundError::Bound { limit } => {
+            eprintln!("camera-archive: input bound limit={limit}");
+            ExitCode::from(1)
+        }
+        BoundError::Io(kind) => {
+            let _ = writeln!(io::stderr(), "camera-archive: {kind:?}");
+            ExitCode::from(1)
+        }
     }
-    let name_len = u16::from_le_bytes([framed[*pos], framed[*pos + 1]]) as usize;
-    *pos += 2;
-    let name_end = pos
-        .checked_add(name_len)
-        .ok_or_else(|| "frame name".to_string())?;
-    if name_end + 8 > framed.len() {
-        return Err(format!("{expect} truncated"));
-    }
-    let name =
-        std::str::from_utf8(&framed[*pos..name_end]).map_err(|_| "frame name".to_string())?;
-    if name != expect {
-        return Err(format!("frame name {name}"));
-    }
-    *pos = name_end;
-    let mut len_bytes = [0u8; 8];
-    len_bytes.copy_from_slice(&framed[*pos..*pos + 8]);
-    let len = u64::from_le_bytes(len_bytes) as usize;
-    *pos += 8;
-    let end = pos
-        .checked_add(len)
-        .ok_or_else(|| "frame length".to_string())?;
-    if end > framed.len() {
-        return Err(format!("{expect} truncated payload"));
-    }
-    let out = framed[*pos..end].to_vec();
-    *pos = end;
-    Ok(out)
 }
 
 fn same(name: &str, got: &[u8], expected: &[u8]) -> Result<(), String> {

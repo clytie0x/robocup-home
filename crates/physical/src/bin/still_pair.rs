@@ -5,11 +5,13 @@
 
 use std::env;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use physical::{depth_bins, read_still_pair, sha256_hex};
+use physical::{
+    BoundError, STILL_FRAME_LIMIT, depth_bins, read_bounded, read_still_pair, sha256_hex,
+};
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
@@ -70,11 +72,10 @@ fn main() -> ExitCode {
         valid
     );
     if compare {
-        let mut framed = Vec::new();
-        if let Err(err) = io::stdin().read_to_end(&mut framed) {
-            eprintln!("still-pair: {err}");
-            return ExitCode::from(1);
-        }
+        let framed = match read_bounded(&mut io::stdin(), STILL_FRAME_LIMIT) {
+            Ok(framed) => framed,
+            Err(err) => return bound_exit(err),
+        };
         return match compare_framed(&framed, &pair.rgb, &depth_le) {
             Ok(()) => {
                 println!(
@@ -100,6 +101,19 @@ fn main() -> ExitCode {
             &depth_le,
         ),
         _ => usage(),
+    }
+}
+
+fn bound_exit(err: BoundError) -> ExitCode {
+    match err {
+        BoundError::Bound { limit } => {
+            eprintln!("still-pair: input bound limit={limit}");
+            ExitCode::from(1)
+        }
+        BoundError::Io(kind) => {
+            let _ = writeln!(io::stderr(), "still-pair: {kind:?}");
+            ExitCode::from(1)
+        }
     }
 }
 
@@ -138,10 +152,18 @@ fn section(pos: &mut usize, framed: &[u8], expect: &str) -> Result<Vec<u8>, Stri
     *pos = name_end;
     let mut len_bytes = [0u8; 8];
     len_bytes.copy_from_slice(&framed[*pos..*pos + 8]);
-    let len = u64::from_le_bytes(len_bytes) as usize;
+    let len = u64::from_le_bytes(len_bytes);
     *pos += 8;
+    let expected: u64 = match expect {
+        "rgb" => 230_400,
+        "depth" => 153_600,
+        _ => return Err(format!("frame name {expect}")),
+    };
+    if len != expected {
+        return Err(format!("{expect} length"));
+    }
     let end = pos
-        .checked_add(len)
+        .checked_add(expected as usize)
         .ok_or_else(|| "frame length".to_string())?;
     if end > framed.len() {
         return Err(format!("{expect} truncated payload"));

@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use physical::STILL_FRAME_LIMIT;
+
 fn adler32(data: &[u8]) -> u32 {
     let mut a = 1u32;
     let mut b = 0u32;
@@ -127,8 +129,9 @@ fn section(out: &mut Vec<u8>, name: &str, payload: &[u8]) {
     out.extend_from_slice(payload);
 }
 
-fn paths() -> (PathBuf, PathBuf) {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("still-frame-compare");
+fn paths(label: &str) -> (PathBuf, PathBuf) {
+    let dir =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("still-frame-compare-{label}"));
     std::fs::create_dir_all(&dir).expect("fixture directory");
     let (png, npy, _, _) = synthetic_pair();
     let png_path = dir.join("synthetic_color.png");
@@ -138,8 +141,8 @@ fn paths() -> (PathBuf, PathBuf) {
     (png_path, npy_path)
 }
 
-fn run(framed: &[u8]) -> std::process::Output {
-    let (png_path, npy_path) = paths();
+fn run(label: &str, framed: &[u8]) -> std::process::Output {
+    let (png_path, npy_path) = paths(label);
     let mut child = Command::new(env!("CARGO_BIN_EXE_still-pair"))
         .arg(&png_path)
         .arg(&npy_path)
@@ -162,7 +165,7 @@ fn run(framed: &[u8]) -> std::process::Output {
 #[test]
 fn a_framed_stdin_matches_every_synthetic_byte() {
     let (_, _, rgb, depth) = synthetic_pair();
-    let output = run(&frame(&rgb, &depth, &[]));
+    let output = run("match", &frame(&rgb, &depth, &[]));
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
@@ -179,7 +182,7 @@ fn a_framed_stdin_matches_every_synthetic_byte() {
 fn a_framed_rgb_byte_mismatch_reports_only_the_offset() {
     let (_, _, mut rgb, depth) = synthetic_pair();
     rgb[17] ^= 0x01;
-    let output = run(&frame(&rgb, &depth, &[]));
+    let output = run("mismatch", &frame(&rgb, &depth, &[]));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "stderr {stderr}");
     assert!(stderr.contains("rgb mismatch offset=17"), "stderr {stderr}");
@@ -188,8 +191,24 @@ fn a_framed_rgb_byte_mismatch_reports_only_the_offset() {
 #[test]
 fn a_trailing_frame_byte_is_rejected() {
     let (_, _, rgb, depth) = synthetic_pair();
-    let output = run(&frame(&rgb, &depth, &[0]));
+    let output = run("trailing", &frame(&rgb, &depth, &[0]));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "stderr {stderr}");
-    assert!(stderr.contains("frame trailing"), "stderr {stderr}");
+    assert!(stderr.contains("input bound"), "stderr {stderr}");
+    assert!(
+        stderr.contains(&format!("limit={STILL_FRAME_LIMIT}")),
+        "stderr {stderr}"
+    );
+}
+
+#[test]
+fn a_frame_one_byte_past_the_still_ceiling_is_rejected() {
+    let output = run("ceiling", &vec![0u8; STILL_FRAME_LIMIT + 1]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr {stderr}");
+    assert!(stderr.contains("input bound"), "stderr {stderr}");
+    assert!(
+        stderr.contains(&format!("limit={STILL_FRAME_LIMIT}")),
+        "stderr {stderr}"
+    );
 }

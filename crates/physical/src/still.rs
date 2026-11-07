@@ -11,6 +11,8 @@ pub const STILL_WIDTH: usize = 320;
 pub const STILL_HEIGHT: usize = 240;
 pub const STILL_RGB_BYTES: usize = STILL_WIDTH * STILL_HEIGHT * 3;
 pub const STILL_DEPTH_WORDS: usize = STILL_WIDTH * STILL_HEIGHT;
+pub const STILL_FRAME_LIMIT: usize =
+    4 + (2 + 3 + 8 + STILL_RGB_BYTES) + (2 + 5 + 8 + STILL_DEPTH_WORDS * 2);
 const SCAN_BYTES: usize = STILL_HEIGHT * (1 + STILL_WIDTH * 3);
 const MAX_IDAT: usize = 262_144;
 

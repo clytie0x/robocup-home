@@ -15,6 +15,46 @@ const STAMP_UNCOMPRESSED: u64 = 440;
 const COLOR_PAYLOAD: usize = 8_985_600;
 const DEPTH_PAYLOAD: usize = 5_990_400;
 const STAMP_PAYLOAD: usize = 312;
+const COLOR_COMPRESSED: usize = 5_561_734;
+const DEPTH_COMPRESSED: usize = 1_002_834;
+const STAMP_COMPRESSED: usize = 342;
+
+const fn zip_local(name_len: usize) -> usize {
+    30 + name_len + 20
+}
+
+const fn zip_central(name_len: usize) -> usize {
+    46 + name_len
+}
+
+const fn frame_section(name_len: usize, payload: usize) -> usize {
+    2 + name_len + 8 + payload
+}
+
+/// Bytes the CLI may read from the measured archive shape.
+///
+/// Three method-8 members, local zip64 extras, central headers with empty
+/// extras, and one 22-byte end record. Compressed sizes are the documented
+/// lengths. This is a read ceiling, not a hash check.
+pub const ARCHIVE_FILE_LIMIT: usize = COLOR_COMPRESSED
+    + DEPTH_COMPRESSED
+    + STAMP_COMPRESSED
+    + zip_local(9)
+    + zip_local(12)
+    + zip_local(15)
+    + zip_central(9)
+    + zip_central(12)
+    + zip_central(15)
+    + 22;
+
+/// Bytes the CLI may read from one `NPZ1` comparison frame.
+///
+/// The frame is the magic, then `rgb`, `depth`, and `stamps` at the exact
+/// payload lengths. A longer stream is not a valid comparison.
+pub const COMPARE_FRAME_LIMIT: usize = 4
+    + frame_section(3, COLOR_PAYLOAD)
+    + frame_section(5, DEPTH_PAYLOAD)
+    + frame_section(6, STAMP_PAYLOAD);
 const NAMES: [&str; 3] = ["color.npy", "depth_mm.npy", "t_monotonic.npy"];
 const SIZES: [u64; 3] = [COLOR_UNCOMPRESSED, DEPTH_UNCOMPRESSED, STAMP_UNCOMPRESSED];
 
@@ -406,6 +446,73 @@ fn map_inflate(err: StillError) -> ArchiveError {
 
 fn u16_at(bytes: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([bytes[at], bytes[at + 1]])
+}
+
+#[derive(Debug)]
+pub struct CompareParts<'a> {
+    pub rgb: &'a [u8],
+    pub depth: &'a [u8],
+    pub stamps: &'a [u8],
+}
+
+pub fn split_compare_frame(framed: &[u8]) -> Result<CompareParts<'_>, String> {
+    if framed.len() < 4 || &framed[..4] != b"NPZ1" {
+        return Err("frame header".to_string());
+    }
+    let mut pos = 4;
+    let rgb = take_frame_section(&mut pos, framed, "rgb")?;
+    let depth = take_frame_section(&mut pos, framed, "depth")?;
+    let stamps = take_frame_section(&mut pos, framed, "stamps")?;
+    if pos != framed.len() {
+        return Err(format!("frame trailing offset={pos}"));
+    }
+    Ok(CompareParts { rgb, depth, stamps })
+}
+
+fn take_frame_section<'a>(
+    pos: &mut usize,
+    framed: &'a [u8],
+    expect: &str,
+) -> Result<&'a [u8], String> {
+    if *pos + 2 > framed.len() {
+        return Err(format!("{expect} truncated name"));
+    }
+    let name_len = u16::from_le_bytes([framed[*pos], framed[*pos + 1]]) as usize;
+    *pos += 2;
+    let name_end = pos
+        .checked_add(name_len)
+        .ok_or_else(|| "frame name".to_string())?;
+    if name_end + 8 > framed.len() {
+        return Err(format!("{expect} truncated"));
+    }
+    let name =
+        std::str::from_utf8(&framed[*pos..name_end]).map_err(|_| "frame name".to_string())?;
+    if name != expect {
+        return Err(format!("frame name {name}"));
+    }
+    *pos = name_end;
+    let mut len_bytes = [0u8; 8];
+    len_bytes.copy_from_slice(&framed[*pos..*pos + 8]);
+    let len = u64::from_le_bytes(len_bytes);
+    *pos += 8;
+    let expected = match expect {
+        "rgb" => COLOR_PAYLOAD,
+        "depth" => DEPTH_PAYLOAD,
+        "stamps" => STAMP_PAYLOAD,
+        _ => return Err(format!("frame name {expect}")),
+    };
+    if len != expected as u64 {
+        return Err(format!("{expect} length"));
+    }
+    let end = pos
+        .checked_add(expected)
+        .ok_or_else(|| "frame length".to_string())?;
+    if end > framed.len() {
+        return Err(format!("{expect} truncated payload"));
+    }
+    let out = &framed[*pos..end];
+    *pos = end;
+    Ok(out)
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> u32 {
