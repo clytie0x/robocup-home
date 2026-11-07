@@ -1,5 +1,42 @@
 # WORKLOG
 
+## Camera depth plan (2026-11-07)
+
+PR 29 is merged at `4f4826595e9295e87d69cfb855f2f8219bfc930d`. The merged head is `19c61b2f70642c213ed839a9aa56ba0310fbeeb2`. CI run `42400310894` was green on that head. This branch is `cursor/camera-depth-sensor-bf93`, cut from that merge. It is the camera half of stage 4. The lidar raycast from the static scene stays. This slice does not start stage 5, the mission, or an application. The older artifact directories stay in place.
+
+The sweep-bound section below records the writer's red log as 2 passed and 4 failed. That log was not committed. The independent closure did not replay that exact count. It replayed the two unsafe accepts: the thin wall at yaw `1e-6`, `0.01`, and 5 deg, and the 5 deg chip. Both stay `sweep` on the merged head. This paragraph does not replace that section and does not call the 2/4 count an independent result.
+
+The closure also records limits that this slice does not patch. The bound is a straight world line for the origin and a linear yaw. It is not a unicycle arc. The square pad can false-block past the disk, shown by a point `1.2 σ` beyond the 90 deg chord. A step of at most `1e-9` m and `1e-9` deg skips the hull and is accepted. A `1.5e-9` m gap is contact on the next resting check, and a `2e-9` m step is `sweep`. That early accept does not cross a wall. `pose.svg` can show fractional indexes 0.5 and 1.5 because the tick step is 0.5. `sweep.svg` draws the end octagon and the chip dot. It does not draw the hull or the sagitta, and the chip sentence is the pure turn while the blue outline is the translated end. Those are illustration limits. They are not a collision proof, and this slice does not refactor the drawings.
+
+Sources read again, and not copied into git: `robot3d/sensors.json`, `robot3d/robot.urdf`, `robot3d/README.md`, `robot3d/build.py` as text, `pi_config/robot.json`, and the session README. The seven `camera/*.png` files and method-8 `camera.npz` stay blocked. No pixel and no depth sample from them is used. The professor PDF is the frozen table in `docs/tasks/3.1-carry-my-luggage.md`. This slice does not reopen it. Section 3.1 stays 45 pass and 11 not-run.
+
+| item | value | kind | source |
+| --- | --- | --- | --- |
+| image | 320 by 240 | cited device class | `sensors.json` model string and the session README. Not measured from a decoded PNG |
+| horizontal field | 58.59 deg | cited OpenNI property | `sensors.json` and `HFOV_DEG`. Not remeasured |
+| vertical field | 45.64 deg | cited, rounded | `sensors.json`. `build.py` rounds `degrees(0.7966156601905823)` to two places. The frozen constant stays 45.64 |
+| mirror | image right is robot left | cited | session README and `MIRROR_SOURCE`. Not remeasured |
+| depth meaning | axial z in the optical frame, millimetres, 0 is no return | cited | session README. Not the Euclidean ray length |
+| near gate | 0.5 m | cited OpenNI property | `sensors.json` `depth_valid_from_m` and `DEPTH_GATE_M`. Not remeasured |
+| measured mount | x 0.14 m, y 0, z 0.282 m, pitch 6.7 deg down | floor-plane fit | `sensors.json` and the URDF `camera_link` origin `0.14 0 0.282`, rpy pitch `0.116937` rad. This run does not refit the plane |
+| configured mount | x 0.14 m, y 0, z 0.27 m, pitch 0 | configured | `pi robot.json`. `mount_confirmed` is a flag, not a measurement |
+| optical frame | rpy `-π/2 0 -π/2` from `camera_link` | model convention | URDF `camera_optical_joint`. Standard optical axes: z forward, x right, y down, before the mirror |
+| principal point | image center `(width-1)/2`, `(height-1)/2` | assumption already in `pixel_bearing_deg` | Not the recorded optical row 153.6. That fit is not applied |
+| focal length | not stored | derived from the field and the image size | No calibrated `fx` or `fy` is in the files. None is invented as a measurement |
+| distortion, noise, device maximum range | unknown | unknown | Not in `sensors.json`. No cutoff is added |
+| camera body 35 by 178 by 45 mm | not an occluder | assumed product size | README. The clamp stand is omitted. The body floats and is not a collision solid |
+| row 153.6 | not used | recorded fit | session README. Applying it would be a calibration this slice does not have |
+
+The pinhole uses the same center as `pixel_bearing_deg`. A pixel index is the center of that pixel. Columns 0 and 319 are the horizontal field edges, and rows 0 and 239 are the vertical field edges. The tangent is `(index - center) / center * tan(field / 2)`. Positive image right is robot left because the image is mirrored. Image down is negative camera up. The mount pitch is a right-handed rotation about the camera's left axis, so the forward axis gains a negative z. The URDF pitch sign matches that. Axial depth is the hit's component along the optical axis. The Euclidean range is longer off axis. `floor_hit` stays the horizontal ground distance `z / tan(down)`. It is not the axial depth and not the ray range. On the optical axis those two lengths are `z / sin(pitch)` and they are equal to each other only because the ray is the axis.
+
+The cast hits the scene boxes and the three base plates. The nearest positive intersection wins. A box behind the camera is a miss. A nearer box hides a farther one. A low box under the lidar plane can still lie on a downward camera ray. The posted sample is the axial depth in whole millimetres. A positive value under 500 mm stays in the buffer and is `BelowGate`. It is not wiped to zero. The note that the device has no depth under 0.5 m is the gate class. The blocked frames were not opened, so this slice does not claim the device's zero fill. A miss is 0, `NoReturn`. There is no far cutoff.
+
+Dropout is a caller-supplied list of pixel indexes forced to 0 after the cast. The geometry is unchanged. Stale, missing, malformed, and reversed delivery use the existing freshness helpers. `controller_note` already ignores a depth view that is not fresh. The note still has no scene name, no box, and no person. `sent` stays false. Person state stays `NotInPostedView`. Colour in the side picture is a fixture swatch. It is not a photograph and not a detector.
+
+Tests, written to fail before the cast exists: the center pixel on a frontal wall has axial depth equal to the gap and equal to the range; an edge pixel on that wall keeps the same axial depth and a longer range; the optical-axis floor hit matches `z / sin(pitch)` and disagrees with `floor_hit`'s horizontal distance; a low box missed by the level lidar is hit by a downward pixel, and raising that box out of the ray restores the miss; a near box is `BelowGate` and a miss is `NoReturn`; a box behind the camera is a miss; a near wall hides a far wall until the near wall is removed; a base yaw of 90 deg hits the wall that is in front of the camera and misses the wall that was in front of the unturned base; measured and configured pitches do not return the same floor range; a dropout index becomes 0 while its neighbour does not; a stale view keeps its samples and contributes no fresh valid depth, with `sent` false. The static scene hashes, the capture `points.csv`, and the base `model.csv` and `trace.csv` stay as they are.
+
+This plan commit has no camera cast. The red command is recorded with the implementation.
+
 ## Robot base sweep bound (2026-11-07)
 
 Independent review of `0d6d95c8c73dc53cdb2d016c23fdaf2a57372845` did not accept the kinematic step. Two holes were reproduced. A yaw at or under `1e-9` deg used the translation hull. Any larger yaw sampled the pose every 5 deg and padded each sample by 0.5 mm. On the committed thin wall, x 0.30–0.34 m and z 0.025–0.035 m, a 0.80 m step with yaw 0 stayed put as `sweep`. Yaw `1e-6`, `0.01`, and 5 deg were accepted at x 0.80 m. The 0.5 mm pad does not cross the gap from the front face at 0.20 m. A 3 mm chip centred at `(0.1943, 0.1699)` m, z 0.025–0.035 m, is clear at yaw 0 and yaw 5 and overlaps `chassis_bottom` at yaw 2.5. `integrate` of 5 deg returned clear. The 90 deg fixture hits a sample, so it did not prove the arc between samples. This section does not rewrite the plan or the result that follow. Those paragraphs still describe the sampler that was reviewed.
