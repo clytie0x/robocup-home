@@ -1,5 +1,79 @@
 # WORKLOG
 
+## Camera archive plan (2026-11-07)
+
+PR 33 is merged at `181e2c610794e3b4909be8a46385429997cce202`. The merged head is `4caf8141e4d9aa624aa15a1e2546539a559e8181`. CI run `42415568686`, job `128532772754`, succeeded on that head. The still reader remains the seven pairs only. This note plans `camera.npz`. It adds no decoder, no change to the inflater, and no fixture. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`. The library count stays 303 and the doctest count stays 7. Those counts were not rerun for this note.
+
+### Review record
+
+This is the record of the independent review. It is not permission to repeat it.
+
+Run 28 called Python once, `print(no)`. That call did not read the archive and did not change a measured result. It was still a breach of the no-Python rule. The owner was informed. Run 29 closed the review with no Python process.
+
+The first transpose mutant failed to compile. That compile failure is a real event. A later corrected mutant compiled, and the production assertion failed at exit 101: left `[1, 2, 3]`, right `[4, 5, 6]`. That assertion is the retained behavioural evidence. The mutant was then removed. The exported tree was clean, and the mutant strings are not in the blobs.
+
+The review counted 62 probes: 39 inflate, 11 PNG, 5 depth, and 7 private. Twenty-four bit flips were rejected. They were not a successful output path. The 17 still-reader tests were independently confirmed as 15 still tests and 2 inflate tests, inside the 303 library tests. The 62 probes were not rerun here.
+
+From this note on, this work does not run Python, including a trivial check, a shell snippet, or a converter. The existing CI spec checkers were not edited and were not run locally.
+
+### What was measured
+
+The file is `/tmp/pkt-inspect/pi-drive/data/20261107-course-session/static_recording_pose9/camera.npz`. Node 22.23.4, already installed, read it. No package was installed. SHA-256 is `d3319c4f0e8a5ffc7f65fb3c0f7dd9a9a992a5874c0297b9e8b0a4e5d7895c9a`, 6565292 bytes, the same value as line 100 of `MANIFEST.sha256`. The script, the empty stderr, and the hashes are in `/opt/cursor/artifacts/camera-npz-plan/`. Older artifact directories were not overwritten. No pixel file was written.
+
+The layouts used to read the bytes are the ones already cited for the still plan: ZIP local headers, method 8, and zip64 extra id `0x0001` in APPNOTE 6.3.10; raw deflate in RFC 1951; NumPy `.npy` 1.0. No new web fetch was made. There is no Hermes route in this environment.
+
+The archive has three local headers, three central headers, and one end-of-central-directory record. A scan for the four-byte signatures found those seven offsets and no data-descriptor signature, no zip64 end record, and no zip64 locator. The walk ends at byte 6565292. Trailing bytes are 0.
+
+| record | offset | name | flags | method | crc-32 | compressed | uncompressed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| local | 0 | `color.npy` | 0 | 8 | `0x3d8c0336` | 5561734 | 8985728 |
+| local | 5561793 | `depth_mm.npy` | 0 | 8 | `0xfbee1e19` | 1002834 | 5990528 |
+| local | 6564689 | `t_monotonic.npy` | 0 | 8 | `0x11f927a2` | 342 | 440 |
+| central | 6565096 | `color.npy` | 0 | 8 | `0x3d8c0336` | 5561734 | 8985728 |
+| central | 6565151 | `depth_mm.npy` | 0 | 8 | `0xfbee1e19` | 1002834 | 5990528 |
+| central | 6565209 | `t_monotonic.npy` | 0 | 8 | `0x11f927a2` | 342 | 440 |
+| end | 6565270 |  |  |  |  |  |  |
+
+Every local header has version needed 45, DOS time 0, DOS date 33, and a 20-byte extra. The 32-bit compressed and uncompressed fields are `0xFFFFFFFF`. The extra is id `0x0001`, length 16, then the uncompressed size and the compressed size as little-endian `u64`, with no leftover. Data starts at 59, 5561855, and 6564754. Each data end is the next header. There is no gap and no overlap.
+
+The central headers do not repeat that sentinel. Their 32-bit sizes are the real lengths above, the local-header offsets are 0, 5561793, and 6564689, and the central extra is empty. Version made is `0x032D`. Comment length, disk, and internal attributes are 0. The external attribute is `0x01800000` and is not used. The end record has disk 0, 3 entries, central-directory size 174, offset 6565096, and comment length 0. `6565270 - 6565096 = 174`. A reader that demands a zip64 extra on the central header would reject this real file. A reader that ignores the local zip64 extra and uses `0xFFFFFFFF` as a length would also be wrong. The resolved local sizes and the central sizes agree.
+
+Flag 0 means there is no data descriptor and no encryption. DOS date 33 is 1980-01-01 and DOS time 0 is midnight. That is not a capture clock.
+
+Raw inflate of each member produces exactly the declared uncompressed length, and the CRC-32 of those bytes matches the header. A zlib-wrapped inflate fails on all three: `incorrect header check` for colour and for the time member, and `unknown compression method` for depth. The first deflate block of colour and of depth is type 2 and is not the final block. The time member is one final type-1 block.
+
+Each inflated member is NumPy 1.0, version byte 1, header length 118, data at offset 128. The header text is exact, including the spaces and the final newline:
+
+- `color.npy`: `{'descr': '|u1', 'fortran_order': False, 'shape': (39, 240, 320, 3), }`
+- `depth_mm.npy`: `{'descr': '<u2', 'fortran_order': False, 'shape': (39, 240, 320), }`
+- `t_monotonic.npy`: `{'descr': '<f8', 'fortran_order': False, 'shape': (39,), }`
+
+Payload lengths are 8985600, 5990400, and 312. Those are `39 * 240 * 320 * 3`, `39 * 240 * 320 * 2`, and `39 * 8`. Payload SHA-256 values are `cac6e7f037f040fb002cc5bc7c75657e77838c0f9970762fc23e08782893f196`, `e128edda8e3ae142f4390df25582d691fbb2b50f686bd45ac8ef72341e064202`, and `d697f38fd71d64fd84feafd6c9f494a2f35fcd1042ac761b064eb698c62f0b6d`. The per-frame hashes are in the private summary, not in git.
+
+Depth has 2995200 words: 386382 zeros, no word in 1..499, and 2608818 words at or above 500. Across the 39 frames the smallest positive word is 862 to 891 and the largest is 6146 to 8019. No frame has a word in 1..499. Colour has 2353578 pixels whose three channels are not equal, out of 2995200. That count is not a colour chart.
+
+The 39 stamps are strictly increasing, from 42268.713697426 to 42282.695698289. The span is 13.982000862997666 s. Gaps are 0.3644015239988221 to 0.36905552599637304 s. `meta.json` has `camera_frames` 39, `duration_s` 15, `recording_start` 42267.829120567, and `t_monotonic_start` 42265.222502616. The first stamp is 0.884576859 s after `recording_start`. The last is 14.866577722 s after it, inside the 15 s window. `recording_start` is 2.606617951 s after `t_monotonic_start`. The writer sleeps 2.6 s between those two samples. `record_static.py` line 12 sets `t_start` from `time.monotonic()`. Line 42 sleeps 2.6 s. Line 43 sets `rec_t0` from `time.monotonic()`. Lines 47 to 52 take `time.monotonic()`, drop a pair closer than 0.35 s, and append that same monotonic value. `person.py` lines 191 to 205 declare `Frame.ts`. Lines 234 to 247 copy width, height, RGB, and millimetre words. They do not copy `ts`. That function has no registration call. The 49 odometry samples are all pose `[1.2, 3.02, 1.36]`.
+
+### The current inflater cannot take these members
+
+`inflate_capped` requires a zlib header: method 8, window at most 32 KiB, no preset dictionary, and a 16-bit check divisible by 31. It then requires an Adler32 trailer and consumes the whole buffer. The PNG path calls it with a cap of 230640. These members are raw deflate. Their uncompressed sizes are 8985728, 5990528, and 440. Raising the cap would not make the wrapper match. The time member is under 230640 bytes and the zlib inflate still fails. Colour and depth also need dynamic blocks, and those blocks are not final, so the stored-block test encoder is not a stand-in for them. `zip_entries` stops on method 8 and on a 32-bit size of `0xFFFFFFFF`. That stop stays. `load_depth_u16` requires rank 2, so it does not load a shape of `(39, 240, 320)`. `read_still_depth` stays limited to one `(240, 320)` frame.
+
+### Smallest later change
+
+Not this commit. A later slice can add one archive reader beside the still reader. It is not a general ZIP library and it does not replace `zip_entries`. It accepts this measured subset only.
+
+The walker checks every offset with checked addition before it slices. It rejects a short header, a huge claimed length, a data descriptor, encryption, a method other than 8, a second copy of a name, a missing name, a different order, a trailing byte, a gap, and an overlap. The local zip64 extra must be id 1 and 16 bytes, and the central 32-bit sizes must equal those `u64` values. The end record must report 3 entries. Its central-directory size and offset must match the bytes that were walked, the comment length must be 0, and the file must end there. On this archive that size is 174. A generated fixture may be smaller. The rule is the match, not a hard-coded 174. CRC-32 is the ZIP header value over the inflated bytes. It is not Adler32.
+
+The raw inflater is a separate entry from `inflate_capped`. It can reuse the private block decoder, including stored, fixed, and dynamic blocks. It does not read a zlib header or an Adler trailer. Before allocation, the declared uncompressed size must be exactly 8985728 for `color.npy`, 5990528 for `depth_mm.npy`, or 440 for `t_monotonic.npy`. The output cap is that size. A longer inflate, a short inflate, or a declared size of 8985729 is an error and does not allocate the larger buffer. No ZIP crate is added. `artifacts/check_workspace.py` still rejects a sourced dependency.
+
+After inflate, the NumPy header grammar can be the existing inspector. The checks on top of it are new. Colour must be `|u1`, not Fortran, shape `[39, 240, 320, 3]`. Depth must be `<u2`, not Fortran, shape `[39, 240, 320]`. A shape of `[39, 320, 240]` is rejected even if a rank-2 loader would accept a swap. Time must be `<f8`, not Fortran, shape `[39]`. The inflated length must be the header offset plus the payload, with no trailing byte. The result is the three arrays. It is not `RCF1`. It does not call `cast_pixel`, `controller_note`, or a task crate. It does not mark a frame fresh.
+
+Tests for that later change, all on generated bytes except the private compare: a stored raw member and a Node `deflateRaw` dynamic member that is not produced by the stored test encoder; a final fixed block like the time member; CRC mismatch; a truncated member; a declared size above the exact cap; an inflate that would pass the cap; the data-descriptor flag; the encryption flag; a method other than 8; a duplicate name; a changed member order; a trailing file byte; a central size that disagrees with the local zip64 extra; a central header that wrongly requires its own zip64 extra; a multi-disk end record; a ZIP64 end record or its locator; an offset that overflows; Fortran order; a NumPy major version other than 1; a big-endian depth descr; `|u1` rejected for depth and `<u1` rejected for colour; the transposed depth shape; a non-finite stamp; a stamp sequence that does not increase. The private compare checks all 39 colour frames, all 39 depth frames, and the 312 stamp bytes against the hashes in the artifact. It does not commit pixels. `zip_entries` still stops on the first method-8 member of this file.
+
+### What remains blocked
+
+A decoded archive is not a fresh observation, not a device clock, not a registration, not a calibration, and not a person. The stamps are the host monotonic clock of the throttle, not `frame.ts`, and they were not compared with a wall clock. Colour and depth share an index because the writer appended them in one callback. Mirror, field of view, and the two mounts are still the frozen pinhole values, not fields in this file. The pose note for `static_recording_pose9` still says the two estimates disagree by about 0.4 m and not to register the recording to the course map. The constant odometry pose is a third pose. Stage 4 stays open. Stage 5 stays open. This note does not start that replay.
+
 ## Saved still reader (2026-11-07)
 
 PR 32 is merged at `47231ef730e7051c5c7abae6fab37db25fc0699f`. The merged head is `0cf7d8c82e82ec4dd9ea673cb266a52738f862e5`. This slice reads the seven still pairs and leaves `camera.npz` blocked. It does not call `cast_pixel`, `controller_note`, or a task crate, and it does not write `RCF1`. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`.
