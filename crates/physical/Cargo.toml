@@ -1,0 +1,10 @@
+[package]
+name = "physical"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "replay"
+path = "src/bin/replay.rs"
