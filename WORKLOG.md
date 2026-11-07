@@ -46,6 +46,26 @@ Zeros, negative ranges, and a positive range that rounds to the origin are kept 
 
 Section 3.1 stays 45 `pass` and 11 `not-run`. The legacy Python checkers are not run. The private output directory is new and does not replace `/opt/cursor/artifacts/physical-foundation/` or `/opt/cursor/artifacts/physical-foundation-review/`.
 
+### Result
+
+Before `frame_sample` existed, `cargo test -p physical --lib --offline` exited 101. The compiler reported `error[E0432]: unresolved imports` for `frame_sample`, `post_samples`, `post_chunks`, and `offset_ms`. After the implementation the same tests pass. A measured 1 m return at raw 178.7 deg is `(1000, 0)` mm. The configured front on that sample is `(996, 84)` mm. A stale clock keeps the sample and does not plan. A body on the forward segment changes `plan_follow` only when a fixture person is added in the test. That person is not read from the capture.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 35, sim_runtime 30, task_3_1 32, task_3_2 3. That is 230. Navigation stayed 19 and `task_3_1` stayed 32. The `replay` and `post-scan` binaries have 0 tests. Doctests stay 7. Commands, all exit 0: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --all-targets --locked`, `cargo test --workspace --doc --locked`, `cargo test --workspace --all-targets --locked --release`, `cargo test --workspace --doc --locked --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked`. The legacy Python checkers were not run.
+
+The private command was `cargo run -p physical --bin post-scan --locked --offline -- --chunks /tmp/pkt-inspect/pi-drive/data/20261107-course-session/static_recording_pose9/lidar_chunks.bin --profile measured-front --out /opt/cursor/artifacts/scan-nav-adapter`. Exit 0. The file has 70252 samples. The longest revolution has 407 samples and 9 zero returns. The named measured front puts 287 bodies inside the 2500 mm navigation range. People are 0. The fresh row is `acted:Lost`. The same stamp plus 1001 ms is `unusable:Stale`. `sent` is false. `captured_ms` is 5022 on the capture-monotonic clock zeroed at the first chunk, not wall time. 385 samples differ from the configured front. Those alternate points are not the policy input. `course_lidar.bin` has no chunk clock, so it was not used as a freshness proof. The SVG was rendered with ffmpeg librsvg and read: the origin cross, the numeric ticks, the swatch, and the full caption are visible. The picture is private and is not a mission result. The old foundation report hash is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+Camera PNG files and method-8 `camera.npz` stay blocked. No command was sent. No 3D body, raycast, or grasp is claimed.
+
+The next slice, not started here, is a static 3D scene that can emit a sensor packet in this same view: one body, one named mount, and no task score. The packet would enter through this adapter. The scene would not be given to `plan_follow`.
+
+Hash algorithm remains SHA-256 from `sha256sum`.
+
+| file | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/scan-nav-adapter/post.csv` | `2899b80c52ac3c8ea90b1549374ada164bddb2bdfa9d126b3f60ab70744a22f2` |
+| `/opt/cursor/artifacts/scan-nav-adapter/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/scan-nav-adapter/post.svg` | `936df75db74f50102ea8be87ed6772dee58f791433b12631bfd33c12a5e922f0` |
+
 ## Physical foundation review fix (2026-11-07)
 
 Reviewed head `389f28e1244be35ac73578b669b9316af8c50534`. Each finding below was present in that source. None was rejected. This commit stays on `cursor/physical-foundation-bf93` and does not merge. It does not start the next adapter. Section 3.1 was counted from the markdown table: 45 lines contain `| pass |` and 11 contain `| not-run |`. GPSR is unchanged. The legacy Python checkers `artifacts/check_workspace.py`, `artifacts/check_m1_spec.py`, and `artifacts/check_m10_spec.py` were not run. That exclusion means this validation is not the historical full checker set. Those scripts were not rewritten.

@@ -9,6 +9,7 @@ mod command;
 mod json;
 mod kind;
 mod lidar;
+mod navpost;
 mod npy;
 mod observe;
 mod plot;
@@ -23,6 +24,10 @@ pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
 pub use kind::Kind;
 pub use lidar::{LidarParse, RawSample, encode_packet, parse_lidar, split_revolutions};
+pub use navpost::{
+    ChunkReport, ClockLabel, PostClock, PostOutcome, SampleUse, ScanPost, UnusableKind,
+    frame_sample, load_chunks, offset_ms, post_chunks, post_samples, write_chunk_post,
+};
 pub use npy::{NpyInfo, inspect_npy, load_depth_u16};
 pub use observe::{
     Actuation, ControllerNote, DepthClass, DepthView, Freshness, PostedScan, classify_depth_mm,
