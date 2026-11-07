@@ -28,3 +28,7 @@ path = "src/bin/robot_base.rs"
 [[bin]]
 name = "camera-depth"
 path = "src/bin/camera_depth.rs"
+
+[[bin]]
+name = "camera-frame"
+path = "src/bin/camera_frame.rs"

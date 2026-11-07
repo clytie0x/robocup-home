@@ -8,6 +8,7 @@ mod base;
 mod camera;
 mod chunk;
 mod command;
+mod frame;
 mod json;
 mod kind;
 mod lidar;
@@ -30,6 +31,10 @@ pub use camera::{
 };
 pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
+pub use frame::{
+    CameraFrame, FrameViews, cast_frame, class_ppm, decode_frame, demo_frames, depth_view,
+    encode_frame, fault_csv, rgb_ppm,
+};
 pub use kind::Kind;
 pub use lidar::{LidarParse, RawSample, encode_packet, parse_lidar, split_revolutions};
 pub use navpost::{
