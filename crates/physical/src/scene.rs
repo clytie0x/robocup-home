@@ -79,6 +79,7 @@ pub enum SceneError {
     NonFinite,
     NegativeRange,
     Uncodable,
+    OutOfImage,
 }
 
 pub struct PacketScene {

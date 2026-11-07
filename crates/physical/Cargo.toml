@@ -24,3 +24,7 @@ path = "src/bin/static_scene.rs"
 [[bin]]
 name = "robot-base"
 path = "src/bin/robot_base.rs"
+
+[[bin]]
+name = "camera-depth"
+path = "src/bin/camera_depth.rs"

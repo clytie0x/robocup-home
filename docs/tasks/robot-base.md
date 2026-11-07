@@ -42,7 +42,7 @@ The cycle casts rays, encodes them as lidar packets, parses those packets, and p
 
 ## What this does not claim
 
-No wheel, no mass, no friction, no slip, and no physical clearance. The sagitta is a geometric bound on this parameterisation, not a measurement and not a dynamics model. The arm is not modelled. Grasp stays not validated. Camera depth is not cast. Section 3.1 stays 45 pass and 11 not-run. This run does not close stages 4 through 7.
+No wheel, no mass, no friction, no slip, and no physical clearance. The sagitta is a geometric bound on this parameterisation, not a measurement and not a dynamics model. The arm is not modelled. Grasp stays not validated. Camera depth is not cast in this file. The ideal pinhole is in [camera-depth.md](camera-depth.md). Section 3.1 stays 45 pass and 11 not-run. This file does not close stages 4 through 7.
 
 ## Decisions
 
