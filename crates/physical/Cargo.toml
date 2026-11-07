@@ -16,3 +16,7 @@ path = "src/bin/replay.rs"
 [[bin]]
 name = "post-scan"
 path = "src/bin/post_scan.rs"
+
+[[bin]]
+name = "static-scene"
+path = "src/bin/static_scene.rs"
