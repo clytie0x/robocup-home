@@ -1,5 +1,49 @@
 # WORKLOG
 
+## Full camera frame plan (2026-11-07)
+
+PR 30 is merged at `efeb5522b3b0b8668e65c1d99f215af94ef075f1`. The merged head is `a8f10933fd83e93e7ec0629108d9803e3c62abaa`. CI run `42406384245` was green on that head. This branch is `cursor/camera-frame-bf93`, cut from that merge. It fills the 320 by 240 frame that the depth slice did not cast. It does not start stage 5, the mission, or an application. Older artifact directories and branches stay in place.
+
+### Closure of the picture head
+
+Independent closure of `a8f10933` accepted the ideal cast and the class pictures of that cast. It was not a 320 by 240 frame, not RGB, not a decoded recording, and not stage 4 closed. Direct debug and release counts were domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 82, sim_runtime 30, task_3_1 32, task_3_2 3, total 277, with 7 doctests in each profile. Nine core and drawing mutations failed and were restored. A disposable probe, not in the commit, compared the production SVG with a fresh `cast_pixel` of the same pixels. The row, the stride grid, and the fault marks matched that cast. The CI job checked out merge tree `48148f2733fce91b24291ecb6577e6d36d0e1986` and the head tree; both contents hashed `9e84667245cf58f0bd9028a5e5a665198ecd5fd9`.
+
+The posted-0 gray square is at (24, 700). That is the table margin, below and left of the depth axis. It is not the index-0 plot mark. The index-0 tick is at x = 464.4. The hollow circle at (464.4, 233.4) is the ideal range 2.1479 m and is not a posted depth. A second gray chip at (430, 710) is the legend. A posted millimetre of 0 means no return. It does not mean a distance of 0 m.
+
+These picture limits stay and are not blockers: the fault legend has an unused below-gate swatch, the dropout gray is drawn twice and neither copy is the index-0 mark, the side plate stroke does not match its swatch, the far wall uses the unnamed fallback colour, and the x = 0 tick sits on the plates. The PR 29 picture limits stay deferred: fractional step ticks, `sweep.svg` not drawing the hull, and the pure-yaw chip sentence against the translated end pose. Stage 4 is not complete.
+
+### What was read, and not copied into git
+
+Read again as text, and not decoded: `robot3d/sensors.json`, `robot3d/robot.urdf`, `robot3d/README.md`, `robot3d/build.py`, `pi_config/robot.json`, the session README, the pi-drive README, and `camera/index.json`. The seven `camera/*.png` files and `camera.npz` stay blocked. No pixel from them is used. `zipnote` already records that `camera.npz` begins with method 8 on `color.npy` and is not inflated.
+
+| item | value | kind | source |
+| --- | --- | --- | --- |
+| stored image | 320 by 240 | cited | `sensors.json` model string. `camera/index.json` size `[320, 240]`. Not measured by opening a PNG |
+| stored colour | 240 by 320 by 3, `uint8` | cited file description | session README for `camera.npz`. This run does not open the archive, so channel order and alignment are not verified from the bytes |
+| stored depth | `uint16` millimetres, 0 means no reading | cited | session README and the depth-slice manual. Not a decoded `.npy` |
+| colour and depth together | one npz, one `t_monotonic` array | cited description | session README. Not a verified extrinsic calibration and not a verified shutter pair |
+| fields, mirror, gate, mounts | unchanged from the depth slice | cited or configured, as already frozen | `sensors.json`, the session README, `pi robot.json`. Not remeasured |
+| optical row 153.6 | not used | recorded fit | session README. The pinhole center stays `(width-1)/2` |
+| material colour | no measured reflectance | unknown | no palette in the sensor files. This slice assumes flat fixture colours |
+
+The pinhole, the two mounts, axial depth, plate occlusion, and `classify_depth_mm` stay the functions already reviewed. This slice calls `cast_pixel`. It does not rewrite `tangents`, `ray_direction`, `axial_word`, or the classifier. `navigation` and `task_3_1` stay untouched. `demo_camera`, its CSV bytes, and the depth-slice pictures stay as merged.
+
+### Frame
+
+One call fills both buffers from the same rays. Width is 320 and height is 240. The count is 76800. There is no argument for a larger image. Row 0 is the top row: image down grows with the row index, which is the tangent already used by `cast_pixel`. Index `row * 320 + col` is that pixel's center. Image right is robot left, already inside the ray. Depth is a little-endian `u16` in millimetres. 0 is no return, not a distance of 0 m. 1 to 499 stays `BelowGate` and is not usable. 500 and above is `Valid`. The word still saturates through `axial_word`, so a hit past 65.535 m posts 0 while the ray's metre value can remain on the `DepthRay`. That is the existing word, not a new cutoff.
+
+RGB is three bytes, R then G then B, at the same index as the depth word. The colour is an assumed flat colour of the nearest solid. It is not lighting, texture, noise, or a photograph. A miss is `(0, 0, 0)`. An unlisted solid is one shared grey, not a hash of its name. The posted buffers and the fault table do not contain a body name, a box id, or a class label. `controller_note` still does not read RGB and still reports no person.
+
+The two mounts stay side by side. The same function takes either profile. The synthetic stamp is 0. It is not a capture clock. Depth freshness and RGB freshness are separate bytes. Marking one stale does not change the other and does not change the stamp. That is not a claim that a real colour stream and a real depth stream share a shutter. The session file is described as one archive with one time array. This slice did not open it and does not treat that description as a calibration.
+
+Depth dropout zeros the posted millimetre and leaves the RGB bytes. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists, so the two faults do not collapse into a black miss with no record of which channel failed. A black pixel with a positive depth word is an RGB dropout, not a miss. A coloured pixel with posted 0 is a depth dropout, not a depth of 0 m. A geometric miss is black and posted 0, and it is absent from the fault list.
+
+The export is a fixed little-endian file, magic `RCF1`, version 1. It is not an `.npy`, not a PNG from the camera, and not a new codec. A PPM is only a view of the RGB bytes or of the class colours for a person reading the artifact. The class picture uses the posted class, not a metre ramp and not the fixture colour. Its legend sits outside the 320 by 240 buffer. Gray there means posted 0, which is no return.
+
+Tests compare frame pixels with `cast_pixel` of the same column and row. They do not reimplement the tangent. They cover the center, the field edge, an off-axis pixel whose range is longer than its axial depth, a 90 deg yaw, a near wall in front of a far wall, a plate in front of a wall, a miss, a below-gate word, a low box the level lidar misses, and both mounts. They also require a pixel off the stride-16 lattice, the row-major index, opposite columns that the scene makes different, and the colour of a pixel to match the same ray as its depth word. A fault past the last pixel is rejected.
+
+No timing number is chosen in advance. The binary records the cast duration of the two profiles after the pixels are checked. That number is not an acceptance threshold. Section 3.1 stays 45 pass and 11 not-run. Stage 5, replaying a recording through this path, is not this slice. Stage 4 is not complete.
+
 ## Camera picture acceptance (2026-11-07)
 
 Independent review of `cf7a868b2aacc587839af792324dc17d0f8036bf` accepted the ideal cast and the posted classes. CI run `42403988242` was green on that head. It did not accept the pictures. The row chart drew every returned sample in one blue, including axial depth under 0.5 m, and it had no gate line. The grid coloured axial metres, so a below-gate cell and a valid cell were close, and it did not label rows or state class bounds. `fault.csv` already had eight stale samples: column 0 posts 0 while the ideal range stays 2.1479 m, and the other seven stay 1873 mm and valid. None of that was drawn. This is a picture fix. The cast, the classifier, the dropout, and the CSV bytes are unchanged. It is not a new physics defect.
