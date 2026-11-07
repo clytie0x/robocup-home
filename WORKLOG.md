@@ -1,5 +1,50 @@
 # WORKLOG
 
+## Robot base plan (2026-11-07)
+
+PR 28 is merged at `ef0febbe56d2ac043f636e6bd229d68c2868da3d`. This branch is `cursor/robot-base-kinematic-bf93`, cut from that merge. It is the base slice of stage 3. It is not a finished robot, not dynamics, not a mission, and not an application. Camera depth, wheels, mass, the caster, and the arm stay out. No sanctioned Issue tool is available. That limit stays as already recorded.
+
+The sources read before this plan, and not copied into git, are `pi-drive/robot3d/README.md`, `robot.urdf`, `robot.json`, `sensors.json`, `footprint.json`, and `pi_config/robot.json`. The summary numbers were checked against those files.
+
+| item | value | kind | source |
+| --- | --- | --- | --- |
+| `base_link` | wheel-midpoint name, floor, x forward, y left, z up, metres | model frame | robot3d README. The wheels themselves are not in the model |
+| layers 1 and 2 plan | octagon, front and rear 0.20 m, half width 0.20 m, corner cut 0.04 m, front face 0.32 m | configured | `pi_config/robot.json` footprint and `footprint.json`. The same eight vertices are in `robot.json` |
+| circumscribed radius | `hypot(0.20, 0.16)` m, printed 0.2561 | derived | `footprint.json` |
+| layer 1 underside | 0.030 m | measured | robot3d README, tape, assuming layer 1 is the lowest plate |
+| layer 1 and 2 thickness | 0.002 m | assumed | robot3d `unknown` list, not a tape reading |
+| layer 1 centre z | 0.031 m | derived | underside plus half the assumed thickness. Matches `robot.json` xyz |
+| facing gap, layer 3 underside above layer 1 top | 0.21 m | measured | robot3d README, tape between facing surfaces |
+| layer 3 underside | 0.242 m | derived | layer 1 top 0.032 m plus the 0.21 m tape gap |
+| layer 3 thickness | 0.003 m | assumed | photos, robot3d `unknown` list |
+| layer 3 centre z | 0.2435 m | derived | underside plus half the assumed thickness. Matches `robot.json` xyz |
+| layer 3 corner cut | 0.05 m | inferred | photos. Vertices use 0.20 m minus that cut |
+| layer 2 top | 0.122 m | derived | README: 0.12 m tape below the layer 3 underside. The 9 cm gap over layer 1 is derived, not taped |
+| layer 2 centre z | 0.121 m | derived | top minus half the assumed thickness |
+| lidar xyz | (0.175, 0, 0.22) m | configured | `pi_config/robot.json`. `sensors.json` repeats it. Not a second measurement and not an installed lever arm |
+| measured front | 178.7 deg | measured | `lidar.py` and `sensors.json`. URDF `lidar_link` rpy z is 3.1189 rad, the same angle |
+| configured front | 183.5 deg | configured | `pi_config/robot.json` `lidar.yaw_deg` |
+| lidar head radius 0.028 m and height 0.04 m | placeholder | assumed | photos. Not a collision solid |
+| camera xyz and 6.7 deg | recorded, not modelled here | measured pose, later slice | `sensors.json`. Configured camera z is 0.27 m and pitch 0. This slice does not cast depth |
+| half track 0.155 m | not used | driver constant | robot3d README. Not a measured wheel |
+| wheel radius, mass, friction, caster, arm mount, calibration | unknown | unknown | README omitted list and the arm note. No value is invented |
+| motion 0.15 m/s and 15 deg/s | not a clamp | configured | `pi_config/robot.json` motion. This slice does not apply it as a motor model |
+| `ROBOT_RADIUS_MM` 250 | planner disk at the scan origin | assumed | navigation. Not the base centre and not chassis clearance |
+
+Collision solids are the three plate prisms only. The lidar head is a dashed non-collision placeholder. The camera, wheels, caster, standoffs, and arm are omitted. Plate z intervals are the derived slabs above: layer 1 is z 0.030–0.032 m, layer 2 is z 0.120–0.122 m, layer 3 is z 0.242–0.245 m.
+
+Frames. World and `base_link` share the axis directions. A base pose is `(x, y, yaw)` of `base_link` on the floor. The sensor translation is the configured xyz in `base_link`. Bearing 0 for the measured profile is `base_link` +x. The URDF yaw 178.7 deg is the raw-angle zero already consumed by `frame_sample`. It is not added again. Bearing 0 for the configured profile is 4.8 deg off `base_link` +x, the named disagreement. `frame_sample` output stays in the scan frame. A `Move` is a translation of that scan frame. The rigid base takes the same translation. The adapter does not add or subtract 0.175 m.
+
+Kinematics, not dynamics. One call may translate at most 1.0 m and yaw at most 90 deg. A larger or non-finite request is rejected and the pose stays. Those caps are not the configured 0.15 m/s and not a motor limit. Translation uses the convex hull of the plate at the start and the end, so a thin wall between two clear poses is a block. Yaw is sampled every 5 deg, and each sample is padded by 0.5 mm. That pad is the stated bound on the short arc, not a clearance measurement. Interior overlap at the start is `overlap`. A shared boundary with no interior is `contact`. Either blocks the step. A sweep that meets a solid on the way is `sweep`. The pose does not change on a block or a reject. Removing the solid lets the same step through. A step that never meets a plate is accepted, including a solid that sits in a vertical gap. The 250 mm disk is not the test.
+
+The policy sees posted scan points only. A low solid below z 0.22 m can block the body and still be absent from the scan. `plan_follow` is not given that solid. `sent` stays false. No command text is produced.
+
+Pictures reuse the scene tick strokes. Top and side are equal-metre views of the plates, the sensor point, one low solid, and the rays. The oblique view uses per-axis metre ticks and says the cabinet scale is not one scale. A pose plot shows attempted and accepted x against the step index. The index is not a measured clock.
+
+Tests, written to fail before the functions exist: plate z and the top-plate corner from the literals above; measured ray range `(1 - 0.175) / 1` against a wall at x 1 m, and the configured ray not equal to it; a downward ray hits a plate and a level ray does not; a gap solid misses and a solid in the layer 1 slab hits; a rear solid outside the 250 mm disk still blocks; a 0.80 m step whose ends are clear of a thin wall is blocked, and the same step is accepted after the wall is removed; a 90 deg yaw into a corner is blocked while both end poses are clear; 120 deg and a non-finite step are rejected rather than clamped; grazing the front face is contact; the low solid is missing from the posted view while the body step is blocked. The static scene tests and the capture hashes stay as they are. Section 3.1 stays 45 pass and 11 not-run.
+
+This plan commit has no geometry code. The red command is recorded with the implementation.
+
 ## Static scene tick strokes (2026-11-07)
 
 Reviewed head `3a1505277dedb4291fecde99193c0b6f7a6ab0f1`. The remaining drawing defect was in `plane_axes`. A scan number was placed at `protect_m * scale + 16` above the axis, about 102 px, and the picture had no tick stroke. Top and oblique numbers that stepped off the rays had no leader. Anchor-to-anchor spacing still passed if every number moved by the same extra 200 px. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged.
