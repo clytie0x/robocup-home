@@ -10,7 +10,7 @@ From the repository root, with the pinned toolchain:
 cargo run -p physical --bin robot-base --locked --offline -- --out OUT
 ```
 
-`OUT` is a directory. The program creates it. Exit 0 writes `model.csv`, `trace.csv`, `top.svg`, `side.svg`, `oblique.svg`, and `pose.svg`. Exit 2 is a usage error. Exit 1 is a cast or write error. Nothing is read from a capture and nothing is sent.
+`OUT` is a directory. The program creates it. Exit 0 writes `model.csv`, `trace.csv`, `top.svg`, `side.svg`, `oblique.svg`, `pose.svg`, and `sweep.svg`. Exit 2 is a usage error. Exit 1 is a cast or write error. Nothing is read from a capture and nothing is sent.
 
 ## What was taken from the robot files
 
@@ -28,9 +28,9 @@ A base pose is the `(x, y, yaw)` of `base_link` on the floor. Yaw is countercloc
 
 ## Collision
 
-A step may translate at most 1.0 m and yaw at most 90 deg. A longer step, or a non-finite step, is rejected and the pose stays. Those caps are not the configured 0.15 m/s and 15 deg/s, and they are not a motor limit. A straight move uses the convex hull of each plate at the start and at the end, so a thin wall between two clear poses is a block. A yaw is sampled every 5 deg and each sample is padded by 0.5 mm. That pad bounds the short arc. It is not a measured clearance.
+A step may translate at most 1.0 m and yaw at most 90 deg. A longer step, or a non-finite step, is rejected and the pose stays. Those caps are not the configured 0.15 m/s and 15 deg/s, and they are not a motor limit. The origin moves in a straight line and the yaw changes linearly with the same parameter. Every supported step, including a tiny yaw, uses one test. The convex hull of a plate at the two ends contains the straight chords of its vertices. A vertex of radius `r` and yaw change `δ` stays within `r (1 - cos(|δ| / 2))` of its chord, because the arc is at most 90 deg. The whole plate stays inside that neighbourhood of the hull. The check expands each obstacle by that distance in x and in y. That square contains the disk, so a hit inside the disk is not missed. A diagonal can also block a point as far as `√2` times the sagitta. That extra band is a false block, not a clearance. It is not mass, torque, or slip. A fixed 0.5 mm pad does not replace the sagitta: at 90 deg the footprint sagitta is about 75 mm.
 
-Interior overlap at the start is `overlap`. A shared boundary with no interior is `contact`. Either blocks the step. A later meeting is `sweep`, including a yaw whose end poses are clear while a middle angle is not. The pose does not change. Removing the solid lets the same step through. A solid in the vertical gap between plates does not block. A solid behind the base can block the plates while lying outside the 250 mm disk around the sensor. `sent` stays false. No command text is produced.
+Interior overlap at the start is `overlap`. A shared boundary with no interior is `contact`. Either blocks the step. A later meeting is `sweep`, including a thin wall between two clear poses and a yaw whose end poses are clear while a middle angle is not. The pose does not change. Removing the solid lets the same step through. A solid in the vertical gap between plates does not block. A solid behind the base can block the plates while lying outside the 250 mm disk around the sensor. `sent` stays false. No command text is produced.
 
 ## What the controller sees
 
@@ -38,11 +38,11 @@ The cycle casts rays, encodes them as lidar packets, parses those packets, and p
 
 ## Pictures
 
-`top.svg` and `side.svg` use one equal metre scale and the same tick strokes as the static scene. `oblique.svg` puts metre ticks on each world axis and says the cabinet projection is not one screen scale. The dashed head is the assumed placeholder. The blue outline on the top view is the attempted step that was not accepted. The red rays are misses: they cross the low box in the top view and pass above it in the side view. `pose.svg` plots attempted and accepted x against the step index. The index is not a measured clock.
+`top.svg` and `side.svg` use one equal metre scale and the same tick strokes as the static scene. `oblique.svg` puts metre ticks on each world axis and says the cabinet projection is not one screen scale. The dashed head is the assumed placeholder. The blue outline on the top view is the attempted step that was not accepted. The red rays are misses: they cross the low box in the top view and pass above it in the side view. `pose.svg` plots attempted and accepted x as marks on the step index. The index is not a measured clock, and nothing is drawn between the marks. `sweep.svg` shows the 0.80 m, 5 deg ends with the thin wall between them, and points at the 3 mm corner chip. The chip is smaller than the line width at that scale.
 
 ## What this does not claim
 
-No wheel, no mass, no friction, no slip, and no physical clearance. The 0.5 mm yaw pad is a bound, not a measurement. The arm is not modelled. Grasp stays not validated. Camera depth is not cast. Section 3.1 stays 45 pass and 11 not-run. This run does not close stages 4 through 7.
+No wheel, no mass, no friction, no slip, and no physical clearance. The sagitta is a geometric bound on this parameterisation, not a measurement and not a dynamics model. The arm is not modelled. Grasp stays not validated. Camera depth is not cast. Section 3.1 stays 45 pass and 11 not-run. This run does not close stages 4 through 7.
 
 ## Decisions
 

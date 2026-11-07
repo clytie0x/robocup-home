@@ -2,8 +2,9 @@
 //!
 //! Plate plan views come from the configured footprint. Plate heights come from
 //! the taped gaps plus the assumed thicknesses. The lidar xyz is the configured
-//! pose, not an installed lever arm. A step is a rigid translation and yaw. It
-//! is not a motor model. `sent` stays false.
+//! pose, not an installed lever arm. A step is a rigid translation and yaw. The
+//! plate stays inside the convex hull of its ends, expanded by the arc sagitta.
+//! It is not a motor model. `sent` stays false.
 
 use domain::{Mm, Point};
 use navigation::{Intent, SampleHistory};
@@ -21,8 +22,6 @@ use crate::scene::{
 
 pub const MAX_STEP_M: f64 = 1.0;
 pub const MAX_YAW_DEG: f64 = 90.0;
-const YAW_SAMPLE_DEG: f64 = 5.0;
-const ROTATION_PAD_M: f64 = 0.0005;
 const CONTACT_EPS_M: f64 = 1e-9;
 
 const TOP_XY: [(f64, f64); 8] = [
@@ -129,6 +128,7 @@ pub struct BaseViews {
     pub side_svg: String,
     pub oblique_svg: String,
     pub pose_svg: String,
+    pub sweep_svg: String,
 }
 
 struct MountSpec {
@@ -252,56 +252,27 @@ pub fn integrate(
         return stay(pose, start);
     }
     let end = shifted(pose, dx_base_m, dy_base_m, dyaw_deg);
-    if dyaw_deg.abs() <= CONTACT_EPS_M {
-        if chord <= CONTACT_EPS_M {
-            return Attempt {
-                pose: end,
-                hit: BodyHit::Clear,
-                sent: false,
-            };
-        }
-        for plate in &collision_plates() {
-            let mut points = placed(pose, plate.polygon_xy_m);
-            points.extend(placed(end, plate.polygon_xy_m));
-            let swept = hull(&points);
-            if let Some(obstacle) = first_touch(plate, &swept, obstacles, 0.0) {
-                return stay(
-                    pose,
-                    BodyHit::Blocked {
-                        reason: BlockReason::Sweep,
-                        plate: plate.name,
-                        obstacle,
-                    },
-                );
-            }
-        }
+    if chord <= CONTACT_EPS_M && dyaw_deg.abs() <= CONTACT_EPS_M {
         return Attempt {
             pose: end,
             hit: BodyHit::Clear,
             sent: false,
         };
     }
-    let steps = (dyaw_deg.abs() / YAW_SAMPLE_DEG).ceil().max(1.0) as i32;
-    for step in 0..=steps {
-        let fraction = f64::from(step) / f64::from(steps);
-        let sample = shifted(
-            pose,
-            dx_base_m * fraction,
-            dy_base_m * fraction,
-            dyaw_deg * fraction,
-        );
-        for plate in &collision_plates() {
-            let polygon = placed(sample, plate.polygon_xy_m);
-            if let Some(obstacle) = first_touch(plate, &polygon, obstacles, ROTATION_PAD_M) {
-                return stay(
-                    pose,
-                    BodyHit::Blocked {
-                        reason: BlockReason::Sweep,
-                        plate: plate.name,
-                        obstacle,
-                    },
-                );
-            }
+    for plate in &collision_plates() {
+        let mut points = placed(pose, plate.polygon_xy_m);
+        points.extend(placed(end, plate.polygon_xy_m));
+        let swept = hull(&points);
+        let bound = sagitta_m(plate_radius_m(plate.polygon_xy_m), dyaw_deg);
+        if let Some(obstacle) = first_touch(plate, &swept, obstacles, bound) {
+            return stay(
+                pose,
+                BodyHit::Blocked {
+                    reason: BlockReason::Sweep,
+                    plate: plate.name,
+                    obstacle,
+                },
+            );
         }
     }
     Attempt {
@@ -495,6 +466,7 @@ pub fn demo_views() -> Result<BaseViews, SceneError> {
         side_svg: draw_side(&low),
         oblique_svg: draw_oblique(&low),
         pose_svg: draw_pose(&rows),
+        sweep_svg: draw_sweep(),
     })
 }
 
@@ -572,6 +544,18 @@ fn mount_spec(profile_id: &str) -> Result<MountSpec, SceneError> {
         ray_yaw_deg,
         provenance: "xyz is pi robot.json lidar x_m y_m z_m, configured, not an installed lever. Bearing 0 for the measured profile is base +x. The configured profile adds the 4.8 deg disagreement. The URDF yaw is the raw-angle zero and is not applied again.",
     })
+}
+
+fn sagitta_m(radius_m: f64, yaw_deg: f64) -> f64 {
+    // `1 - cos(half)` loses the tiny-yaw bound in f64. `2 sin^2(half/2)` does not.
+    let quarter = yaw_deg.abs().to_radians() * 0.25;
+    radius_m * 2.0 * quarter.sin().powi(2)
+}
+
+fn plate_radius_m(polygon: &[(f64, f64)]) -> f64 {
+    polygon
+        .iter()
+        .fold(0.0, |best, (x, y)| best.max(x.hypot(*y)))
 }
 
 fn pose_finite(pose: BasePose) -> bool {
@@ -922,7 +906,7 @@ fn draw_top(low: &Aabb, dx: f64) -> String {
     let mut body =
         svg_header("Base top-down, metres. Origin is base_link, not the sensor. Equal scale.");
     body.push_str("<text x=\"24\" y=\"96\" font-size=\"12\">Plates are the configured octagon. Layer 3 has the 0.05 m photo corner cut. The dashed head is assumed and is not collision.</text>");
-    body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">The red rays cross the low-box footprint. The side view shows those rays above the box. The blue outline is the attempted step, which was not accepted.</text>");
+    body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">The red rays miss the low box. The blue outline was not accepted. Wheels, caster, arm, standoffs, and mass are omitted.</text>");
     body.push_str("<text x=\"24\" y=\"136\" font-size=\"12\">Lidar xyz (0.175, 0, 0.22) m is configured. It is not an installed lever arm. The 250 mm disk is not drawn as chassis clearance.</text>");
     body.push_str(&axes);
     body.push_str(&paint_ring(
@@ -1154,6 +1138,95 @@ fn draw_oblique(low: &Aabb) -> String {
     body
 }
 
+fn draw_sweep() -> String {
+    let start = BasePose {
+        x_m: 0.0,
+        y_m: 0.0,
+        yaw_deg: 0.0,
+    };
+    let end = shifted(start, 0.80, 0.0, 5.0);
+    let wall = demo_wall();
+    let mut cloud = Vec::new();
+    cloud.extend(placed(start, &FOOTPRINT_XY_M));
+    cloud.extend(placed(end, &FOOTPRINT_XY_M));
+    cloud.push((wall.min.x, wall.min.y));
+    cloud.push((wall.max.x, wall.max.y));
+    cloud.push((0.1943, 0.1699));
+    let plane = fit_plane(&cloud, 70.0, 188.0, 900.0, 430.0);
+    let mut geometry = Vec::new();
+    geometry.extend(ring(&plane, &placed(start, &FOOTPRINT_XY_M)));
+    geometry.extend(ring(&plane, &placed(end, &FOOTPRINT_XY_M)));
+    geometry.extend(box_ring(
+        &plane, wall.min.x, wall.max.x, wall.min.y, wall.max.y,
+    ));
+    geometry.push((plane.screen(0.70, 0.04), plane.screen(1.08, 0.04)));
+    geometry.push((plane.screen(0.70, -0.04), plane.screen(1.08, -0.04)));
+    let (axes, _) = plane_axes(
+        &plane,
+        ("world x", "world y", "x", "y"),
+        &cloud,
+        0.0,
+        &geometry,
+    );
+    let mut body =
+        svg_header("Continuous sweep. The thin wall sits between two clear poses. Equal metres.");
+    body.push_str("<text x=\"24\" y=\"96\" font-size=\"12\">Black is the start. Blue is 0.80 m and 5 deg later. Both miss the thin wall. The step is blocked as sweep.</text>");
+    body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">Yaw 0 and yaw 5 deg use one hull. The corner chip is 3 mm at (0.1943, 0.1699) m: clear at the ends, overlap at 2.5 deg.</text>");
+    body.push_str("<text x=\"24\" y=\"136\" font-size=\"12\">The bound is the arc sagitta. Wheels, caster, arm, standoffs, and mass are omitted.</text>");
+    body.push_str(&axes);
+    body.push_str(&paint_ring(
+        &plane,
+        &placed(start, &FOOTPRINT_XY_M),
+        "#222222",
+        "",
+    ));
+    body.push_str(&paint_ring(
+        &plane,
+        &placed(end, &FOOTPRINT_XY_M),
+        "#1f4e79",
+        "stroke-dasharray=\"5 4\"",
+    ));
+    body.push_str(&paint_ring_rect(&plane, &wall, "#c0392b"));
+    let chip = plane.screen(0.1943, 0.1699);
+    let wall_mid = plane.screen(0.32, 0.0);
+    let chip_label = (chip.0 + 28.0, chip.1 - 36.0);
+    let wall_label = (wall_mid.0 + 28.0, wall_mid.1 - 52.0);
+    body.push_str(&format!(
+        "<circle data-geom=\"1\" cx=\"{:.1}\" cy=\"{:.1}\" r=\"3.2\" fill=\"#c0392b\"/><line data-leader=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#c0392b\" stroke-width=\"0.8\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">corner chip</text>",
+        chip.0, chip.1, chip.0, chip.1, chip_label.0, chip_label.1, chip_label.0, chip_label.1
+    ));
+    body.push_str(&format!(
+        "<line data-leader=\"1\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#c0392b\" stroke-width=\"0.8\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">thin wall</text>",
+        wall_mid.0, wall_mid.1, wall_label.0, wall_label.1, wall_label.0, wall_label.1
+    ));
+    body.push_str(&swatches(
+        &[
+            ("#222222", "start pose"),
+            ("#1f4e79", "end pose, not accepted"),
+            ("#c0392b", "thin wall and corner chip"),
+        ],
+        676.0,
+    ));
+    body.push_str("</svg>");
+    body
+}
+
+fn demo_wall() -> Aabb {
+    Aabb {
+        name: "thin",
+        min: Vec3 {
+            x: 0.30,
+            y: -0.05,
+            z: 0.025,
+        },
+        max: Vec3 {
+            x: 0.34,
+            y: 0.05,
+            z: 0.035,
+        },
+    }
+}
+
 fn draw_pose(rows: &[TraceRow]) -> String {
     let mut cloud = Vec::new();
     for row in rows {
@@ -1169,10 +1242,10 @@ fn draw_pose(rows: &[TraceRow]) -> String {
         &[],
     );
     let mut body = svg_header(
-        "Attempted and accepted base x. The index is a kinematic step, not a measured clock.",
+        "Attempted and accepted base x. Marks are recorded steps, not a clock and not a path.",
     );
-    body.push_str("<text x=\"24\" y=\"96\" font-size=\"12\">Step 0 is the sensor cycle: no person, so the policy is Lost and the base stays. Step 1 attempts a 0.20 m Move into the low box and is rejected.</text>");
-    body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">Step 2 is the same Move after the box is removed. The cap of 1 m and 90 deg is not the configured 0.15 m/s motor limit. sent stays false.</text>");
+    body.push_str("<text x=\"24\" y=\"96\" font-size=\"12\">Step 0 is the sensor cycle: no person, so the policy is Lost and the base stays. Step 1 attempts a 0.20 m Move into the low box and is blocked as sweep.</text>");
+    body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">Step 2 is the same Move after the box is removed. The cap of 1 m and 90 deg is not the configured 0.15 m/s motor limit. sent stays false. No line joins the marks.</text>");
     body.push_str(&axes);
     body.push_str(&series(&plane, rows, true, "#1f4e79"));
     body.push_str(&series(&plane, rows, false, "#c0392b"));
@@ -1186,7 +1259,6 @@ fn draw_pose(rows: &[TraceRow]) -> String {
 
 fn series(plane: &Plane, rows: &[TraceRow], attempted: bool, color: &str) -> String {
     let mut body = String::new();
-    let mut previous: Option<(f64, f64)> = None;
     for row in rows {
         let x = if attempted {
             row.attempted_x_m
@@ -1194,17 +1266,10 @@ fn series(plane: &Plane, rows: &[TraceRow], attempted: bool, color: &str) -> Str
             row.accepted_x_m
         };
         let point = plane.screen(f64::from(row.index), x);
-        if let Some(from) = previous {
-            body.push_str(&format!(
-                "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{color}\" stroke-width=\"1.6\"/>",
-                from.0, from.1, point.0, point.1
-            ));
-        }
         body.push_str(&format!(
-            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"3.5\" fill=\"{color}\"/>",
+            "<circle data-step-mark=\"1\" cx=\"{:.1}\" cy=\"{:.1}\" r=\"3.5\" fill=\"{color}\"/>",
             point.0, point.1
         ));
-        previous = Some(point);
     }
     body
 }
@@ -1788,6 +1853,431 @@ mod tests {
         assert!((cx - (0.2 - 0.175)).abs() > 1e-3);
     }
 
+    fn rigid_at(x: f64, y: f64, yaw: f64, dx: f64, dy: f64, dyaw: f64) -> super::BasePose {
+        let rad = yaw.to_radians();
+        super::BasePose {
+            x_m: x + dx * rad.cos() - dy * rad.sin(),
+            y_m: y + dx * rad.sin() + dy * rad.cos(),
+            yaw_deg: yaw + dyaw,
+        }
+    }
+
+    fn thin_wall() -> Aabb {
+        solid(
+            "thin",
+            Vec3 {
+                x: 0.30,
+                y: -0.05,
+                z: 0.025,
+            },
+            Vec3 {
+                x: 0.34,
+                y: 0.05,
+                z: 0.035,
+            },
+        )
+    }
+
+    fn corner_chip() -> Aabb {
+        solid(
+            "chip",
+            Vec3 {
+                x: 0.1943 - 0.0015,
+                y: 0.1699 - 0.0015,
+                z: 0.025,
+            },
+            Vec3 {
+                x: 0.1943 + 0.0015,
+                y: 0.1699 + 0.0015,
+                z: 0.035,
+            },
+        )
+    }
+
+    fn assert_sweep_stays(step: super::Attempt, start: super::BasePose) {
+        assert!(
+            (step.pose.x_m - start.x_m).abs() < 1e-12,
+            "x {} stayed {}",
+            step.pose.x_m,
+            start.x_m
+        );
+        assert!(
+            (step.pose.y_m - start.y_m).abs() < 1e-12,
+            "y {}",
+            step.pose.y_m
+        );
+        assert!(
+            (step.pose.yaw_deg - start.yaw_deg).abs() < 1e-12,
+            "yaw {} wanted {}",
+            step.pose.yaw_deg,
+            start.yaw_deg
+        );
+        assert!(!step.sent);
+        match step.hit {
+            BodyHit::Blocked {
+                reason: BlockReason::Sweep,
+                ..
+            } => {}
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_thin_wall_blocks_through_the_yaw_threshold() {
+        let wall = thin_wall();
+        let start = pose(0.0, 0.0, 0.0);
+        let yaws = [
+            0.0, 1e-9, -1e-9, 2e-9, -2e-9, 1e-6, -1e-6, 0.01, -0.01, 5.0, -5.0, 10.0, -10.0,
+        ];
+        for yaw in yaws {
+            let mid = rigid_at(0.0, 0.0, 0.0, 0.12, 0.0, yaw * 0.15);
+            assert!(
+                matches!(
+                    resting_contact(mid, &[wall]),
+                    BodyHit::Blocked {
+                        reason: BlockReason::Overlap | BlockReason::Contact,
+                        ..
+                    }
+                ),
+                "oracle yaw {yaw}"
+            );
+            let step = integrate(start, 0.80, 0.0, yaw, &[wall]);
+            assert_sweep_stays(step, start);
+            let open = integrate(start, 0.80, 0.0, yaw, &[]);
+            assert!((open.pose.x_m - 0.80).abs() < 1e-9, "{yaw}");
+            assert!((open.pose.yaw_deg - yaw).abs() < 1e-9, "{yaw}");
+            assert!(matches!(open.hit, BodyHit::Clear));
+        }
+    }
+
+    #[test]
+    fn a_pure_turn_through_the_corner_chip_is_blocked() {
+        let chip = corner_chip();
+        let start = pose(0.0, 0.0, 0.0);
+        assert!(matches!(resting_contact(start, &[chip]), BodyHit::Clear));
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, 5.0), &[chip]),
+            BodyHit::Clear
+        ));
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, 10.0), &[chip]),
+            BodyHit::Clear
+        ));
+        match resting_contact(pose(0.0, 0.0, 2.5), &[chip]) {
+            BodyHit::Blocked {
+                reason: BlockReason::Overlap,
+                plate,
+                obstacle,
+            } => {
+                assert_eq!(plate, "chassis_bottom");
+                assert_eq!(obstacle, "chip");
+            }
+            other => panic!("oracle {other:?}"),
+        }
+        for yaw in [5.0_f64, 10.0] {
+            assert_sweep_stays(integrate(start, 0.0, 0.0, yaw, &[chip]), start);
+        }
+        let mirrored = solid(
+            "chip",
+            Vec3 {
+                x: 0.1943 - 0.0015,
+                y: -0.1699 - 0.0015,
+                z: 0.025,
+            },
+            Vec3 {
+                x: 0.1943 + 0.0015,
+                y: -0.1699 + 0.0015,
+                z: 0.035,
+            },
+        );
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, -2.5), &[mirrored]),
+            BodyHit::Blocked { .. }
+        ));
+        assert_sweep_stays(integrate(start, 0.0, 0.0, -5.0, &[mirrored]), start);
+    }
+
+    #[test]
+    fn a_vertex_bulge_past_half_a_millimetre_still_blocks() {
+        let radius = (0.20_f64).hypot(0.16);
+        let yaw = 12.0_f64;
+        let beta = 0.16_f64.atan2(0.20);
+        let mid = beta + yaw.to_radians() / 2.0;
+        let along = radius * (yaw.to_radians() / 2.0).cos();
+        let reach = radius;
+        let center = along + 0.00085;
+        let half = 0.00004;
+        assert!(center - half * std::f64::consts::SQRT_2 - along > 0.0005);
+        assert!(center + half * std::f64::consts::SQRT_2 < reach);
+        let (ux, uy) = (mid.cos(), mid.sin());
+        let bulge = solid(
+            "bulge",
+            Vec3 {
+                x: center * ux - half,
+                y: center * uy - half,
+                z: 0.025,
+            },
+            Vec3 {
+                x: center * ux + half,
+                y: center * uy + half,
+                z: 0.035,
+            },
+        );
+        let support = |yaw_deg: f64| -> f64 {
+            collision_plates()
+                .iter()
+                .find(|plate| plate.name == "chassis_bottom")
+                .unwrap()
+                .polygon_xy_m
+                .iter()
+                .map(|(x, y)| {
+                    let rad = yaw_deg.to_radians();
+                    let wx = x * rad.cos() - y * rad.sin();
+                    let wy = x * rad.sin() + y * rad.cos();
+                    wx * ux + wy * uy
+                })
+                .fold(f64::NEG_INFINITY, f64::max)
+        };
+        let hull_support = support(0.0).max(support(yaw));
+        let box_inner = [bulge.min.x, bulge.max.x]
+            .into_iter()
+            .flat_map(|x| [bulge.min.y, bulge.max.y].map(|y| x * ux + y * uy))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            box_inner - hull_support > 0.0005,
+            "gap {}",
+            box_inner - hull_support
+        );
+        let sagitta = radius * (1.0 - (yaw.to_radians() / 2.0).cos());
+        assert!(box_inner - hull_support < sagitta);
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, 0.0), &[bulge]),
+            BodyHit::Clear
+        ));
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, yaw), &[bulge]),
+            BodyHit::Clear
+        ));
+        assert!(matches!(
+            resting_contact(pose(0.0, 0.0, yaw / 2.0), &[bulge]),
+            BodyHit::Blocked { .. }
+        ));
+        assert_sweep_stays(
+            integrate(pose(0.0, 0.0, 0.0), 0.0, 0.0, yaw, &[bulge]),
+            pose(0.0, 0.0, 0.0),
+        );
+        let clear_of_bound = solid(
+            "past",
+            Vec3 {
+                x: radius + sagitta + 0.05,
+                y: -0.02,
+                z: 0.025,
+            },
+            Vec3 {
+                x: radius + sagitta + 0.08,
+                y: 0.02,
+                z: 0.035,
+            },
+        );
+        let free = integrate(pose(0.0, 0.0, 0.0), 0.0, 0.0, yaw, &[clear_of_bound]);
+        assert!(matches!(free.hit, BodyHit::Clear));
+        assert!((free.pose.yaw_deg - yaw).abs() < 1e-12);
+    }
+
+    #[test]
+    fn translation_with_yaw_blocks_off_the_axis_and_in_a_gap() {
+        let wall = thin_wall();
+        let start = pose(0.0, 0.0, 0.0);
+        let mid = rigid_at(0.0, 0.0, 0.0, 0.24, 0.08, 2.0);
+        let diagonal = solid(
+            "diag",
+            Vec3 {
+                x: 0.36,
+                y: 0.04,
+                z: 0.025,
+            },
+            Vec3 {
+                x: 0.42,
+                y: 0.12,
+                z: 0.035,
+            },
+        );
+        assert!(matches!(
+            resting_contact(mid, &[diagonal]),
+            BodyHit::Blocked { .. }
+        ));
+        assert_sweep_stays(integrate(start, 0.60, 0.20, 5.0, &[diagonal]), start);
+        let turned = pose(0.0, 0.0, -30.0);
+        let heading = (-30.0_f64).to_radians();
+        let forward = (heading.cos(), heading.sin());
+        let left = (-forward.1, forward.0);
+        let at = |distance: f64, side: f64| Vec3 {
+            x: distance * forward.0 + side * left.0,
+            y: distance * forward.1 + side * left.1,
+            z: 0.03,
+        };
+        let near = at(0.30, -0.04);
+        let far = at(0.34, 0.04);
+        let angled = solid(
+            "angled",
+            Vec3 {
+                x: near.x.min(far.x),
+                y: near.y.min(far.y),
+                z: 0.025,
+            },
+            Vec3 {
+                x: near.x.max(far.x),
+                y: near.y.max(far.y),
+                z: 0.035,
+            },
+        );
+        let crossed = rigid_at(0.0, 0.0, -30.0, 0.12, 0.0, 0.0);
+        assert!(matches!(
+            resting_contact(crossed, &[angled]),
+            BodyHit::Blocked { .. }
+        ));
+        assert_sweep_stays(integrate(turned, 0.80, 0.0, -4.0, &[angled]), turned);
+        assert_sweep_stays(
+            integrate(
+                pose(0.0, 0.0, 90.0),
+                0.80,
+                0.0,
+                3.0,
+                &[solid(
+                    "side",
+                    Vec3 {
+                        x: -0.05,
+                        y: 0.30,
+                        z: 0.025,
+                    },
+                    Vec3 {
+                        x: 0.05,
+                        y: 0.34,
+                        z: 0.035,
+                    },
+                )],
+            ),
+            pose(0.0, 0.0, 90.0),
+        );
+        let gap = solid(
+            "gap-wall",
+            Vec3 {
+                x: wall.min.x,
+                y: wall.min.y,
+                z: 0.05,
+            },
+            Vec3 {
+                x: wall.max.x,
+                y: wall.max.y,
+                z: 0.10,
+            },
+        );
+        let through = integrate(start, 0.80, 0.0, 5.0, &[gap]);
+        assert!(matches!(through.hit, BodyHit::Clear));
+        assert!((through.pose.x_m - 0.80).abs() < 1e-12);
+        let face = solid(
+            "face",
+            Vec3 {
+                x: 0.20,
+                y: -0.05,
+                z: 0.025,
+            },
+            Vec3 {
+                x: 0.30,
+                y: 0.05,
+                z: 0.035,
+            },
+        );
+        let held = integrate(start, 0.20, 0.0, 5.0, &[face]);
+        assert!(matches!(
+            held.hit,
+            BodyHit::Blocked {
+                reason: BlockReason::Contact,
+                ..
+            }
+        ));
+        assert!(held.pose.x_m.abs() < 1e-12);
+        let buried = integrate(
+            start,
+            0.20,
+            0.0,
+            0.0,
+            &[solid(
+                "slab",
+                Vec3 {
+                    x: -0.05,
+                    y: -0.05,
+                    z: 0.025,
+                },
+                Vec3 {
+                    x: 0.05,
+                    y: 0.05,
+                    z: 0.035,
+                },
+            )],
+        );
+        assert!(matches!(
+            buried.hit,
+            BodyHit::Blocked {
+                reason: BlockReason::Overlap,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn the_largest_supported_step_is_accepted_and_past_it_is_rejected() {
+        let full = integrate(pose(0.0, 0.0, 0.0), 1.0, 0.0, 90.0, &[]);
+        assert!(matches!(full.hit, BodyHit::Clear));
+        assert!((full.pose.x_m - 1.0).abs() < 1e-12);
+        assert!((full.pose.yaw_deg - 90.0).abs() < 1e-12);
+        assert!(!full.sent);
+        let back = integrate(pose(0.2, -0.1, 15.0), -1.0, 0.0, -90.0, &[]);
+        assert!(matches!(back.hit, BodyHit::Clear));
+        assert!((back.pose.yaw_deg - (-75.0)).abs() < 1e-12);
+        let too_far = integrate(pose(0.0, 0.0, 0.0), 1.0 + 1e-9, 0.0, 0.0, &[]);
+        assert!(matches!(
+            too_far.hit,
+            BodyHit::Rejected {
+                fault: StepFault::Oversize
+            }
+        ));
+        assert!(too_far.pose.x_m.abs() < 1e-12);
+        let too_much_yaw = integrate(pose(0.0, 0.0, 0.0), 0.0, 0.0, -90.0 - 1e-9, &[]);
+        assert!(matches!(
+            too_much_yaw.hit,
+            BodyHit::Rejected {
+                fault: StepFault::Oversize
+            }
+        ));
+        let bad_pose = integrate(pose(0.0, f64::INFINITY, 0.0), 0.1, 0.0, 0.0, &[]);
+        assert!(matches!(
+            bad_pose.hit,
+            BodyHit::Rejected {
+                fault: StepFault::NonFinite
+            }
+        ));
+        let bad_box = solid(
+            "bad",
+            Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: f64::NAN,
+            },
+            Vec3 {
+                x: 0.1,
+                y: 0.1,
+                z: 0.1,
+            },
+        );
+        assert!(matches!(
+            integrate(pose(0.0, 0.0, 0.0), 0.1, 0.0, 1.0, &[bad_box]).hit,
+            BodyHit::Rejected {
+                fault: StepFault::NonFinite
+            }
+        ));
+    }
+
     #[test]
     fn the_demo_trace_rejects_the_low_box_and_accepts_after_removal() {
         let views = super::demo_views().unwrap();
@@ -1800,5 +2290,17 @@ mod tests {
         assert!(views.side_svg.contains("data-axis-line"));
         assert!(views.oblique_svg.contains("world z"));
         assert!(views.pose_svg.contains("data-axis-tick"));
+        assert!(views.pose_svg.contains("data-step-mark"));
+        assert!(!views.pose_svg.contains("data-step-line"));
+        assert!(views.pose_svg.contains("blocked as sweep"));
+        assert!(
+            views
+                .top_svg
+                .contains("Wheels, caster, arm, standoffs, and mass are omitted")
+        );
+        assert!(views.sweep_svg.contains("data-tick-stroke"));
+        assert!(views.sweep_svg.contains("thin wall"));
+        assert!(views.sweep_svg.contains("corner chip"));
+        assert!(views.sweep_svg.contains("data-leader"));
     }
 }

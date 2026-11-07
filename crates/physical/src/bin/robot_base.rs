@@ -45,6 +45,7 @@ fn write(dir: &Path, views: &physical::BaseViews) -> io::Result<()> {
     fs::write(dir.join("side.svg"), &views.side_svg)?;
     fs::write(dir.join("oblique.svg"), &views.oblique_svg)?;
     fs::write(dir.join("pose.svg"), &views.pose_svg)?;
+    fs::write(dir.join("sweep.svg"), &views.sweep_svg)?;
     Ok(())
 }
 
