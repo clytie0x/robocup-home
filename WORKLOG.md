@@ -1,5 +1,161 @@
 # WORKLOG
 
+## Static scene tick strokes (2026-11-07)
+
+Reviewed head `3a1505277dedb4291fecde99193c0b6f7a6ab0f1`. The remaining drawing defect was in `plane_axes`. A scan number was placed at `protect_m * scale + 16` above the axis, about 102 px, and the picture had no tick stroke. Top and oblique numbers that stepped off the rays had no leader. Anchor-to-anchor spacing still passed if every number moved by the same extra 200 px. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged.
+
+Each tick is now a short stroke. The stroke starts on the axis at that metre. The number sits 16 px from the stroke. The shared origin is one 0, drawn on the x axis on a short diagonal. A number that has to move clear of the 250 mm circle or of a ray keeps a leader back to its stroke. Side numbers stay 16 px off the stroke. Swatches and body-name leaders are unchanged.
+
+Red, before any stroke existed: `cargo test -p physical --offline --lib -- scene::tests::the_pictures_have_ticks_swatches_and_a_signed_scan_frame scene::tests::a_tick_label_lifted_clear_of_its_mark_fails`. `a_tick_label_lifted_clear_of_its_mark_fails` passed, so a label 200 px off its mark and a mark moved off the axis already failed the checker. `the_pictures_have_ticks_swatches_and_a_signed_scan_frame` panicked at `crates/physical/src/scene.rs:1790:32` with `mark x 0` because the SVG had no stroke group. That run was 1 passed and 1 failed. Green, after the strokes: `cargo test -p physical --offline --lib -- scene::` reported 13 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 48, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 243. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This fix run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. The review-fix section below records that `b5977b8` did execute `python3 -c 'print("no")'`. Earlier sections record Python artifact reads and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/static-scene-3d-ticks/`. Older directories were not overwritten. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. `rays.csv` and `packets.bin` match the previous scene hashes. The capture row is still 9 zeros, 12 boundary, 99 beyond, 287 view points, decision 5022 ms, stale decision 6023 ms. The five PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+On the rendered scan SVG the x axis is y = 357.5 and the y axis is x = 378.4. Marks for -0.5, 0, 0.5, 1, and 1.5 sit on that x axis. Their numbers are 16 px above the stroke, except the one origin 0, which is 104.1 px up-left of the crossing with a leader, outside the circle. The y marks -0.5, 0, and 0.5 sit on x = 378.4. -0.5 and 0.5 are 16 px left of the stroke. The y origin has the stroke and no second 0. On the top view the x axis is y = 383.0. The 0, 0.5, and 2 numbers are 16 or 17 px from the stroke. The 1 is 40 px above its stroke with a leader. The 1.5 is 88 px above its stroke with a leader. On the side view every number is 16 or 17 px from its stroke and none has a leader. On the oblique view the z numbers and the x numbers 0, 0.5, and 1 are 16 or 17 px from the stroke. The x 1.5 is 40 px from its stroke with a leader. The x 2 is 28 px from its stroke with a leader. The y numbers are 17.9 px from the stroke.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/mount.csv` | `3afbf976ad67efda747ec30befd5c7065e00bb061cd496f156459b2d97bc9236` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/rays.csv` | `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/packet-points.csv` | `0bdb6c1741f4de2bb418cef9b9ffc6a8d090d577c781ee7d8cffe6fd76ec87e5` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/posted.csv` | `c4779105fbab144de7e7e3c187d12079cdf5edf75929513f8728814f34fa6f86` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/packets.bin` | `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/oblique.svg` | `fe5e2a56b39089d448159dc12c479c29e7fbc06043390e28f9a8e7168ffb6358` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/top.svg` | `033daa171216adcdb72b47b5f5eb4bdc0e2a2a165fcd13057ae8fca263b60772` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/side.svg` | `d855165167ba588c480bc28ba17da78a0d950efcba4ffbc80b2dce376edd719c` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/scan.svg` | `76ed761e91346e5ca969d5a70e0399d42f2fa4baec6c6170d1fe7d88b601e416` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/oblique.png` | `83a7516640e4b7040c031546fd775379b3d317eabc34d04d391f8defd0ecffce` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/top.png` | `91e5bd4edf3124a163803dbb96268334a75842cbf10344a5693d708f99e2d0c9` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/side.png` | `62d90239a949e844a9447715ea475671b66b006d276c5be20e9278f0bf09c743` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/scene/scan.png` | `6401e402b875ad641eaa0fbd41ff58f7a4fea0a9e5bbf7f60c06a23f14109f31` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.csv` | `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
+| `/opt/cursor/artifacts/static-scene-3d-ticks/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
+
+## Static scene review fix (2026-11-07)
+
+Reviewed head `b5977b8ff1e3831a39a1fcda05dc4a304f554777`. The four findings were in that source. This commit stays on `cursor/static-scene-3d-bf93` and does not merge. It does not start dynamics or a mission. The caster, the packet bytes, and `frame_sample` are unchanged. The reported range stays the slant distance along the 3D ray. The demonstration pitch stays 0, so those pictured ranges happen to equal the horizontal run. A pitched ray does not. The manual says so.
+
+The oblique, top, side, and scan pictures now draw numeric metre ticks and a colour swatch for each ray meaning. Top, side, and scan use one equal metre scale on both axes. Oblique ticks are metres along each world axis, and the caption says that cabinet projection does not keep one screen scale on every axis. Body names and the sensor name sit off the edges, with leader lines. The scan axes are signed. Their ticks cover the returns, including negative scan y down to at least -0.5 m, and the 250 mm circle. The circle is labelled radius 250 mm, not a diameter, around the sensor origin. It is the planner assumption `ROBOT_RADIUS_MM`. It is not chassis clearance. The circle element carries `data-radius-m="0.25"`.
+
+The copied direction helper is gone. A sensor at height 1 m, pitch 45 degrees, and a wall at x = 1 m gives slant range sqrt(2) and the hit `(1, 0, 0)`. That is not the horizontal run of 1 m. A yaw of 90 degrees leaves the hit x and z at the sensor x and z. The policy test encodes one sample, parses that packet, and posts the parsed sample. The close body changes a straight `Move` into `Blocked`, `Stuck`, or a side step. An empty scene restores the straight `Move`.
+
+Red, before the drawers emitted ticks: `cargo test -p physical --offline --lib -- scene::` reported 11 passed and 1 failed. `the_pictures_have_ticks_swatches_and_a_signed_scan_frame` failed because the SVG did not contain `data-axis-tick`. On that same run the 45 degree pitch test and the parsed-packet test passed against the unchanged caster. Green, after the drawers: the same command reported 12 passed, 0 failed.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 47, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 242. Doctests are 7 in debug and 7 in release. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. These counts are not a frozen target. Commands, all exit 0: `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, `cargo test --workspace --offline --lib`, `cargo test --workspace --offline --lib --release`, `cargo test --workspace --offline --doc`, `cargo test --workspace --offline --doc --release`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`.
+
+This fix run started no Python process. It did not run a checker, a converter, a probe, or a one-off print. CI's Python checker is separate from this local run and was not executed here. This paragraph does not claim a Python-free history. The result section below records that `b5977b8` did execute `python3 -c 'print("no")'` and that the following echo was misleading. Earlier sections record Python artifact reads and the legacy checkers. Those runs stay as written.
+
+The new private directory is `/opt/cursor/artifacts/static-scene-3d-review/`. Older directories were not overwritten. `points.csv` is still `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`. `rays.csv` and `packets.bin` match the previous scene hashes. The capture row is still 9 zeros, 12 boundary, 99 beyond, 287 view points, decision 5022 ms, stale decision 6023 ms. The five PNGs were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/mount.csv` | `3afbf976ad67efda747ec30befd5c7065e00bb061cd496f156459b2d97bc9236` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/rays.csv` | `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/packet-points.csv` | `0bdb6c1741f4de2bb418cef9b9ffc6a8d090d577c781ee7d8cffe6fd76ec87e5` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/posted.csv` | `c4779105fbab144de7e7e3c187d12079cdf5edf75929513f8728814f34fa6f86` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/packets.bin` | `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/oblique.svg` | `a1ea7eb313560899b03fa8400e3cdb3de8fc81601af2ca532080fdc32f6212d8` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/top.svg` | `36d701945415e39338e51bfcb0be60be464accc017c4f017716780071b8c727a` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/side.svg` | `8ae9349a15ad2ba8705a4095b8d2dc43216972945a96b08f54f5e6b685310306` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/scan.svg` | `cd8c03f8dd2b9e47f72222974131b5c06722d4cbb76852cc633d6ae794bcbbc2` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/oblique.png` | `95c4027f839eedbba67acec112e10cb9e4186a274fe3cf6d75036822893d2a36` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/top.png` | `e44492964e970f204ffe3f2636109a56d44e73558209cbd38a4d514907d3226e` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/side.png` | `0130e8eb8c570e8e19407d4985f2c512dd2731bed9767725e9efa0df50c47b37` |
+| `/opt/cursor/artifacts/static-scene-3d-review/scene/scan.png` | `38815c4e2bbb4603e6b892d92819a995407dff5d4ead8bd2dae9549f91dee4d3` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.csv` | `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
+| `/opt/cursor/artifacts/static-scene-3d-review/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
+
+## Static scene result (2026-11-07)
+
+The plan below was committed before this code. The red command, run before `Vec3`, `Mount`, `cast_bearing`, and `sensor_samples` existed, was `cargo test -p physical --lib --offline -- cast_bearing sensor_samples`. It failed to compile:
+
+```text
+error[E0432]: unresolved imports `super::Aabb`, `super::Cast`, `super::Mount`, `super::Scene`, `super::SceneError`, `super::Vec3`, `super::cast_bearing`, `super::inverse_bearing`, `super::project_oblique`, `super::sensor_samples`
+error: could not compile `physical` (lib test) due to 1 previous error
+```
+
+The caster is a std-only ray against axis-aligned boxes. The hit is the nearest positive face, including z. The demonstration mount `synthetic-lidar` is `(0.40, -0.12, 0.50)` m, yaw 15 deg, pitch 0. That transform is a synthetic fixture. It is not `LIDAR_X_M` 0.175 m and it is not an installed measurement. The installed lever arm stays unknown. World and the synthetic base coincide only for this fixture. The scan origin is the sensor. `frame_sample` and `post_samples` receive angle and range. They do not receive the boxes. `sent` stays false.
+
+The private static revolution was posted again into a new directory. It is unchanged: 70252 file samples, 407 in the longest revolution, 9 zeros, 12 ranges that round to the origin, 99 beyond 2500 mm, 287 view points, 0 negative, 0 non-finite, 0 extreme. 9 + 12 + 99 + 287 = 407. Fresh is `acted:Lost`. The stale decision is 6023 ms, which is the 5022 ms capture stamp plus 1001 ms. `points.csv` is byte-identical to the merged adapter output (`fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084`). The caption now says the marks are sensor returns, not a measured obstacle radius and not the navigation chassis disk, and it prints both clock values. The framing math was not changed.
+
+The synthetic scene cast 180 bearings at a 2 deg raw step, encoded five packets, and parsed them back. Eleven ranges hit the pillar face at z 0.50 m. The nearest is 1.200 m at bearing -15.3 deg, on the face x 1.600 m. The low plank, z 0 to 0.20 m, is not in the hit list. The posted view has 11 points, no person, and `acted:Lost`. `sent` is false. The pictures were rendered with `ffmpeg -y -hide_banner -loglevel error -c:v librsvg -i INPUT.svg -frames:v 1 OUTPUT.png` and read. The oblique view is a wireframe: the pillar stands above the plank, and the rays meet the pillar. The side view shows the horizontal beam missing the plank. The top-down is labeled as a different origin, and its caption says the rays cross the plank footprint while passing above it. The scan plot's dashed circle is the 250 mm planner assumption around the sensor origin. It is not a chassis clearance. The capture plot shows the origin cross, the -2/0/2 ticks, the swatch, and the full caption. Older artifact directories were not overwritten. `physical-foundation/report.md` is still `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0`.
+
+| path | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/static-scene-3d/scene/mount.csv` | `3afbf976ad67efda747ec30befd5c7065e00bb061cd496f156459b2d97bc9236` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/rays.csv` | `94c9023376afb0c79ffed94c5649bdee80038e3eefe7ae87d4b902ce00de6712` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/packet-points.csv` | `0bdb6c1741f4de2bb418cef9b9ffc6a8d090d577c781ee7d8cffe6fd76ec87e5` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/posted.csv` | `c4779105fbab144de7e7e3c187d12079cdf5edf75929513f8728814f34fa6f86` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/packets.bin` | `3a931383296e39a7f1aa232678eca84a97fbd0048f22e98c15cc461a66dbdb26` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/oblique.svg` | `bb76afb72bca7462ed1ed8c527e6c3accb34b1b25e80a0f3fc65461f1dd6c3a0` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/top.svg` | `77ef75be212784a391879e336b75407dc32b649392456e0256b5212567058083` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/side.svg` | `79decf88dc25dc5e4a1611a2e324b99503a37e789319c7f653c03ed5a1acb2f0` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/scan.svg` | `6b02c63b7d823dff9564285dd6c329016957f1f375afb2f361aea82f71f3c8cf` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/oblique.png` | `b77622ce2a2741259e772e67e7261d1a1e7bdaa3f4ffb564c9d5c24fbc021c58` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/top.png` | `835d36844c3b7b84211301d727dc8bf6092feb51941387d6dd1e0b4d51962731` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/side.png` | `470ab049738d289f3f0eef7a8b01ea778a7dc3eac3634e99ad5da73cb64b9733` |
+| `/opt/cursor/artifacts/static-scene-3d/scene/scan.png` | `f278c92705e37b140e41355f5d4621fd844e15c1562363d4feb74d0cd6329019` |
+| `/opt/cursor/artifacts/static-scene-3d/capture-regression/post.csv` | `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` |
+| `/opt/cursor/artifacts/static-scene-3d/capture-regression/points.csv` | `fec2abbf6a976fbc5b7c8284e403a9b855645b339c65904647655efcd2d24084` |
+| `/opt/cursor/artifacts/static-scene-3d/capture-regression/post.svg` | `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4` |
+| `/opt/cursor/artifacts/static-scene-3d/capture-regression/post.png` | `29aae787ee73ac9643b3ebee840741a242cb3bcdf0da9e0e1e2f6607a2df088d` |
+
+Library tests, debug and release, are domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 44, sim_runtime 30, task_3_1 32, task_3_2 3. The total is 239. Doctests are 7 in debug and 7 in release. `replay`, `post-scan`, and `static-scene` have no unit tests. Navigation stayed 19 and `task_3_1` stayed 32. Section 3.1 stays 45 `pass` and 11 `not-run`. `cargo clippy --workspace --all-targets --locked --offline -- -D warnings` exited 0. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps` exited 0. The legacy Python checkers were not run in that slice. A command in that slice did execute `python3 -c 'print("no")'` and printed `no`. The following echo `python-not-used` was misleading, because the interpreter ran. That call read no packet and no repository file, and it was not a checker. Earlier runs in this history also ran Python, including artifact reads and `artifacts/check_workspace.py`, `artifacts/check_m1_spec.py`, and `artifacts/check_m10_spec.py`. Those runs are not relabeled. CI runs its checker separately from a local slice.
+
+The expected hit distances are literals or the test's own matrix. A flattened ray would hit the low box, and that test fails closed. The packet range is the quantized ray, checked against an independent bound of 2.0 m to 2.05 m for the near-forward sample, so a stored center or a constant would not pass. Ranges are metres. The posted view is millimetres. One hundred eighty rays against two boxes is the whole scene. No elapsed time is treated as a benchmark.
+
+This is not merged. Camera PNG files and method-8 `camera.npz` stay blocked. Dynamic motion and the mission controller are not started. A later scene, after review, would still have to emit angle and range through this path and would still have to keep its boxes out of `plan_follow`. The arm mount and calibration stay unknown. The upstream license body and NOTICE gate for mesh redistribution stay ahead.
+
+## Static scene plan (2026-11-07)
+
+This entry is the plan and the test matrix. It is written before the scene code. Merged `main` is `892bc54d11dd2908898a399487a400d0c351554c`. The new branch is `cursor/static-scene-3d-bf93`. Pull request 27 stays merged and receives no more pushes. This slice is one static 3D body and one named mount. It is not a physics engine, not a mission, and not a decoded camera.
+
+### What was inspected
+
+`frame_sample` places a range in the scan frame: x forward, y left, origin at the sensor. It does not add `LIDAR_X_M` (0.175 m). That constant remains configured provenance from `robot.json`, repeated by `sensors.json`, and the installed lever arm stays unknown. The navigation view robot is that same scan origin. `assume::ROBOT_RADIUS_MM` (250) and `assume::SENSOR_MM` (2500) are planner assumptions around the posted origin. They are not a measured chassis and not a clearance guarantee. `post_samples` already applies `accept` and `plan_follow` to raw angle and range only. The scene must not pass a body pose into those functions.
+
+`post.csv` from the merged adapter counts zeros and view points for the private static revolution (407 samples, 9 zeros, 287 in view) and does not name the other 111. Those 111 are the audit gap: 99 returns outside 2500 mm and 12 positive ranges that round to the origin. The caption says "Radius is 0", which can be read as a physical radius, and it does not print the decision time or the stale decision at plus 1001 ms. This slice will add those counts and clock fields. It will not change the framing math. 9 + 12 + 99 + 287 = 407.
+
+### Frames
+
+World and the synthetic base coincide for this fixture only. That coincidence is labeled synthetic. It is not a measured installation. The scan frame origin is the sensor. The mount is a rigid transform: translation of the sensor origin in the base frame, yaw CCW about z, and pitch down about the sensor y axis so that positive pitch lowers sensor +x. The rotation is `Rz(yaw) * Ry(pitch_down)`. A scan bearing is CCW from sensor +x in the scan plane. The world ray is the mount rotation applied to that planar direction, so a pitched beam is a 3D line. The reported range is the distance along that line. `frame_sample` then draws that range in the scan plane. The world top-down and the scan plot are different origins and will be labeled as such.
+
+The demonstration mount is a nonzero synthetic translation and a nonzero yaw. It is not 0 m and not 0.175 m. The real lever arm is not filled with either number. Wheels, mass, and the arm mount stay unknown. No real chassis outline is promoted to a validated body.
+
+### Geometry
+
+One std-only ray against axis-aligned boxes. The hit is the nearest positive face the ray actually enters, including the z slab. A box that does not cross the ray in z is a miss. A nearer box hides a farther box. An empty body list has no hit. Non-finite mount values, a negative max range, and a non-finite bearing are errors. No third-party engine. The pictures are projections of these coordinates: an oblique wireframe, a world top-down, and the scan-frame plot. They are not a text schematic and not a claim of a full robot mesh.
+
+The packet uses an explicit front and a supplied monotonic millisecond. It is not wall time. Samples go through `frame_sample` and `post_samples`. A fixture person is added only in the test, after the view exists, and is not a camera detection. `sent` stays false.
+
+### Test matrix
+
+| case | expectation |
+| --- | --- |
+| sensor x 0.40, wall face x 2.40, yaw 0, pitch 0 | range 2.000 m at the face, not a prewritten body center |
+| yaw 90 deg, sensor y 0.20, face y 1.20 | range 1.000 m, inverse bearing 0; sensor-left bearing goes toward world -x |
+| pitched ray | the test's own matrix matches the hit, and the inverse bearing returns the input |
+| mount translation | not 0 and not `LIDAR_X_M` |
+| two boxes on one ray | the near face wins; removing it reveals the far face |
+| low box below the beam, then the same box raised through the beam | miss, then a hit; a flattened ray would have hit the low box |
+| empty scene | no hit |
+| non-finite mount, negative max range, non-finite bearing | error, no sample |
+| same front encodes and decodes | scan-frame point matches the range; the other front does not |
+| supplied clock 2500 ms | fresh at 2500, unusable at 3501, missing and reversed stay unusable, `sent` false |
+| fixture person plus a 0.15 m hit | straight `Move` becomes a side step or `Blocked`; removing the body restores the straight `Move` |
+| revolution counts | zeros, origin-rounded, beyond sensor, other rejects, and view points sum to the revolution |
+| private chunks | still 287 view points and `Lost` |
+| camera PNG and method-8 npz | not opened |
+
+Section 3.1 stays 45 `pass` and 11 `not-run`. The legacy Python checkers are not run locally. The new private directory is `/opt/cursor/artifacts/static-scene-3d/`. Older artifact directories stay in place.
+
 ## Scan adapter plan (2026-11-07)
 
 This entry is the plan and the test matrix. It is written before the adapter code. The merged foundation is `6e05e6673e8785143e590c16b7959844469824bb` on `main`. The new branch is `cursor/scan-nav-adapter-bf93`. Pull request 26 stays merged and receives no more pushes. This slice posts one captured lidar scan into the existing navigation view. It is not the 3D simulator, not a mission, and not a grasp.

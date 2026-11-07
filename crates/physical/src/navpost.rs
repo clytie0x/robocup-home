@@ -81,6 +81,13 @@ pub struct ChunkReport {
     pub raw_samples: usize,
     pub revolution_samples: usize,
     pub zero_returns: usize,
+    pub boundary_origin: usize,
+    pub beyond_sensor: usize,
+    pub negative_ranges: usize,
+    pub non_finite: usize,
+    pub extreme: usize,
+    pub decision_ms: Option<u64>,
+    pub stale_decision_ms: Option<u64>,
     pub people: usize,
     pub alternate_points_differ: usize,
     pub fresh: PostOutcome,
@@ -312,10 +319,6 @@ pub fn post_chunks(chunks: &[Chunk], profile: &LidarProfile) -> Result<ChunkRepo
         label: ClockLabel::CaptureMonotonic,
     };
     let revolution_samples = revolution.len();
-    let zero_returns = revolution
-        .iter()
-        .filter(|sample| sample.range_m == 0.0)
-        .count();
     let (_history, fresh) = post_samples(profile, revolution, SampleHistory::new(), fresh_clock);
     let (_history, stale) = post_samples(profile, revolution, SampleHistory::new(), stale_clock);
     let other = other_profile(profile);
@@ -331,12 +334,20 @@ pub fn post_chunks(chunks: &[Chunk], profile: &LidarProfile) -> Result<ChunkRepo
         .iter()
         .map(|(x_mm, y_mm)| (f64::from(*x_mm) / 1000.0, f64::from(*y_mm) / 1000.0))
         .collect();
+    let counts = tally(&fresh.uses);
     Ok(ChunkReport {
         clock: ClockLabel::CaptureMonotonic,
         view_points: fresh.view_points.len(),
         raw_samples,
         revolution_samples,
-        zero_returns,
+        zero_returns: counts.zero_returns,
+        boundary_origin: counts.boundary_origin,
+        beyond_sensor: counts.beyond_sensor,
+        negative_ranges: counts.negative_ranges,
+        non_finite: counts.non_finite,
+        extreme: counts.extreme,
+        decision_ms: Some(captured_ms),
+        stale_decision_ms: Some(stale_decision),
         people: fresh.people,
         alternate_points_differ,
         fresh: fresh.outcome,
@@ -368,7 +379,17 @@ pub fn write_chunk_post(
             "Navigation view of one captured revolution. Profile: {}. Not a mission.",
             report.profile_id
         ),
-        "Points are the bodies inside the existing navigation sensor range. Radius is 0. Zeros are not drawn. The clock is capture monotonic time, not wall time. No command was sent.",
+        &format!(
+            "Posted marks are sensor returns in the scan frame. They are not a measured obstacle radius and not the navigation chassis disk. Zeros are not drawn. Decision {} ms. Stale decision {} ms. The clock is capture monotonic time, not wall time. No command was sent.",
+            report
+                .decision_ms
+                .map(|ms| ms.to_string())
+                .unwrap_or_else(|| "missing".to_string()),
+            report
+                .stale_decision_ms
+                .map(|ms| ms.to_string())
+                .unwrap_or_else(|| "missing".to_string()),
+        ),
         &series,
     );
     fs::write(out.join("post.svg"), svg).map_err(|err| err.to_string())?;
@@ -382,17 +403,21 @@ pub fn write_chunk_post(
 
 fn post_csv(report: &ChunkReport) -> String {
     format!(
-        "field,value\nprofile,{}\nfront_kind,{}\nclock,{}\ncaptured_ms,{}\nfile_samples,{}\nrevolution_samples,{}\nzero_returns,{}\nview_points,{}\npeople,{}\nalternate_points_differ,{}\nfresh,{}\nstale,{}\nsent,{}\ncommand,\nclear_field,false\n",
+        "field,value\nprofile,{}\nfront_kind,{}\nclock,{}\ncaptured_ms,{}\ndecision_ms,{}\nstale_decision_ms,{}\nfile_samples,{}\nrevolution_samples,{}\nzero_returns,{}\nboundary_origin,{}\nbeyond_sensor,{}\nnegative_ranges,{}\nnon_finite,{}\nextreme,{}\nview_points,{}\npeople,{}\nalternate_points_differ,{}\nfresh,{}\nstale,{}\nsent,{}\ncommand,\nclear_field,false\n",
         report.profile_id,
         report.front_kind.as_str(),
         clock_name(report.clock),
-        report
-            .captured_ms
-            .map(|ms| ms.to_string())
-            .unwrap_or_else(|| "missing".to_string()),
+        optional_ms(report.captured_ms),
+        optional_ms(report.decision_ms),
+        optional_ms(report.stale_decision_ms),
         report.raw_samples,
         report.revolution_samples,
         report.zero_returns,
+        report.boundary_origin,
+        report.beyond_sensor,
+        report.negative_ranges,
+        report.non_finite,
+        report.extreme,
         report.view_points,
         report.people,
         report.alternate_points_differ,
@@ -400,6 +425,52 @@ fn post_csv(report: &ChunkReport) -> String {
         outcome_name(&report.stale),
         report.sent,
     )
+}
+
+fn optional_ms(value: Option<u64>) -> String {
+    value
+        .map(|ms| ms.to_string())
+        .unwrap_or_else(|| "missing".to_string())
+}
+
+struct UseCounts {
+    zero_returns: usize,
+    boundary_origin: usize,
+    beyond_sensor: usize,
+    negative_ranges: usize,
+    non_finite: usize,
+    extreme: usize,
+}
+
+fn tally(uses: &[SampleUse]) -> UseCounts {
+    let mut counts = UseCounts {
+        zero_returns: 0,
+        boundary_origin: 0,
+        beyond_sensor: 0,
+        negative_ranges: 0,
+        non_finite: 0,
+        extreme: 0,
+    };
+    let origin = Point::new(Mm::new(0), Mm::new(0));
+    for use_ in uses {
+        match *use_ {
+            SampleUse::ZeroReturn => counts.zero_returns += 1,
+            SampleUse::Boundary => counts.boundary_origin += 1,
+            SampleUse::NegativeRange => counts.negative_ranges += 1,
+            SampleUse::NonFinite => counts.non_finite += 1,
+            SampleUse::Extreme => counts.extreme += 1,
+            SampleUse::Body { x_mm, y_mm } => {
+                if !within_reach(
+                    origin,
+                    Point::new(Mm::new(x_mm), Mm::new(y_mm)),
+                    navigation::assume::SENSOR_MM,
+                ) {
+                    counts.beyond_sensor += 1;
+                }
+            }
+        }
+    }
+    counts
 }
 
 fn clock_name(label: ClockLabel) -> &'static str {
@@ -423,6 +494,13 @@ fn empty_report(profile: &LidarProfile, kind: UnusableKind) -> ChunkReport {
         raw_samples: 0,
         revolution_samples: 0,
         zero_returns: 0,
+        boundary_origin: 0,
+        beyond_sensor: 0,
+        negative_ranges: 0,
+        non_finite: 0,
+        extreme: 0,
+        decision_ms: None,
+        stale_decision_ms: None,
         people: 0,
         alternate_points_differ: 0,
         fresh: PostOutcome::Unusable { kind },
@@ -815,6 +893,50 @@ mod tests {
             }
         );
         assert!(!report.sent);
+        assert_eq!(report.decision_ms, Some(0));
+        assert_eq!(report.stale_decision_ms, Some(1_001));
+        assert_eq!(
+            report.zero_returns
+                + report.boundary_origin
+                + report.beyond_sensor
+                + report.negative_ranges
+                + report.non_finite
+                + report.extreme
+                + report.view_points,
+            report.revolution_samples
+        );
+        let mixed = post_chunks(
+            &[Chunk {
+                t_s: 5.0,
+                bytes: encode_packet(
+                    0,
+                    &[
+                        (178.7, 0, 0),
+                        (178.7, 1, 0),
+                        (178.7, 12_000, 0),
+                        (178.7, 4_000, 0),
+                    ],
+                )
+                .expect("packet"),
+            }],
+            &measured(),
+        )
+        .expect("mixed");
+        assert_eq!(mixed.zero_returns, 1);
+        assert_eq!(mixed.boundary_origin, 1);
+        assert_eq!(mixed.beyond_sensor, 1);
+        assert_eq!(mixed.view_points, 1);
+        assert_eq!(mixed.negative_ranges, 0);
+        assert_eq!(
+            mixed.zero_returns
+                + mixed.boundary_origin
+                + mixed.beyond_sensor
+                + mixed.negative_ranges
+                + mixed.non_finite
+                + mixed.extreme
+                + mixed.view_points,
+            mixed.revolution_samples
+        );
         let bad = post_chunks(
             &[Chunk {
                 t_s: f64::NAN,
@@ -873,6 +995,15 @@ mod tests {
         assert!(csv.contains("sent,false"));
         assert!(csv.contains("clear_field,false"));
         assert!(csv.contains("fresh,acted:Lost"));
+        assert!(csv.contains("decision_ms,0"));
+        assert!(csv.contains("stale_decision_ms,1001"));
+        assert!(csv.contains("boundary_origin,0"));
+        assert!(csv.contains("beyond_sensor,0"));
+        assert!(svg.contains("sensor returns in the scan frame"));
+        assert!(svg.contains("Decision 0 ms"));
+        assert!(svg.contains("Stale decision"));
+        assert!(svg.contains("1001 ms"));
+        assert!(!svg.contains("Radius is 0"));
         assert_eq!(points.lines().count(), report.view_points + 1);
         assert!(points.contains("1.000,0.000"));
         assert!(svg.contains("data-origin=\"robot\""));

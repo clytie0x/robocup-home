@@ -15,6 +15,7 @@ mod observe;
 mod plot;
 mod profile;
 mod replay;
+mod scene;
 mod sha256;
 mod speed;
 mod zipnote;
@@ -35,11 +36,16 @@ pub use observe::{
     stamp_order,
 };
 pub use profile::{
-    CameraProfile, FloorHit, camera_profiles, floor_hit, footprint_width_m, front_face_width_m,
-    lateral_from_yaw_disagreement, lidar_misses_below, lidar_profiles, opening_blocks_chassis,
-    yaw_disagreement_deg,
+    CameraProfile, FloorHit, LidarProfile, RANGE_DIVISOR, camera_profiles, floor_hit,
+    footprint_width_m, front_face_width_m, lateral_from_yaw_disagreement, lidar_misses_below,
+    lidar_profiles, opening_blocks_chassis, wrap_full_deg, wrap_signed_deg, yaw_disagreement_deg,
 };
 pub use replay::{Error, write_replay};
+pub use scene::{
+    Aabb, Cast, Mount, PacketScene, Scene, SceneError, SceneViews, Vec3, cast_bearing,
+    demonstration, inverse_bearing, packet_revolution, project_oblique, render_views,
+    sensor_samples,
+};
 pub use sha256::{sha256, sha256_hex};
 pub use speed::{
     ForwardEstimate, ForwardGate, GATES, Projection, SpeedRun, odom_delta, parse_speed_runs,
