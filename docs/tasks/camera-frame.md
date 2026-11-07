@@ -32,7 +32,7 @@ The two buffers match because each pixel is one call to `cast_pixel`. That regis
 
 ## Faults
 
-Depth dropout zeros the posted millimetre and leaves the colour. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists. A black pixel with a positive depth word is an RGB dropout, not a miss. A coloured pixel with posted 0 is a depth dropout, not a depth of 0 m. A geometric miss is black and posted 0, and it is not on the fault list.
+Depth dropout zeros the posted millimetre and leaves the colour. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists. The fault list names those injected indexes. The colour and the posted word do not, by themselves, say why the sample looks empty. A coloured pixel with posted 0 can be an injected depth dropout, or a hit past 65.535 m that the existing `u16` word already stores as 0. A wall 70 m ahead of the configured camera is the second case. Its center pixel posts 0, keeps RGB 156, 156, 188, and is not on a fault list. Posted 0 is still not a distance of 0 m. A black pixel with a positive word can be an injected RGB dropout. A geometric miss is black and posted 0, and it is not on the fault list.
 
 A stale depth buffer keeps every word and contributes no fresh valid depth. A stale RGB buffer keeps its bytes. `controller_note` reads the depth view only. It does not read RGB, and it still reports no person and no sent command.
 
@@ -48,4 +48,4 @@ A stale depth buffer keeps every word and contributes no fresh valid depth. A st
 
 ## What this does not claim
 
-No lens distortion, no noise, no exposure, and no photoreal colour. No person, bag, or policy is read from the frame. The two mounts are not an installed extrinsics calibration. A simulation hit is not a device sample. The depth-slice demo, one row plus a stride of 16, is unchanged and is not this frame. Section 3.1 stays 45 pass and 11 not-run. Stage 4 is not complete. Stage 5, replaying a real recording through this path, is not built.
+No lens distortion, no noise, no exposure, and no photoreal colour. No person, bag, or policy is read from the frame. The two mounts are not an installed extrinsics calibration. A simulation hit is not a device sample. On the configured mount, with the plates included, the bottom two rows meet the robot's own top plate: row 238 posts 60 mm and row 239 posts 59 mm, 640 pixels. The demonstration scene does the same. There is no floor solid. With the plates off and no obstacle, those 640 pixels are a miss. That self-occlusion and the absent floor are the existing fixture, not a defect in this frame. The depth-slice demo, one row plus a stride of 16, is unchanged and is not this frame. Section 3.1 stays 45 pass and 11 not-run. Stage 4 is not complete. Stage 5, replaying a real recording through this path, is not built.

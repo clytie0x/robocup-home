@@ -1,5 +1,15 @@
 # WORKLOG
 
+## Camera frame documentation correction (2026-11-07)
+
+Independent review of `53bff5866f75049cbd37e94aaeec138350c1f6eb` accepted the ideal 320 by 240 geometry, the file, the injected faults, and the suite of 286 library tests and 7 doctests. The box bytes and the pictures also passed. Merge stays held for this note. The manual said a coloured pixel with posted 0 is a depth dropout. That inference is false.
+
+A disposable probe, not committed, cast the configured mount at a wall named `wall` whose face is 70 m ahead of the camera. The center pixel has axial depth 70 m, posts millimetre 0, and keeps RGB 156, 156, 188. It is not on a fault list. 192 pixels of that finite wall do the same, and the rest of the field misses the box. The cause is the existing `u16` word, which already stores 0 for a hit past 65.535 m. The colour and the posted word do not identify that cause. The fault list identifies an injected dropout.
+
+The same probe counted the configured bottom rows with the plates on. Row 238 is 320 pixels of `top_plate` at 60 mm. Row 239 is 320 pixels of `top_plate` at 59 mm. The demonstration scene matches the empty plate scene on those 640 pixels. A cast with no plates and no obstacle leaves those 640 pixels black and posted 0. No ray met a floor. Those are the existing fixture, not defects, and this note does not change them.
+
+`camera.rs` and `frame.rs` are not edited. The raw frame files stay the hashes in the result section below. `measured.rcf` is still `a3acd31dae0e5196e611b74b537588ee9f615a235e709eb19a469b3ab60c0482`. After this note, each of these commands exited 0 on its own: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`, debug and release `cargo test --workspace --offline --lib`, debug and release `cargo test --workspace --offline --doc`, and `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --offline --no-deps`. Debug library counts stay domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 91, sim_runtime 30, task_3_1 32, task_3_2 3, total 286. Doctests stay 7 and 7. No Python process was started. This is not merged. Stage 5 is not started.
+
 ## Full camera frame plan (2026-11-07)
 
 PR 30 is merged at `efeb5522b3b0b8668e65c1d99f215af94ef075f1`. The merged head is `a8f10933fd83e93e7ec0629108d9803e3c62abaa`. CI run `42406384245` was green on that head. This branch is `cursor/camera-frame-bf93`, cut from that merge. It fills the 320 by 240 frame that the depth slice did not cast. It does not start stage 5, the mission, or an application. Older artifact directories and branches stay in place.
@@ -36,7 +46,7 @@ RGB is three bytes, R then G then B, at the same index as the depth word. The co
 
 The two mounts stay side by side. The same function takes either profile. The synthetic stamp is 0. It is not a capture clock. Depth freshness and RGB freshness are separate bytes. Marking one stale does not change the other and does not change the stamp. That is not a claim that a real colour stream and a real depth stream share a shutter. The session file is described as one archive with one time array. This slice did not open it and does not treat that description as a calibration.
 
-Depth dropout zeros the posted millimetre and leaves the RGB bytes. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists, so the two faults do not collapse into a black miss with no record of which channel failed. A black pixel with a positive depth word is an RGB dropout, not a miss. A coloured pixel with posted 0 is a depth dropout, not a depth of 0 m. A geometric miss is black and posted 0, and it is absent from the fault list.
+Depth dropout zeros the posted millimetre and leaves the RGB bytes. RGB dropout zeros the three colour bytes and leaves the posted millimetre. The same index cannot be on both lists, so the two faults do not collapse into a black miss with no record of which channel failed. The fault list names the injected indexes. The colour and the posted word do not, by themselves, say why the sample looks empty. A coloured pixel with posted 0 can be an injected depth dropout, or a hit past 65.535 m that `axial_word` already stores as 0. A geometric miss is black and posted 0, and it is absent from the fault list.
 
 The export is a fixed little-endian file, magic `RCF1`, version 1. It is not an `.npy`, not a PNG from the camera, and not a new codec. A PPM is only a view of the RGB bytes or of the class colours for a person reading the artifact. The class picture uses the posted class, not a metre ramp and not the fixture colour. Its legend sits outside the 320 by 240 buffer. Gray there means posted 0, which is no return.
 
