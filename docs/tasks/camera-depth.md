@@ -10,7 +10,7 @@ From the repository root, with the pinned toolchain:
 cargo run -p physical --bin camera-depth --locked --offline -- --out OUT
 ```
 
-`OUT` is a directory. The program creates it. Exit 0 writes `model.csv`, `trace.csv`, `fault.csv`, `side.svg`, `depth-row.svg`, and `depth-grid.svg`. Exit 2 is a usage error. Exit 1 is a cast or write error. Nothing is read from a capture and nothing is sent.
+`OUT` is a directory. The program creates it. Exit 0 writes `model.csv`, `trace.csv`, `fault.csv`, `side.svg`, `depth-row.svg`, `depth-grid.svg`, and `fault.svg`. Exit 2 is a usage error. Exit 1 is a cast or write error. Nothing is read from a capture and nothing is sent.
 
 ## What was taken from the robot files
 
@@ -40,15 +40,17 @@ Dropout is a list of sample indexes. Those posted millimetre values become 0. Th
 
 ## What the controller sees
 
-`trace.csv` and `fault.csv` have `col`, `row`, `axial_mm`, `range_m`, `depth_class`, `fresh`, and `sent`. They do not name a box or a plate. The side picture does name the fixture, and it says those labels are not posted. Colour on the depth grid is an axial-metre scale. It is not a fixture identity and not a detector.
+`trace.csv` and `fault.csv` have `col`, `row`, `axial_mm`, `range_m`, `depth_class`, `fresh`, and `sent`. They do not name a box or a plate. The side picture does name the fixture, and it says those labels are not posted. The depth pictures do not. Usable depth is a fresh `valid` word, at or above 500 mm. `BelowGate`, `NoReturn`, and a stale view are not that count.
 
 ## Pictures
 
-`side.svg` is an equal-metre side view. The three plates are drawn by their x extent, so the corner cut is not in that view. The red ray is image row 239 and meets the low box. The green ray is the level lidar at 0.22 m and does not. `depth-row.svg` plots axial metres against the column index of row 120. The horizontal ticks are indexes, not metres. A no-return is omitted rather than drawn as 0 m. `depth-grid.svg` casts every 16th pixel. Each cell is that cast. The stride does not interpolate. The demo does not cast all 320 by 240 pixels. That cap is not a timing benchmark.
+`side.svg` is an equal-metre side view. The three plates are drawn by their x extent, so the corner cut is not in that view. The red ray is image row 239 and meets the low box. The green ray is the level lidar at 0.22 m and does not. `depth-row.svg` plots posted axial metres against the column index of row 120. The horizontal ticks are indexes, not metres. Blue marks are `valid`. Amber marks are `below-gate` and sit under the 0.5 m gate line. Their height is still the posted axial depth. A no-return is omitted rather than drawn as 0 m. `depth-grid.svg` casts every 16th pixel. Each cell is that cast. Colour is the posted class: valid at or above 500 mm, below gate from 1 to 499 mm, and no return for posted 0. Row indexes are labeled. The stride does not interpolate. `fault.svg` lists the eight stale samples. Fresh valid depth on that delivery is 0. The seven stale valid words keep their posted metres and are crossed, so that colour is not usable depth. The dropout posts 0. That word is drawn off the axis. Its ideal range is a hollow mark and is not a posted word.
+
+There is no RGB image, no full 320 by 240 frame, and no decoded camera recording. The demo does not cast all 320 by 240 pixels. That cap is not a timing benchmark. Stage 4 is not complete.
 
 ## What this does not claim
 
-No lens distortion, no noise, no exposure, and no photoreal colour. No person, bag, or policy is read from the depth. The two mounts are not an installed extrinsics calibration. A simulation hit is not a device sample. Section 3.1 stays 45 pass and 11 not-run. Stage 5, replaying a real recording through this path, is not built. Stages 6 and 7 are not closed.
+No lens distortion, no noise, no exposure, and no photoreal colour. No person, bag, or policy is read from the depth. The two mounts are not an installed extrinsics calibration. A simulation hit is not a device sample. Section 3.1 stays 45 pass and 11 not-run. Stage 4 is not complete. Stage 5, replaying a real recording through this path, is not built. Stages 6 and 7 are not closed.
 
 ## Decisions
 

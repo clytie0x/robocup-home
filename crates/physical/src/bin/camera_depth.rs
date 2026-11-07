@@ -45,6 +45,7 @@ fn write(dir: &Path, views: &physical::CameraViews) -> io::Result<()> {
     fs::write(dir.join("side.svg"), &views.side_svg)?;
     fs::write(dir.join("depth-row.svg"), &views.row_svg)?;
     fs::write(dir.join("depth-grid.svg"), &views.grid_svg)?;
+    fs::write(dir.join("fault.svg"), &views.fault_svg)?;
     Ok(())
 }
 

@@ -47,6 +47,7 @@ pub struct CameraViews {
     pub side_svg: String,
     pub row_svg: String,
     pub grid_svg: String,
+    pub fault_svg: String,
 }
 
 pub fn cast_pixel(query: CastQuery<'_>, col: u32, row: u32) -> Result<DepthRay, SceneError> {
@@ -213,6 +214,7 @@ pub fn demo_camera() -> Result<CameraViews, SceneError> {
         side_svg: draw_side(pose, profile, &bodies)?,
         row_svg: draw_row(&samples),
         grid_svg: draw_grid(&grid),
+        fault_svg: draw_fault(&fault),
     })
 }
 
@@ -436,6 +438,9 @@ fn draw_side(
     let mut body = svg_header("Measured-mount camera and the level lidar, side view");
     body.push_str("<text x=\"24\" y=\"96\" font-size=\"12\">Fixture geometry. Labels here are not posted to the controller. The camera housing is not a solid.</text>");
     body.push_str("<text x=\"24\" y=\"116\" font-size=\"12\">Equal scale in metres. This view collapses y, so a ray may cross a box that stands beside it. The lidar ray stays at 0.22 m.</text>");
+    body.push_str(&format!(
+        "<text x=\"24\" y=\"136\" font-size=\"12\">{LIMIT_LINE}</text>"
+    ));
     for (index, plate) in collision_plates().iter().enumerate() {
         let x0 = plate
             .polygon_xy_m
@@ -650,21 +655,49 @@ fn segment(
     )
 }
 
+const LIMIT_LINE: &str =
+    "No RGB image. No full 320 by 240 frame. No decoded camera recording. Stage 4 is not complete.";
+const VALID_FILL: &str = "#1d4e89";
+const BELOW_FILL: &str = "#d97706";
+const NONE_FILL: &str = "#bdbdbd";
+
+fn gate_mm() -> u16 {
+    (DEPTH_GATE_M * 1000.0).round() as u16
+}
+
+fn posted_class(sample: &DepthRay) -> DepthClass {
+    classify_depth_mm(sample.axial_mm, gate_mm())
+}
+
+fn class_name(class: DepthClass) -> &'static str {
+    match class {
+        DepthClass::NoReturn => "no-return",
+        DepthClass::BelowGate => "below-gate",
+        DepthClass::Valid => "valid",
+    }
+}
+
+fn class_fill(class: DepthClass) -> &'static str {
+    match class {
+        DepthClass::Valid => VALID_FILL,
+        DepthClass::BelowGate => BELOW_FILL,
+        DepthClass::NoReturn => NONE_FILL,
+    }
+}
+
 fn draw_row(samples: &[DepthRay]) -> String {
     let plot = Plot {
         left: 90.0,
         right: 980.0,
-        top: 150.0,
-        bottom: 640.0,
+        top: 168.0,
+        bottom: 620.0,
     };
-    let mut body = String::from(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"760\" viewBox=\"0 0 1040 760\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>",
-    );
-    body.push_str(
-        "<text x=\"24\" y=\"32\" font-size=\"16\">Posted axial depth on image row 120</text>",
-    );
-    body.push_str("<text x=\"24\" y=\"54\" font-size=\"12\">Horizontal ticks are column indexes, not metres. Vertical ticks are axial metres along the optical axis.</text>");
-    body.push_str("<text x=\"24\" y=\"74\" font-size=\"12\">A no-return is omitted. It is not drawn as a depth of 0 m. This is not a photograph and not a detector.</text>");
+    let mut body = svg_open("Posted axial depth on image row 120");
+    body.push_str("<text x=\"24\" y=\"54\" font-size=\"12\">Horizontal ticks are column indexes, not metres. Vertical ticks are posted axial metres. Colour is the posted class.</text>");
+    body.push_str("<text x=\"24\" y=\"76\" font-size=\"12\">Blue is valid, at or above the 0.5 m gate. Amber is below the gate and is not usable depth. A no-return is omitted, not drawn as 0 m.</text>");
+    body.push_str(&format!(
+        "<text x=\"24\" y=\"98\" font-size=\"12\">{LIMIT_LINE}</text>"
+    ));
     body.push_str(&axis_line(
         plot.left,
         plot.bottom,
@@ -678,6 +711,16 @@ fn draw_row(samples: &[DepthRay]) -> String {
         plot.left,
         plot.top,
         "axial",
+    ));
+    let gate_y = plot.y(DEPTH_GATE_M, 2.5);
+    body.push_str(&format!(
+        "<line data-gate=\"0.5\" x1=\"{:.1}\" y1=\"{gate_y:.1}\" x2=\"{:.1}\" y2=\"{gate_y:.1}\" stroke=\"#6b3a2a\" stroke-width=\"1.3\" stroke-dasharray=\"6 4\"/>",
+        plot.left, plot.right
+    ));
+    body.push_str(&format!(
+        "<text data-gate-label=\"0.5\" x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">0.5 m gate</text>",
+        plot.right - 110.0,
+        gate_y - 6.0
     ));
     for column in [0, 80, 160, 240, 319] {
         let x = plot.x(f64::from(column), 319.0);
@@ -701,44 +744,62 @@ fn draw_row(samples: &[DepthRay]) -> String {
             &format!("{metres:.1}"),
         ));
     }
-    body.push_str("<text x=\"500\" y=\"680\" font-size=\"12\">column index</text>");
-    body.push_str("<text x=\"24\" y=\"390\" font-size=\"12\" transform=\"rotate(-90 24 390)\">axial depth, m</text>");
+    body.push_str("<text x=\"500\" y=\"668\" font-size=\"12\">column index</text>");
+    body.push_str("<text x=\"24\" y=\"400\" font-size=\"12\" transform=\"rotate(-90 24 400)\">axial depth, m</text>");
     for sample in samples.iter().filter(|sample| sample.row == Some(120)) {
+        let class = posted_class(sample);
+        if class == DepthClass::NoReturn {
+            continue;
+        }
         let Some(axial) = sample.axial_m else {
             continue;
         };
         let x = plot.x(f64::from(sample.col.unwrap_or(0)), 319.0);
         let y = plot.y(axial.min(2.5), 2.5);
+        let usable = if class == DepthClass::Valid {
+            "true"
+        } else {
+            "false"
+        };
         body.push_str(&format!(
-            "<circle data-depth-mark=\"1\" cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"2.2\" fill=\"#1d4e89\"/>"
+            "<circle data-depth-mark=\"1\" data-col=\"{}\" data-row=\"120\" data-axial-mm=\"{}\" data-class=\"{}\" data-fresh=\"fresh\" data-usable=\"{usable}\" cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"2.4\" fill=\"{}\"/>",
+            sample.col.unwrap_or(0),
+            sample.axial_mm,
+            class_name(class),
+            class_fill(class)
         ));
     }
-    body.push_str(&swatches(&[("#1d4e89", "axial depth, row 120")], 720.0));
+    body.push_str(&class_legend(24.0, 710.0));
     body.push_str("</svg>");
     body
 }
 
 fn draw_grid(samples: &[DepthRay]) -> String {
-    let mut body = String::from(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"760\" viewBox=\"0 0 1040 760\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>",
-    );
-    body.push_str("<text x=\"24\" y=\"32\" font-size=\"16\">Posted axial depth, stride 16</text>");
-    body.push_str("<text x=\"24\" y=\"54\" font-size=\"12\">Each cell is one cast at that pixel center. The stride does not interpolate. Colour is axial metres, not a fixture identity.</text>");
-    body.push_str("<text x=\"24\" y=\"74\" font-size=\"12\">Image row 0 is the top. Column ticks are indexes. This is not a photograph, not a calibration, and not a detector.</text>");
-    let origin_x = 90.0;
-    let origin_y = 120.0;
-    let cell = 28.0;
+    let mut body = svg_open("Posted class, stride 16");
+    body.push_str("<text x=\"24\" y=\"54\" font-size=\"12\">Each cell is one cast. The stride does not interpolate and is not a full frame. Colour is the posted class, not a metre ramp.</text>");
+    body.push_str("<text x=\"24\" y=\"76\" font-size=\"12\">Valid is at or above 500 mm. Below gate is 1 to 499 mm and is not usable. No return is posted 0. Axial millimetres stay on each cell.</text>");
+    body.push_str(&format!(
+        "<text x=\"24\" y=\"98\" font-size=\"12\">{LIMIT_LINE}</text>"
+    ));
+    let origin_x = 110.0;
+    let origin_y = 150.0;
+    let cell = 26.0;
     for sample in samples {
-        let col = sample.col.unwrap_or(0) / STRIDE;
-        let row = sample.row.unwrap_or(0) / STRIDE;
-        let x = origin_x + f64::from(col) * cell;
-        let y = origin_y + f64::from(row) * cell;
-        let (fill, mm) = match sample.axial_m {
-            Some(axial) => (depth_fill(axial), sample.axial_mm.to_string()),
-            None => ("#d9d9d9".to_string(), "0".to_string()),
+        let class = posted_class(sample);
+        let col = sample.col.unwrap_or(0);
+        let row = sample.row.unwrap_or(0);
+        let x = origin_x + f64::from(col / STRIDE) * cell;
+        let y = origin_y + f64::from(row / STRIDE) * cell;
+        let usable = if class == DepthClass::Valid {
+            "true"
+        } else {
+            "false"
         };
         body.push_str(&format!(
-            "<rect data-cell=\"1\" data-axial-mm=\"{mm}\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"26\" height=\"26\" fill=\"{fill}\"/>"
+            "<rect data-cell=\"1\" data-col=\"{col}\" data-row=\"{row}\" data-axial-mm=\"{}\" data-class=\"{}\" data-fresh=\"fresh\" data-usable=\"{usable}\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"24\" height=\"24\" fill=\"{}\"/>",
+            sample.axial_mm,
+            class_name(class),
+            class_fill(class)
         ));
     }
     for column in [0, 160, 304] {
@@ -752,31 +813,208 @@ fn draw_grid(samples: &[DepthRay]) -> String {
             &column.to_string(),
         ));
     }
-    body.push_str("<text x=\"90\" y=\"620\" font-size=\"12\">column index, stride 16</text>");
-    let legend_x = 760.0;
-    for (index, metres) in [0.25, 0.5, 1.0, 2.0].into_iter().enumerate() {
-        let y = 140.0 + index as f64 * 36.0;
+    for row in [0, 128, 224] {
+        let y = origin_y + f64::from(row / STRIDE) * cell + 16.0;
         body.push_str(&format!(
-            "<rect data-legend=\"scale\" x=\"{legend_x:.1}\" y=\"{y:.1}\" width=\"28\" height=\"18\" fill=\"{}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">{metres:.2} m axial</text>",
-            depth_fill(metres),
-            legend_x + 36.0,
-            y + 14.0
+            "<text data-row-index=\"{row}\" x=\"36\" y=\"{y:.1}\" font-size=\"12\">{row}</text>"
         ));
     }
-    body.push_str(&format!(
-        "<rect data-legend=\"swatch\" x=\"{legend_x:.1}\" y=\"290\" width=\"28\" height=\"18\" fill=\"#d9d9d9\"/><text x=\"{:.1}\" y=\"304\" font-size=\"12\">no return</text>",
-        legend_x + 36.0
-    ));
+    body.push_str("<text x=\"110\" y=\"620\" font-size=\"12\">column index, stride 16</text>");
+    body.push_str("<text x=\"24\" y=\"140\" font-size=\"12\">row</text>");
+    body.push_str(&class_legend_stack(760.0, 170.0));
     body.push_str("</svg>");
     body
 }
 
-fn depth_fill(axial_m: f64) -> String {
-    let t = (axial_m / 2.0).clamp(0.0, 1.0);
-    let red = (24.0 + 216.0 * t) as u8;
-    let green = (64.0 + 150.0 * (1.0 - (t - 0.45).abs()).clamp(0.0, 1.0)) as u8;
-    let blue = (210.0 * (1.0 - t)) as u8;
-    format!("#{red:02x}{green:02x}{blue:02x}")
+fn draw_fault(samples: &[DepthRay]) -> String {
+    let plot = Plot {
+        left: 430.0,
+        right: 980.0,
+        top: 170.0,
+        bottom: 620.0,
+    };
+    let retained = samples.len();
+    let mut body = svg_open("Stale fault trace");
+    body.push_str(&format!(
+        "<text x=\"24\" y=\"54\" font-size=\"12\">All {retained} samples are retained and stale. Fresh valid depth is 0. A stale valid word is not usable.</text>"
+    ));
+    body.push_str("<text x=\"24\" y=\"76\" font-size=\"12\">Index 0 posts 0. The hollow mark is its ideal range and is not a posted depth word.</text>");
+    body.push_str(&format!(
+        "<text x=\"24\" y=\"98\" font-size=\"12\">{LIMIT_LINE}</text>"
+    ));
+    body.push_str(&format!(
+        "<g data-fresh-valid=\"0\" data-retained=\"{retained}\" data-fresh=\"stale\">"
+    ));
+    body.push_str("<text x=\"24\" y=\"140\" font-size=\"12\">index</text><text x=\"70\" y=\"140\" font-size=\"12\">posted mm</text><text x=\"150\" y=\"140\" font-size=\"12\">class</text><text x=\"240\" y=\"140\" font-size=\"12\">reason</text><text x=\"320\" y=\"140\" font-size=\"12\">usable</text>");
+    for (index, sample) in samples.iter().enumerate() {
+        let class = posted_class(sample);
+        let reason = if sample.axial_mm == 0 {
+            "dropout"
+        } else {
+            "stale"
+        };
+        let range = sample
+            .range_m
+            .map(|range| format!("{range:.4}"))
+            .unwrap_or_default();
+        let y = 168.0 + index as f64 * 28.0;
+        body.push_str(&format!(
+            "<g data-fault-row=\"{index}\" data-posted-mm=\"{}\" data-class=\"{}\" data-fresh=\"stale\" data-usable=\"false\" data-reason=\"{reason}\" data-range-m=\"{range}\"><text x=\"24\" y=\"{y:.1}\" font-size=\"12\">{index}</text><text x=\"70\" y=\"{y:.1}\" font-size=\"12\">{}</text><text x=\"150\" y=\"{y:.1}\" font-size=\"12\">{}</text><text x=\"240\" y=\"{y:.1}\" font-size=\"12\">{reason}</text><text x=\"320\" y=\"{y:.1}\" font-size=\"12\">no</text></g>",
+            sample.axial_mm,
+            class_name(class),
+            sample.axial_mm,
+            class_name(class)
+        ));
+    }
+    body.push_str("</g>");
+    body.push_str(&axis_line(
+        plot.left,
+        plot.bottom,
+        plot.right,
+        plot.bottom,
+        "fault-index",
+    ));
+    body.push_str(&axis_line(
+        plot.left,
+        plot.bottom,
+        plot.left,
+        plot.top,
+        "fault-axial",
+    ));
+    let gate_y = plot.y(DEPTH_GATE_M, 2.5);
+    body.push_str(&format!(
+        "<line data-gate=\"0.5\" x1=\"{:.1}\" y1=\"{gate_y:.1}\" x2=\"{:.1}\" y2=\"{gate_y:.1}\" stroke=\"#6b3a2a\" stroke-width=\"1.3\" stroke-dasharray=\"6 4\"/>",
+        plot.left, plot.right
+    ));
+    body.push_str(&format!(
+        "<text data-gate-label=\"0.5\" x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">0.5 m gate</text>",
+        plot.left + 8.0,
+        gate_y - 6.0
+    ));
+    let span = samples.len().max(1) as f64;
+    for (index, sample) in samples.iter().enumerate() {
+        let class = posted_class(sample);
+        let x = plot.x(index as f64 + 0.5, span);
+        if sample.axial_mm == 0 {
+            let Some(range) = sample.range_m else {
+                continue;
+            };
+            let y = plot.y(range.min(2.5), 2.5);
+            body.push_str(&format!(
+                "<circle data-mark=\"ideal-range\" data-index=\"{index}\" data-range-m=\"{range:.4}\" data-posted=\"false\" data-usable=\"false\" data-fresh=\"stale\" cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"6\" fill=\"none\" stroke=\"#222222\" stroke-width=\"1.6\"/>"
+            ));
+            body.push_str(&format!(
+                "<text data-mark=\"ideal-label\" x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">not posted</text>",
+                x + 10.0,
+                y - 8.0
+            ));
+            body.push_str(&format!(
+                "<rect data-mark=\"posted-word\" data-index=\"{index}\" data-posted-mm=\"0\" data-class=\"no-return\" data-reason=\"dropout\" data-fresh=\"stale\" data-usable=\"false\" x=\"24\" y=\"700\" width=\"18\" height=\"18\" fill=\"{NONE_FILL}\"/>"
+            ));
+            body.push_str(
+                "<text x=\"48\" y=\"714\" font-size=\"12\">dropout: posted word 0, not a depth of 0 m</text>",
+            );
+        } else {
+            let axial = f64::from(sample.axial_mm) / 1000.0;
+            let y = plot.y(axial.min(2.5), 2.5);
+            body.push_str(&format!(
+                "<rect data-mark=\"stale-posted\" data-index=\"{index}\" data-posted-mm=\"{}\" data-class=\"{}\" data-fresh=\"stale\" data-usable=\"false\" data-reason=\"stale\" x=\"{:.1}\" y=\"{:.1}\" width=\"10\" height=\"10\" fill=\"{}\"/>",
+                sample.axial_mm,
+                class_name(class),
+                x - 5.0,
+                y - 5.0,
+                class_fill(class)
+            ));
+            body.push_str(&format!(
+                "<line data-mark=\"stale-cross\" data-index=\"{index}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#ffffff\" stroke-width=\"1.4\"/>",
+                x - 4.0,
+                y - 4.0,
+                x + 4.0,
+                y + 4.0
+            ));
+            body.push_str(&format!(
+                "<line data-mark=\"stale-cross\" data-index=\"{index}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#ffffff\" stroke-width=\"1.4\"/>",
+                x - 4.0,
+                y + 4.0,
+                x + 4.0,
+                y - 4.0
+            ));
+        }
+    }
+    for metres in [0.0, 0.5, 1.0, 1.5, 2.0, 2.5] {
+        let y = plot.y(metres, 2.5);
+        body.push_str(&tick(
+            plot.left,
+            y,
+            -36.0,
+            4.0,
+            "fault-axial",
+            &format!("{metres:.1}"),
+        ));
+    }
+    for index in 0..samples.len() {
+        let x = plot.x(index as f64 + 0.5, span);
+        body.push_str(&tick(
+            x,
+            plot.bottom,
+            0.0,
+            16.0,
+            "fault-index",
+            &index.to_string(),
+        ));
+    }
+    body.push_str("<text x=\"640\" y=\"656\" font-size=\"12\">sample index</text>");
+    body.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"162\" font-size=\"12\">posted axial m</text>",
+        plot.left + 8.0
+    ));
+    body.push_str(&format!(
+        "<rect data-legend=\"valid\" x=\"430\" y=\"680\" width=\"14\" height=\"10\" fill=\"{VALID_FILL}\"/><line data-mark=\"stale-cross\" x1=\"432\" y1=\"682\" x2=\"442\" y2=\"688\" stroke=\"#ffffff\" stroke-width=\"1.4\"/><line data-mark=\"stale-cross\" x1=\"432\" y1=\"688\" x2=\"442\" y2=\"682\" stroke=\"#ffffff\" stroke-width=\"1.4\"/><text x=\"450\" y=\"690\" font-size=\"12\">valid class, stale, not usable</text>"
+    ));
+    body.push_str(&format!(
+        "<rect data-legend=\"below-gate\" x=\"700\" y=\"680\" width=\"14\" height=\"10\" fill=\"{BELOW_FILL}\"/><text x=\"720\" y=\"690\" font-size=\"12\">below gate, not usable</text>"
+    ));
+    body.push_str(&format!(
+        "<rect data-legend=\"no-return\" x=\"430\" y=\"710\" width=\"14\" height=\"10\" fill=\"{NONE_FILL}\"/><text x=\"450\" y=\"720\" font-size=\"12\">posted 0, dropout</text>"
+    ));
+    body.push_str("<circle data-legend=\"ideal-range\" cx=\"707\" cy=\"715\" r=\"6\" fill=\"none\" stroke=\"#222222\" stroke-width=\"1.6\"/><text x=\"720\" y=\"720\" font-size=\"12\">ideal range, not posted</text>");
+    body.push_str("</svg>");
+    body
+}
+
+fn svg_open(title: &str) -> String {
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1040\" height=\"760\" viewBox=\"0 0 1040 760\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"24\" y=\"32\" font-size=\"16\">{title}</text>"
+    )
+}
+
+fn class_legend_stack(x: f64, y: f64) -> String {
+    format!(
+        "<rect data-legend=\"valid\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"14\" height=\"10\" fill=\"{VALID_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">valid, at or above 500 mm</text><rect data-legend=\"below-gate\" x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"10\" fill=\"{BELOW_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">below gate, 1 to 499 mm</text><rect data-legend=\"no-return\" x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"10\" fill=\"{NONE_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">no return, posted 0</text>",
+        x + 20.0,
+        y + 10.0,
+        y + 36.0,
+        x + 20.0,
+        y + 46.0,
+        y + 72.0,
+        x + 20.0,
+        y + 82.0
+    )
+}
+
+fn class_legend(x: f64, y: f64) -> String {
+    format!(
+        "<rect data-legend=\"valid\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"14\" height=\"10\" fill=\"{VALID_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">valid, at or above 500 mm</text><rect data-legend=\"below-gate\" x=\"{:.1}\" y=\"{y:.1}\" width=\"14\" height=\"10\" fill=\"{BELOW_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">below gate, 1 to 499 mm</text><rect data-legend=\"no-return\" x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"10\" fill=\"{NONE_FILL}\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"12\">no return, posted 0</text>",
+        x + 20.0,
+        y + 10.0,
+        x + 250.0,
+        x + 270.0,
+        y + 10.0,
+        x + 500.0,
+        y + 22.0,
+        x + 520.0,
+        y + 32.0
+    )
 }
 
 struct Plot {
@@ -1162,7 +1400,8 @@ mod tests {
         assert!(views.row_svg.contains("column index"));
         assert!(views.row_svg.contains("data-axis-tick=\"axial-m\""));
         assert!(views.grid_svg.contains("stride 16"));
-        assert!(views.grid_svg.contains("data-legend=\"scale\""));
+        assert!(views.grid_svg.contains("data-legend=\"below-gate\""));
+        assert!(views.fault_svg.contains("data-fresh-valid=\"0\""));
         let fresh = post_depth(&[low], Freshness::Fresh);
         let scan = PostedScan {
             freshness: Freshness::Fresh,
@@ -1174,6 +1413,332 @@ mod tests {
         assert_eq!(note.person, PersonPost::NotInPostedView);
         assert_eq!(note.actuation, Actuation::NotSent);
         assert!(!views.trace_csv.contains("person"));
+    }
+
+    #[test]
+    fn the_row_chart_separates_valid_from_below_gate() {
+        let views = demo_camera().unwrap();
+        let trace = csv_rows(&views.trace_csv);
+        let row: Vec<_> = trace.into_iter().filter(|row| row.row == 120).collect();
+        assert!(row.iter().any(|sample| sample.class == "valid"));
+        assert!(row.iter().any(|sample| sample.class == "below-gate"));
+        let marks = tags(&views.row_svg, "circle")
+            .into_iter()
+            .filter(|tag| attr_opt(tag, "data-depth-mark") == Some("1"))
+            .collect::<Vec<_>>();
+        let gate = tags(&views.row_svg, "line")
+            .into_iter()
+            .find(|tag| attr_opt(tag, "data-gate") == Some("0.5"))
+            .expect("gate");
+        let gate_y = attr_f64(gate, "y1");
+        let mut valid_fill = String::new();
+        let mut below_fill = String::new();
+        let mut seen = Vec::new();
+        for mark in &marks {
+            let mm = attr(mark, "data-axial-mm").parse::<u16>().unwrap();
+            let class = class_word(classify_depth_mm(mm, 500));
+            assert_eq!(attr(mark, "data-class"), class);
+            assert_eq!(attr(mark, "data-fresh"), "fresh");
+            let usable = class == "valid";
+            assert_eq!(
+                attr(mark, "data-usable"),
+                if usable { "true" } else { "false" }
+            );
+            let cy = attr_f64(mark, "cy");
+            if class == "valid" {
+                assert!(cy < gate_y);
+                valid_fill = attr(mark, "fill").to_string();
+            } else if class == "below-gate" {
+                assert!(cy > gate_y);
+                below_fill = attr(mark, "fill").to_string();
+            } else {
+                panic!("a no-return is not a depth mark");
+            }
+            let col = attr(mark, "data-col").parse::<u32>().unwrap();
+            let source = row.iter().find(|sample| sample.col == col).unwrap();
+            assert_eq!(source.mm, mm);
+            assert_eq!(source.class, class);
+            seen.push(col);
+        }
+        assert_ne!(valid_fill, below_fill);
+        assert_eq!(legend_fill(&views.row_svg, "valid"), valid_fill);
+        assert_eq!(legend_fill(&views.row_svg, "below-gate"), below_fill);
+        for sample in &row {
+            if sample.class == "no-return" {
+                assert!(!seen.contains(&sample.col));
+            } else {
+                assert!(seen.contains(&sample.col));
+            }
+        }
+        assert!(views.row_svg.contains(super::LIMIT_LINE));
+        assert!(!views.row_svg.contains("low-box"));
+        assert!(!views.row_svg.contains("chassis"));
+    }
+
+    #[test]
+    fn the_grid_uses_posted_class_and_labels_its_rows() {
+        let views = demo_camera().unwrap();
+        let cells = tags(&views.grid_svg, "rect")
+            .into_iter()
+            .filter(|tag| attr_opt(tag, "data-cell") == Some("1"))
+            .collect::<Vec<_>>();
+        assert!(cells.len() > 1);
+        let mut fills = [String::new(), String::new(), String::new()];
+        for cell in &cells {
+            let mm = attr(cell, "data-axial-mm").parse::<u16>().unwrap();
+            let class = class_word(classify_depth_mm(mm, 500));
+            assert_eq!(attr(cell, "data-class"), class);
+            assert_eq!(attr(cell, "data-fresh"), "fresh");
+            let usable = class == "valid";
+            assert_eq!(
+                attr(cell, "data-usable"),
+                if usable { "true" } else { "false" }
+            );
+            let fill = attr(cell, "fill");
+            assert_eq!(fill, legend_fill(&views.grid_svg, class));
+            let slot = match class {
+                "valid" => 0,
+                "below-gate" => 1,
+                "no-return" => 2,
+                _ => panic!("{class}"),
+            };
+            if fills[slot].is_empty() {
+                fills[slot] = fill.to_string();
+            } else {
+                assert_eq!(fills[slot], fill);
+            }
+        }
+        assert_ne!(fills[0], fills[1]);
+        assert_ne!(fills[1], fills[2]);
+        assert_ne!(fills[0], fills[2]);
+        for row in ["0", "128", "224"] {
+            let cell = cells
+                .iter()
+                .find(|cell| attr(cell, "data-row") == row)
+                .unwrap();
+            let label = tags(&views.grid_svg, "text")
+                .into_iter()
+                .find(|tag| attr_opt(tag, "data-row-index") == Some(row))
+                .unwrap();
+            let cell_y = attr_f64(cell, "y");
+            let label_y = attr_f64(label, "y");
+            assert!(
+                label_y > cell_y && label_y < cell_y + 24.0,
+                "row {row} label {label_y} cell {cell_y}"
+            );
+        }
+        assert!(views.grid_svg.contains(super::LIMIT_LINE));
+        assert!(!views.grid_svg.contains("low-box"));
+        assert!(!views.grid_svg.contains("far-wall"));
+    }
+
+    #[test]
+    fn the_fault_figure_keeps_stale_samples_and_hides_the_ideal_range_from_the_posted_word() {
+        let views = demo_camera().unwrap();
+        let rows = csv_rows(&views.fault_csv);
+        assert_eq!(rows.len(), 8);
+        assert!(rows.iter().all(|row| row.fresh == "stale"));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.fresh == "fresh" && row.class == "valid")
+                .count(),
+            0
+        );
+        assert_eq!(attr(&views.fault_svg, "data-fresh-valid"), "0");
+        let groups = tags(&views.fault_svg, "g")
+            .into_iter()
+            .filter(|tag| tag.contains("data-fault-row"))
+            .collect::<Vec<_>>();
+        assert_eq!(groups.len(), rows.len());
+        for row in &rows {
+            let index = row.index.to_string();
+            let group = groups
+                .iter()
+                .find(|tag| attr_opt(tag, "data-fault-row") == Some(index.as_str()))
+                .unwrap();
+            assert_eq!(attr(group, "data-posted-mm"), row.mm.to_string());
+            assert_eq!(attr(group, "data-class"), row.class);
+            assert_eq!(
+                attr(group, "data-class"),
+                class_word(classify_depth_mm(row.mm, 500))
+            );
+            assert_eq!(attr(group, "data-fresh"), "stale");
+            assert_eq!(attr(group, "data-usable"), "false");
+            assert_eq!(attr(group, "data-range-m"), row.range);
+            let reason = if row.mm == 0 { "dropout" } else { "stale" };
+            assert_eq!(attr(group, "data-reason"), reason);
+            let y = format!("{:.1}", 168.0 + row.index as f64 * 28.0);
+            let drawn = texts(&views.fault_svg);
+            assert!(
+                drawn.iter().any(|text| {
+                    attr_opt(text, "y") == Some(y.as_str()) && text.ends_with(&format!(">{reason}"))
+                }),
+                "row {} does not draw {reason}",
+                row.index
+            );
+            assert!(
+                drawn.iter().any(|text| {
+                    attr_opt(text, "y") == Some(y.as_str()) && text.ends_with(">no")
+                })
+            );
+        }
+        let posted = tags(&views.fault_svg, "rect")
+            .into_iter()
+            .find(|tag| attr_opt(tag, "data-mark") == Some("posted-word"))
+            .unwrap();
+        assert_eq!(attr(posted, "data-posted-mm"), "0");
+        assert_eq!(attr(posted, "data-reason"), "dropout");
+        assert_eq!(attr(posted, "data-usable"), "false");
+        assert_eq!(
+            attr(posted, "fill"),
+            legend_fill(&views.fault_svg, "no-return")
+        );
+        let ideal = tags(&views.fault_svg, "circle")
+            .into_iter()
+            .find(|tag| attr_opt(tag, "data-mark") == Some("ideal-range"))
+            .unwrap();
+        assert_eq!(attr(ideal, "data-range-m"), rows[0].range);
+        assert_eq!(attr(ideal, "data-posted"), "false");
+        assert_eq!(attr(ideal, "data-usable"), "false");
+        assert_eq!(attr(ideal, "data-fresh"), "stale");
+        assert_eq!(attr(ideal, "fill"), "none");
+        assert!((attr_f64(ideal, "cy") - attr_f64(posted, "y")).abs() > 40.0);
+        assert!(attr_f64(posted, "x") < 80.0);
+        let squares = tags(&views.fault_svg, "rect")
+            .into_iter()
+            .filter(|tag| attr_opt(tag, "data-mark") == Some("stale-posted"))
+            .collect::<Vec<_>>();
+        assert!(squares.iter().all(|tag| attr(tag, "data-fresh") == "stale"));
+        assert!(
+            squares
+                .iter()
+                .all(|tag| attr(tag, "data-usable") == "false")
+        );
+        assert!(squares.iter().all(|tag| attr(tag, "data-posted-mm") != "0"));
+        let crosses = tags(&views.fault_svg, "line");
+        for square in &squares {
+            let index = attr(square, "data-index");
+            let x = attr_f64(square, "x");
+            let y = attr_f64(square, "y");
+            let arms = crosses
+                .iter()
+                .filter(|tag| {
+                    attr_opt(tag, "data-mark") == Some("stale-cross")
+                        && attr_opt(tag, "data-index") == Some(index)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(arms.len(), 2, "stale index {index}");
+            for arm in arms {
+                for (px, py) in [("x1", "y1"), ("x2", "y2")] {
+                    let px = attr_f64(arm, px);
+                    let py = attr_f64(arm, py);
+                    assert!(px >= x && px <= x + 10.0, "cross x {px} square {x}");
+                    assert!(py >= y && py <= y + 10.0, "cross y {py} square {y}");
+                }
+            }
+        }
+        assert!(views.fault_svg.contains(super::LIMIT_LINE));
+        assert!(!views.fault_svg.contains("low-box"));
+        assert!(!views.fault_svg.contains("chassis"));
+        assert!(!views.fault_svg.contains("occluder"));
+    }
+
+    struct CsvRow {
+        index: usize,
+        col: u32,
+        row: u32,
+        mm: u16,
+        range: String,
+        class: String,
+        fresh: String,
+    }
+
+    fn csv_rows(csv: &str) -> Vec<CsvRow> {
+        csv.lines()
+            .skip(1)
+            .filter(|line| !line.is_empty())
+            .enumerate()
+            .map(|(index, line)| {
+                let mut fields = line.split(',');
+                let col = fields.next().unwrap().parse().unwrap();
+                let row = fields.next().unwrap().parse().unwrap();
+                let mm = fields.next().unwrap().parse().unwrap();
+                let range = fields.next().unwrap().to_string();
+                let class = fields.next().unwrap().to_string();
+                let fresh = fields.next().unwrap().to_string();
+                CsvRow {
+                    index,
+                    col,
+                    row,
+                    mm,
+                    range,
+                    class,
+                    fresh,
+                }
+            })
+            .collect()
+    }
+
+    fn class_word(class: DepthClass) -> &'static str {
+        match class {
+            DepthClass::NoReturn => "no-return",
+            DepthClass::BelowGate => "below-gate",
+            DepthClass::Valid => "valid",
+        }
+    }
+
+    fn texts(svg: &str) -> Vec<&str> {
+        let mut rest = svg;
+        let mut found = Vec::new();
+        while let Some(start) = rest.find("<text ") {
+            let end = rest[start..].find("</text>").unwrap() + start;
+            found.push(&rest[start..end]);
+            rest = &rest[end + 7..];
+        }
+        found
+    }
+
+    fn tags<'a>(svg: &'a str, kind: &str) -> Vec<&'a str> {
+        let needle = format!("<{kind} ");
+        let mut rest = svg;
+        let mut found = Vec::new();
+        while let Some(start) = rest.find(&needle) {
+            let end = rest[start..].find('>').unwrap() + start;
+            found.push(&rest[start..=end]);
+            rest = &rest[end + 1..];
+        }
+        found
+    }
+
+    fn attr_opt<'a>(element: &'a str, name: &str) -> Option<&'a str> {
+        let key = format!("{name}=\"");
+        let mut rest = element;
+        while let Some(pos) = rest.find(&key) {
+            let boundary = pos == 0 || rest.as_bytes()[pos - 1].is_ascii_whitespace();
+            if boundary {
+                let start = pos + key.len();
+                let end = rest[start..].find('"')?;
+                return Some(&rest[start..start + end]);
+            }
+            rest = &rest[pos + 1..];
+        }
+        None
+    }
+
+    fn attr<'a>(element: &'a str, name: &str) -> &'a str {
+        attr_opt(element, name).unwrap_or_else(|| panic!("missing {name}"))
+    }
+
+    fn attr_f64(element: &str, name: &str) -> f64 {
+        attr(element, name).parse().unwrap()
+    }
+
+    fn legend_fill(svg: &str, class: &str) -> String {
+        tags(svg, "rect")
+            .into_iter()
+            .find(|tag| attr_opt(tag, "data-legend") == Some(class))
+            .map(|tag| attr(tag, "fill").to_string())
+            .unwrap()
     }
 
     impl super::DepthRay {
