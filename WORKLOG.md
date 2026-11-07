@@ -1,5 +1,26 @@
 # WORKLOG
 
+## Physical foundation (2026-11-07)
+
+The owner approved a seven-stage offline Rust simulator for section 3.1 only. This commit is the foundation, not those seven stages. No sanctioned Issue tool was available. That limit is recorded here, and the work continued on branch `cursor/physical-foundation-bf93`. `physical` is a workspace member with no dependencies. No other crate depends on it. The 2026-11-06 English rule still covers every committed file. The foundation request asks for an explanatory manual, plausibility, graphs, and a recorded duration. It does not name another language, so this commit adds no Thai file.
+
+Section 3.1 stays 45 `pass` and 11 `not-run`. GPSR is unchanged. Public 2024.2 and public 2025.1 are not the baseline. The professor PDF remains SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`. The PDF, the course captures, the original configs, the photos, and the SO-ARM100 meshes stay outside git.
+
+The private replay command was `cargo run -p physical --bin replay --offline -- --session /tmp/pkt-inspect/pi-drive/data/20261107-course-session --out /opt/cursor/artifacts/physical-foundation --arm-urdf /tmp/arm-model/model/so100.urdf`. Exit 0. The report in that directory records 5336 elapsed milliseconds for that one debug process. An earlier debug process on the same session recorded 2418 milliseconds. Those two numbers are not a performance acceptance result.
+
+The replay parsed every `raw_lidar` bin, seven depth `.npy` frames, three speed runs, the static lidar raw and chunk files, four logs, `prims6.json`, and four map headers. `camera.npz` is zip method 8 and stayed blocked. Seven PNG files were counted and not decoded. The loaded URDF hash matched `f7050417ebbb79358f113ddd4bca2b457b2c6d5048193331db5a04a0066439ed`. Grasp stays not validated. A scan of the artifact directory found no `203.0.113`, `@`, `ts.net`, `/home/`, `ssh `, or `Users\\` token. The synthetic test uses `203.0.113.50` and asserts that address is absent from the output tree.
+
+Debug and release library tests match: domain 8, harness 73, hri 2, manipulation 8, navigation 19, perception 20, physical 19, sim_runtime 30, task_3_1 32, task_3_2 3. That is 214. The `replay` binary has 0 tests. Doctests stay 7: domain 1, manipulation 1, navigation 1, perception 1, sim_runtime 1, task_3_1 1, task_3_2 1. Commands, all exit 0: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --all-targets --locked`, `cargo test --workspace --doc --locked`, `cargo test --workspace --all-targets --locked --release`, `cargo test --workspace --doc --locked --release`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked`, `python3 artifacts/check_workspace.py` (`ok members=10 pin=1.99.1 edition=2024`), `python3 artifacts/check_m1_spec.py` (`ok rows=56 pdf=False`), and `python3 artifacts/check_m10_spec.py` (`ok rows=42 not-run=42 open=6 hardware=2`). The 3.2 checker is unchanged. GitHub Actions run `42379939021` succeeded on `1de8fbaa57522344224ec3d198ab00ecc8cba64a`: <https://github.com/clytie0x/robocup-home/actions/runs/42379939021>. This entry does not merge.
+
+Hash algorithm remains SHA-256 from `sha256sum`. These files are artifacts, not git objects. The scan drawing shows the room, so it stays out of the repository.
+
+| file | sha256 |
+| --- | --- |
+| `/opt/cursor/artifacts/physical-foundation/report.md` | `9a1e32bd2b204cd97d58ceca97ee71cf5b7149909997bcb0d8edf49c46744dc0` |
+| `/opt/cursor/artifacts/physical-foundation/speed.csv` | `99d40de2346b8a379e90485c037fe08c602a0a085a37c1a849535788613e0dbe` |
+| `/opt/cursor/artifacts/physical-foundation/scan-longest.svg` | `9e02abca91cf8315dfabaec7d7c63d823f66add3674134481d1563f959a01788` |
+| `/opt/cursor/artifacts/physical-foundation/frame-geometry.svg` | `b58f74e7cd73feb0fb816f1a77e634ecab517771105ef88e0a8b5e6195721ac0` |
+
 ## R1 through R5 interrogate fix (2026-11-07)
 
 The interrogate covered the approved R1 through R5 plan. The Rust candidate was `08e85403f78ccbcdb025f62d110bdebfb68c528c`. The intent stays a bounded laptop simulation of Carry My Luggage in two dimensions: posted sensing with real delivery boundaries, causal world events, frozen scenarios judged apart from the script, and an SVG drawn from the recorded log. It is not a hardware result, a field score, or complete acceptance. Section 3.1 stays 45 `pass` and 11 `not-run`. No hardware row is closed. GPSR is unchanged. Public 2024.2 and public 2025.1 are not the baseline. The professor PDF remains SHA-256 `da69e2c276836ccb228ab3a9ba403b04efe38d7a1d30a7d4cbdcc490d83ce600`.
