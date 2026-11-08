@@ -36,3 +36,7 @@ path = "src/bin/camera_frame.rs"
 [[bin]]
 name = "still-pair"
 path = "src/bin/still_pair.rs"
+
+[[bin]]
+name = "camera-archive"
+path = "src/bin/camera_archive.rs"

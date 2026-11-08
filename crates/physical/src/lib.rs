@@ -5,7 +5,9 @@
 
 mod arm;
 mod base;
+mod bounded_read;
 mod camera;
+mod camera_npz;
 mod chunk;
 mod command;
 mod frame;
@@ -27,9 +29,14 @@ mod zipnote;
 
 pub use arm::{ArmIdentity, UrdfRead, grasp_status, identity, read_urdf};
 pub use base::{BaseViews, demo_views};
+pub use bounded_read::{BoundError, read_bounded, read_file_bounded};
 pub use camera::{
     CameraViews, CastQuery, DepthRay, IMAGE_HEIGHT, IMAGE_WIDTH, apply_dropout, cast_axis,
     cast_pixel, demo_camera, pixel_for_tangent, post_depth,
+};
+pub use camera_npz::{
+    ARCHIVE_FILE_LIMIT, ArchiveError, COMPARE_FRAME_LIMIT, CameraArchive, CompareParts,
+    read_camera_npz, split_compare_frame,
 };
 pub use chunk::{Chunk, ChunkParse, parse_chunks};
 pub use command::{format_command, wire_preview};
@@ -66,7 +73,8 @@ pub use speed::{
     scan_forward,
 };
 pub use still::{
-    STILL_DEPTH_WORDS, STILL_HEIGHT, STILL_RGB_BYTES, STILL_WIDTH, StillError, StillPair,
-    depth_bins, read_still_depth, read_still_pair, read_still_png,
+    STILL_CHECK_DEPTH_LIMIT, STILL_CHECK_RGB_LIMIT, STILL_DEPTH_FILE_LIMIT, STILL_DEPTH_WORDS,
+    STILL_FRAME_LIMIT, STILL_HEIGHT, STILL_PNG_FILE_LIMIT, STILL_RGB_BYTES, STILL_WIDTH,
+    StillError, StillPair, depth_bins, read_still_depth, read_still_pair, read_still_png,
 };
 pub use zipnote::{ZipEntry, zip_entries};
