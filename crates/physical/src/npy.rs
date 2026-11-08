@@ -40,13 +40,7 @@ pub fn inspect_npy(bytes: &[u8]) -> Result<NpyInfo, String> {
         .map_err(|_| "npy header is not utf-8".to_string())?;
     let descr =
         between(header, "'descr': '", "'").ok_or_else(|| "npy descr missing".to_string())?;
-    let fortran = if header.contains("'fortran_order': False") {
-        false
-    } else if header.contains("'fortran_order': True") {
-        true
-    } else {
-        return Err("npy fortran flag missing".to_string());
-    };
+    let fortran = fortran_order(header)?;
     let shape_text =
         between(header, "'shape': (", ")").ok_or_else(|| "npy shape missing".to_string())?;
     let mut shape = Vec::new();
@@ -130,6 +124,42 @@ pub fn encode_npy_u16(height: usize, width: usize, mm: &[u16]) -> Vec<u8> {
     bytes
 }
 
+fn fortran_order(header: &str) -> Result<bool, String> {
+    let key = "'fortran_order':";
+    let mut saw_true = false;
+    let mut saw_false = false;
+    let mut rest = header;
+    while let Some(at) = rest.find(key) {
+        let after = rest[at + key.len()..].trim_start();
+        let (value, tail) = if let Some(tail) = after.strip_prefix("True") {
+            (true, tail)
+        } else if let Some(tail) = after.strip_prefix("False") {
+            (false, tail)
+        } else {
+            return Err("npy fortran flag missing".to_string());
+        };
+        if tail
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return Err("npy fortran flag missing".to_string());
+        }
+        if value {
+            saw_true = true;
+        } else {
+            saw_false = true;
+        }
+        rest = tail;
+    }
+    match (saw_true, saw_false) {
+        (false, true) => Ok(false),
+        (true, false) => Ok(true),
+        (true, true) => Err("npy fortran flag ambiguous".to_string()),
+        (false, false) => Err("npy fortran flag missing".to_string()),
+    }
+}
+
 fn between(text: &str, start: &str, end: &str) -> Option<String> {
     let from = text.find(start)? + start.len();
     let rest = &text[from..];
@@ -157,5 +187,21 @@ mod tests {
         assert!(info.fortran);
         assert!(load_depth_u16(&header).is_err());
         assert!(load_depth_u16(b"not npy").is_err());
+    }
+
+    #[test]
+    fn a_fortran_true_and_false_is_not_read_as_c_order() {
+        let text = "{'descr': '<u2', 'fortran_order': True, 'shape': (2, 2), 'n': 'fortran_order': False, }\n";
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"\x93NUMPY");
+        bytes.push(1);
+        bytes.push(0);
+        bytes.extend_from_slice(&(text.len() as u16).to_le_bytes());
+        bytes.extend(text.as_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
+        match inspect_npy(&bytes) {
+            Ok(info) => assert!(info.fortran, "decoy treated the payload as C order"),
+            Err(err) => assert!(err.contains("fortran"), "{err}"),
+        }
     }
 }

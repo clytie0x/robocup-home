@@ -73,7 +73,8 @@ pub use speed::{
     scan_forward,
 };
 pub use still::{
-    STILL_DEPTH_WORDS, STILL_FRAME_LIMIT, STILL_HEIGHT, STILL_RGB_BYTES, STILL_WIDTH, StillError,
-    StillPair, depth_bins, read_still_depth, read_still_pair, read_still_png,
+    STILL_CHECK_DEPTH_LIMIT, STILL_CHECK_RGB_LIMIT, STILL_DEPTH_FILE_LIMIT, STILL_DEPTH_WORDS,
+    STILL_FRAME_LIMIT, STILL_HEIGHT, STILL_PNG_FILE_LIMIT, STILL_RGB_BYTES, STILL_WIDTH,
+    StillError, StillPair, depth_bins, read_still_depth, read_still_pair, read_still_png,
 };
 pub use zipnote::{ZipEntry, zip_entries};

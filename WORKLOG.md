@@ -1,5 +1,19 @@
 # WORKLOG
 
+## Still-pair input ceilings (2026-11-08)
+
+This correction is on `cursor/camera-npz-bf93` at parent `cffe42a958ef1052ff4bb977b874e5627563af36`. The previous sole writer stopped with no repository edit because the pinned compiler was absent in that environment. This process is the sole writer for the edit below. No other writer is active. The independent review of `cffe42a` stays historical. This change needs a separate review. It does not merge.
+
+`still-pair` was reading the PNG, the depth `.npy`, and the `--check-rgb` / `--check-depth` files with `fs::read` before the library caps. `inspect_npy` treated any header containing `'fortran_order': False` as C order, including a header whose own flag was `True`.
+
+The PNG ceiling 3407917 is the supported subset after rejecting an empty IDAT chunk: signature, one IHDR, nonempty IDAT data totalling at most 262144 bytes, and one empty IEND. It is not a PNG specification maximum, and it was not a ceiling of the previous reader. The depth ceiling 219145 is NumPy 1.0 only, a 10-byte preamble plus a `u16` header plus 153600 payload bytes. `inspect_npy` still parses major 2 and 3. `read_still_depth` does not. 219145 is not a maximum for those versions. `--check-rgb` stops at 230400 and `--check-depth` at 153600. One extra byte is `input bound` and is not kept. The archive ceiling stays 6565292. The `NPZ1` frame stays 14976360. The `STL1` frame stays 384032. Raw inflate still refuses a cap above 8985728. The still inflater still stops at 230640.
+
+A header with both `'fortran_order': True` and `'fortran_order': False` is `npy fortran flag ambiguous`. It is not returned as C order. One flag value is unchanged.
+
+The red library run filtered to the three new tests is `EXIT:101`, 0 passed and 3 failed, no `error[E`. The failures are the decoy treated as C order, `None` against `Some(Depth)`, and `None` against `Some(Size)`. The red CLI run is `EXIT:101`, 0 passed and 3 failed: PNG stderr `Header`, depth stderr `Depth`, and the check-rgb path with empty stderr. The check-depth red is a separate `EXIT:101`. After the reader change, the same library filter is `EXIT:0`, 8 passed, including the round trip, the two-IDAT stream, the swapped depth shape, and `fortran_order_is_rejected`. `still_input_bound` is `EXIT:0`, 4 passed, in debug and in release. The four library assertions also pass in release, `EXIT:0`. `cargo fmt --all -- --check`, `cargo clippy -p physical --all-targets --locked --offline -- -D warnings`, `cargo test -p physical --offline --doc`, and `RUSTDOCFLAGS='-D warnings' cargo doc -p physical --offline --no-deps` are each `EXIT:0`. Physical doctests are 0. The evidence directory keeps each of those logs under a distinct name.
+
+`cargo test --workspace` was not run, in debug or in release. It executes `remove_dir_all` in `replay.rs` and `navpost.rs`. Those tests were not started. Section 3.1 stays 45 pass and 11 not-run. Stage 4 is open. Stage 5 is open. No Python process was started. No private pixels were written.
+
 ## CLI read ceiling (2026-11-07)
 
 The independent review of `00b940b94b8e438854f40dedd21d5d87abd4bbe9` arrived while the still-compare correction was in flight. `96bd1f82` is that review's run id. It is not a commit. The review accepted the library output caps. It did not accept the CLI. `camera-archive` called `fs::read` on the whole file and `read_to_end` on stdin before `read_camera_npz` applied its limits. That was a medium merge blocker. The review's report that the direct library tests, the 7 doctests, the mutants, the 39-frame pipe, the 7 still memory comparisons, and the frozen 11 comparisons passed does not close this CLI hole. This note does not rerun the frozen 11.

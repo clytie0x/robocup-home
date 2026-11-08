@@ -1,16 +1,18 @@
 //! Print hashes of one saved still pair.
 //!
-//! The program reads a PNG and a depth `.npy`. It does not print pixels.
-//! `--compare` reads one framed independent decode on stdin.
+//! The program reads a PNG and a depth `.npy` up to the supported-subset
+//! ceilings. It does not print pixels. `--compare` reads one framed
+//! independent decode on stdin.
 
 use std::env;
-use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
 use physical::{
-    BoundError, STILL_FRAME_LIMIT, depth_bins, read_bounded, read_still_pair, sha256_hex,
+    BoundError, STILL_CHECK_DEPTH_LIMIT, STILL_CHECK_RGB_LIMIT, STILL_DEPTH_FILE_LIMIT,
+    STILL_FRAME_LIMIT, STILL_PNG_FILE_LIMIT, depth_bins, read_bounded, read_file_bounded,
+    read_still_pair, sha256_hex,
 };
 
 fn main() -> ExitCode {
@@ -35,19 +37,13 @@ fn main() -> ExitCode {
     if compare && (check_rgb.is_some() || check_depth.is_some()) {
         return usage();
     }
-    let png_bytes = match fs::read(&png) {
+    let png_bytes = match read_file_bounded(Path::new(&png), STILL_PNG_FILE_LIMIT) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            eprintln!("still-pair: {err}");
-            return ExitCode::from(1);
-        }
+        Err(err) => return bound_exit(err),
     };
-    let depth_bytes = match fs::read(&depth) {
+    let depth_bytes = match read_file_bounded(Path::new(&depth), STILL_DEPTH_FILE_LIMIT) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            eprintln!("still-pair: {err}");
-            return ExitCode::from(1);
-        }
+        Err(err) => return bound_exit(err),
     };
     let pair = match read_still_pair(&png_bytes, &depth_bytes) {
         Ok(pair) => pair,
@@ -184,19 +180,13 @@ fn same(name: &str, got: &[u8], expected: &[u8]) -> Result<(), String> {
 }
 
 fn check(rgb_path: &Path, rgb: &[u8], depth_path: &Path, depth: &[u8]) -> ExitCode {
-    let rgb_file = match fs::read(rgb_path) {
+    let rgb_file = match read_file_bounded(rgb_path, STILL_CHECK_RGB_LIMIT) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            eprintln!("still-pair: {err}");
-            return ExitCode::from(1);
-        }
+        Err(err) => return bound_exit(err),
     };
-    let depth_file = match fs::read(depth_path) {
+    let depth_file = match read_file_bounded(depth_path, STILL_CHECK_DEPTH_LIMIT) {
         Ok(bytes) => bytes,
-        Err(err) => {
-            eprintln!("still-pair: {err}");
-            return ExitCode::from(1);
-        }
+        Err(err) => return bound_exit(err),
     };
     let rgb_at = mismatch(&rgb_file, rgb);
     let depth_at = mismatch(&depth_file, depth);

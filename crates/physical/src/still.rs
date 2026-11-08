@@ -13,6 +13,21 @@ pub const STILL_RGB_BYTES: usize = STILL_WIDTH * STILL_HEIGHT * 3;
 pub const STILL_DEPTH_WORDS: usize = STILL_WIDTH * STILL_HEIGHT;
 pub const STILL_FRAME_LIMIT: usize =
     4 + (2 + 3 + 8 + STILL_RGB_BYTES) + (2 + 5 + 8 + STILL_DEPTH_WORDS * 2);
+/// Largest PNG this reader accepts.
+///
+/// One IHDR, one or more nonempty IDAT chunks whose data totals at most
+/// 262144 bytes, and one empty IEND. Empty IDAT chunks are rejected so the
+/// count is finite. This is a support ceiling, not a PNG specification maximum,
+/// and the previous reader did not enforce it.
+pub const STILL_PNG_FILE_LIMIT: usize = 8 + (12 + 13) + 12 + 262_144 * (12 + 1);
+/// Largest depth file this reader accepts.
+///
+/// NumPy 1.0 only: a 10-byte preamble, a `u16` header of at most 65535 bytes,
+/// and 153600 payload bytes. `inspect_npy` still parses major 2 and 3.
+/// Those versions are outside `read_still_depth`. This is not their maximum.
+pub const STILL_DEPTH_FILE_LIMIT: usize = 10 + 65_535 + STILL_DEPTH_WORDS * 2;
+pub const STILL_CHECK_RGB_LIMIT: usize = STILL_RGB_BYTES;
+pub const STILL_CHECK_DEPTH_LIMIT: usize = STILL_DEPTH_WORDS * 2;
 const SCAN_BYTES: usize = STILL_HEIGHT * (1 + STILL_WIDTH * 3);
 const MAX_IDAT: usize = 262_144;
 
@@ -88,6 +103,9 @@ pub fn read_still_png(bytes: &[u8]) -> Result<Vec<u8>, StillError> {
             if !seen_ihdr || seen_iend || idat_closed {
                 return Err(StillError::ChunkOrder);
             }
+            if data.is_empty() {
+                return Err(StillError::Size);
+            }
             let next = idat.len().checked_add(data.len()).ok_or(StillError::Size)?;
             if next > MAX_IDAT {
                 return Err(StillError::Size);
@@ -129,6 +147,9 @@ pub fn read_still_png(bytes: &[u8]) -> Result<Vec<u8>, StillError> {
 }
 
 pub fn read_still_depth(bytes: &[u8]) -> Result<Vec<u16>, StillError> {
+    if bytes.len() < 8 || &bytes[..6] != b"\x93NUMPY" || bytes[6] != 1 || bytes[7] != 0 {
+        return Err(StillError::Depth);
+    }
     let header = inspect_npy(bytes).map_err(|_| StillError::Depth)?;
     if header.fortran {
         return Err(StillError::Order);
@@ -235,8 +256,9 @@ pub fn depth_bins(words: &[u16]) -> (usize, usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::{
-        STILL_DEPTH_WORDS, STILL_HEIGHT, STILL_RGB_BYTES, STILL_WIDTH, StillError, depth_bins,
-        read_still_depth, read_still_pair, read_still_png,
+        STILL_CHECK_DEPTH_LIMIT, STILL_CHECK_RGB_LIMIT, STILL_DEPTH_FILE_LIMIT, STILL_DEPTH_WORDS,
+        STILL_FRAME_LIMIT, STILL_HEIGHT, STILL_PNG_FILE_LIMIT, STILL_RGB_BYTES, STILL_WIDTH,
+        StillError, depth_bins, read_still_depth, read_still_pair, read_still_png,
     };
 
     const DYNAMIC_ZLIB: &[u8] = include_bytes!("still_dynamic.zlib");
@@ -501,6 +523,41 @@ mod tests {
         ]))
         .expect("png");
         assert_eq!(first3(&rgb), Some(vec![9, 8, 7]));
+    }
+
+    #[test]
+    fn the_file_ceilings_match_the_supported_subset() {
+        assert_eq!(8 + (12 + 13) + 12 + 262_144 * (12 + 1), 3_407_917);
+        assert_eq!(STILL_PNG_FILE_LIMIT, 3_407_917);
+        assert_eq!(10 + 65_535 + STILL_DEPTH_WORDS * 2, 219_145);
+        assert_eq!(STILL_DEPTH_FILE_LIMIT, 219_145);
+        assert_eq!(STILL_CHECK_RGB_LIMIT, 230_400);
+        assert_eq!(STILL_CHECK_DEPTH_LIMIT, 153_600);
+        assert_eq!(STILL_FRAME_LIMIT, 384_032);
+    }
+
+    #[test]
+    fn an_empty_idat_beside_real_data_is_rejected() {
+        let bytes = png_chunks(&[
+            (b"IHDR", &ihdr(2, 0)),
+            (b"IDAT", &[]),
+            (b"IDAT", DYNAMIC_ZLIB),
+            (b"IEND", &[]),
+        ]);
+        assert_eq!(read_still_png(&bytes).err(), Some(StillError::Size));
+    }
+
+    #[test]
+    fn a_numpy_2_still_depth_is_rejected() {
+        let text = "{'descr': '<u2', 'fortran_order': False, 'shape': (240, 320), }\n";
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"\x93NUMPY");
+        bytes.push(2);
+        bytes.push(0);
+        bytes.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        bytes.extend(text.as_bytes());
+        bytes.extend(std::iter::repeat_n(0u8, STILL_DEPTH_WORDS * 2));
+        assert_eq!(read_still_depth(&bytes).err(), Some(StillError::Depth));
     }
 
     #[test]
