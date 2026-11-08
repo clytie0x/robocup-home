@@ -1,5 +1,87 @@
 # WORKLOG
 
+## Recorded-frame adapter plan (2026-11-08)
+
+PR 35 is merged. GitHub reports head `d167a599ff219310afc7c3b2cb8192c3c97b0738` and merge commit `f52e6f5117fc22dafad0d148758209b982f2247d` at 2026-11-08 08:03:15 +0700. This note starts from that merge. It adds no adapter, no `RCF1` write, no `cast_pixel`, no `controller_note`, and no call into `navigation`. Stage 4 is not complete. Stage 5 is not complete. Section 3.1 stays 45 `pass` and 11 `not-run`. The rows below are the plan. Their result is `not-run`. This note did not run the compiler or the tests.
+
+### PR 35 verification that already happened
+
+These counts are from the validation of `d167a599` before the merge. They were not rerun for this note.
+
+Debug and release each: library 359 passed with 2 skipped, all-targets 370 passed with the same 2 skipped. The skipped tests are `navpost::tests::the_csv_and_svg_repeat_the_posted_view` and `replay::tests::a_synthetic_session_keeps_both_profiles_and_drops_no_secret`. Both call `remove_dir_all`. Doctests were 7 passed in each profile. The independent probe, file hash `3907c3f3a1a2158270463e07d7e9010c90a29d44d122a657a495f262ad061848`, was 9 passed and 0 filtered in debug and again in release. It is not part of those 359 or 370. Fifteen frozen products matched, including the four depth SVGs. The 39-frame archive pipe and the seven still pipes matched in memory. A one-byte flip on the archive and on one still returned Rust exit 1. Seven mutants of the new ceilings, the empty-IDAT guard, the NumPy 1.0 gate, and the Fortran ambiguity guard each exited 101 on a compiled assertion, with 0 filtered, and the sources were copied back to the `d167a599` hashes.
+
+Lower-risk residuals stay open. Identical repeated Fortran tokens are still one value. The first `'descr'` and the first `'shape'` still win when a later copy of that key is present. The PNG ceiling 3407917 and the depth ceiling 219145 are support limits of the still reader, not specification maxima. `inspect_npy` still parses NumPy 2 and 3 for other callers. The earliest scan-adapter `post.csv` and `post.svg` hashes differ from the later capture-regression hashes `d67c901f1031eb694b6a08d22f51853d8f8c18cf7ef73f98a1a4ef565aa47ed8` and `18777a14496c9888fa1493d9dd7b479f1f539f26977cbaa0609e1f3f7fcaa9f4`. A private payload hash is not a decoder condition.
+
+### Process note
+
+Older breaches stay as written. They include the deleted manifest, the private pixels written under `/tmp` and then removed, and the earlier `python3 -c 'print(1)'` and `python3 -c 'print("no")'` runs. Writer `9844` and reviewer `4772` are not in those older paragraphs. Each of those two later runs started Python and printed `1`. Neither read the archive or a repository file. This note does not repeat them. There is no claim that the process history is clean.
+
+### Sources read for this plan
+
+The merged tree matches `d167a599` for these files. SHA-256:
+
+| file | sha256 |
+| --- | --- |
+| `crates/physical/src/camera_npz.rs` | `bc1a52090f174c6a23985dd62f9736a4f7938c744fde3ae40c2f7197d8bd1992` |
+| `crates/physical/src/frame.rs` | `ac7401414250ef61425de42203cb4800129c2b879df25fbf66dad0951569ef6d` |
+| `crates/physical/src/observe.rs` | `1ce29d3238896ca24378c2454065c877a1cf813fe932590cd8afb3d395cbcc80` |
+| `crates/physical/src/camera.rs` | `26227a284649f23970ffd1c5d79311928f94db1885a2ce560754c340a431bd4b` |
+| `crates/physical/src/profile.rs` | `9404b1ec1eb39f13ba740e5828e6122865bab404281a3f3a2fd057d19cc3b991` |
+| `crates/physical/src/replay.rs` | `19baa8f9e6d1ad23f71186a73843b52041f745fec43c8d2199b03884bca11b1b` |
+| `crates/navigation/src/lib.rs` | `51a377495875465d6bf973a607e4cea609ec8ca39a031a2c9bcf17fe48a733d7` |
+
+`CameraArchive` is `rgb: Vec<u8>`, `depth_mm: Vec<u16>`, `stamps: Vec<f64>` (`camera_npz.rs` lines 91 to 95). `read_camera_npz` (`camera_npz.rs` lines 121 to 142) inflates only the three exact uncompressed sizes, checks ZIP CRC-32, then `parse_color`, `parse_depth`, and `parse_stamps`. Colour is `|u1`, shape `[39, 240, 320, 3]`, 8985600 bytes (`parse_color`, lines 354 to 357). Depth is `<u2`, shape `[39, 240, 320]`, 2995200 little-endian words (`parse_depth`, lines 360 to 367). Stamps are `<f8`, shape `[39]`, finite, and strictly increasing (`parse_stamps`, lines 370 to 391). A non-finite value or a value that is not greater than the previous one is `ArchiveError::Stamp`. The file read ceiling stays `ARCHIVE_FILE_LIMIT` 6565292 (`camera_npz.rs` lines 39 to 48). The compare frame stays `COMPARE_FRAME_LIMIT` 14976360 (lines 54 to 57).
+
+`IMAGE_WIDTH` is 320 and `IMAGE_HEIGHT` is 240 (`camera.rs` lines 19 to 20). One synthetic frame is `FRAME_PIXELS` 76800 (`frame.rs` line 16). `cast_frame` (`frame.rs` lines 95 to 117) fills depth and RGB by calling `cast_pixel` and `material_rgb`, then sets both freshness values to `Freshness::Fresh` and `stamp_ms` to `SYNTHETIC_STAMP_MS`, which is 0 (line 17). `encode_frame` (`frame.rs` lines 156 to 178) writes the four bytes `RCF1`, version 1, width, height, two freshness codes, two ages, and `stamp_ms`, then the depth words and the RGB bytes. `decode_frame` (lines 181 to 212) requires that exact length. That file is one synthetic frame. It is not the 39-frame archive and it is not the `STL1` compare frame, even though both byte counts can be 384032.
+
+`Freshness` is `Fresh`, `Stale { age_s }`, `Missing`, `Malformed`, or `Reversed` (`observe.rs` lines 8 to 14). `delivery_freshness` (lines 113 to 129) needs a capture time, a delivery time, and a maximum age, all finite. `stamp_order` (lines 100 to 110) is an order check, not an age. `controller_note` (lines 80 to 97) counts fresh ranges and fresh valid depth and always sets `person` to `PersonPost::NotInPostedView` and `actuation` to `Actuation::NotSent`. `SensorView` (`navigation/src/lib.rs` lines 70 to 77) holds a robot point, people, bodies, bags, a gesture bit, and `captured_ms: u64`. `sense` (lines 93 to 116) builds that view from an actor and obstacles. It does not read pixels. `accept` (lines 210 to 230) takes a `Posted` value and `now_ms`. `MAX_SAMPLE_AGE_MS` is 1000 (line 130) and is documented as an approved delay profile, not a measured latency. `plan_follow` (lines 476 to 488) needs a `Follower` and a `Sight` that contains people. An empty people list is `Intent::Lost`.
+
+`camera_profiles` (`profile.rs` lines 80 to 98) holds two mounts, measured `(x 0.14 m, z 0.282 m, pitch 6.7 deg)` and configured `(x 0.14 m, z 0.27 m, pitch 0)`. `HFOV_DEG` is 58.59 and `VFOV_DEG` is 45.64 (lines 38 to 39). `DEPTH_GATE_M` is 0.5 (line 35). Those constants are not fields of `CameraArchive`. `write_replay` does not decode `camera.npz`. `push_npz` (`replay.rs` lines 1105 to 1125) lists zip entries and says a method-8 payload is blocked, so no frame was invented.
+
+The legacy `record_static.py` text, already cited in the archive plan, samples `time.monotonic()` at lines 12, 43, and 47 to 52 and appends that same value with the colour buffer and the depth words. `person.py` lines 234 to 247 copy width, height, RGB, and millimetre words and do not copy `Frame.ts`. This note did not open an image and did not execute those scripts.
+
+### What the next adapter can say
+
+It can name one index in `0..39` and borrow that frame from an existing `CameraArchive`. Colour at index `i` is `i * 240 * 320 * 3` bytes, three channels, the archive order. Depth at index `i` is `i * 240 * 320` little-endian `u16` words, the archive member `depth_mm`. The stamp at index `i` is `stamps[i]`, a host monotonic `f64` second. The three arrays share an index because the writer appended them in one callback. That is the whole truth of a recorded pair.
+
+### What it must not say
+
+It must not call the stamp a device clock, a delivery time, or `captured_ms`. It must not call the frame `Freshness::Fresh` or give it `stamp_ms` 0. It must not build `RCF1`. It must not call `cast_pixel`, `material_rgb`, or `class_rgb`. It must not read `camera_profiles`, `HFOV_DEG`, `VFOV_DEG`, or `DEPTH_GATE_M` to fill a hole in the file. It must not report a person, a mount, a field of view, a mirror bit, or a registration. It must not pass the frame to `sense`, `accept`, or `plan_follow`.
+
+### Contract for the later slice
+
+The caller owns the `CameraArchive`. The adapter borrows it. One step does not allocate a second copy of the 8985600 colour bytes or the 5990400 depth bytes. A borrowed colour view is 230400 bytes. A borrowed depth view is 76800 words. A test that needs an owned copy copies one frame and labels the copy. The read that produced the archive is already capped at 6565292 bytes. The adapter does not raise that cap.
+
+A cursor starts at index 0. `reset` sets it back to 0. The next step yields index 0, then 1, and so on. After index 38 the next step is the end. The end is not an error. If `rgb.len()` is not 8985600, or `depth_mm.len()` is not 2995200, or `stamps.len()` is not 39, the step is truncated and the cursor does not advance. If the stamp at the cursor is not finite, or if it is not greater than the previous yielded stamp, the step is an invalid timestamp and the cursor does not advance. `read_camera_npz` already rejects those stamp faults for a file it returns. The check stays on the adapter because `CameraArchive` fields are public and a later caller can change them.
+
+Unknown metadata stays unknown. The adapter does not invent a mount, a field of view, a mirror flag, a device clock, a person, or a registration. The absence is part of the result. A comment, a DOS date, or a zip external attribute is not a capture clock. The archive reader already ignores those fields.
+
+### Why the same controller is not this slice
+
+`plan_follow` needs a person id in `Sight`. `SensorView` needs a robot point, people, bodies, bags, a gesture bit, and `captured_ms`. `accept` needs `delivered_ms` and `now_ms`. None of those are in `CameraArchive`. The host monotonic seconds are not that millisecond clock, and there is no paired delivery time, so `MAX_SAMPLE_AGE_MS` cannot be applied. `controller_note` would still report `NotInPostedView` if a depth buffer were posted, and posting it as fresh would be false. Stage 5, the same controller on recorded frames, stays blocked until a later slice has a sourced robot pose, a sourced person, and a sourced pair of clocks. This note does not supply those values.
+
+### Smallest later code
+
+Not this commit. One module in `physical` can borrow one recorded frame from `CameraArchive`. It does not import `frame`, `cast_pixel`, `encode_frame`, `controller_note`, `sense`, `accept`, or `plan_follow`. It does not add a binary. `zip_entries` and `write_replay` stay blocked on method 8. Tests use generated `CameraArchive` values. They do not open the private `camera.npz`.
+
+### Acceptance matrix
+
+| requirement | source | test | result | gate |
+| --- | --- | --- | --- | --- |
+| Index 0 and index 38 borrow 230400 RGB bytes, 76800 depth words, and the stamp at that index. Index 39 is the end | `CameraArchive` and `parse_color`, `parse_depth`, `parse_stamps` in `camera_npz.rs` | `recorded_index_zero_and_last_borrow_one_frame`; `recorded_index_thirty_nine_is_the_end` | not-run | sim |
+| `reset` after a step returns the cursor to index 0 | this plan | `recorded_reset_returns_to_zero` | not-run | sim |
+| A short `rgb`, `depth_mm`, or `stamps` buffer is truncated and does not advance | public fields of `CameraArchive`; the reader normally returns only the full lengths | `recorded_short_buffer_is_truncated` | not-run | sim |
+| A non-finite stamp, or a stamp that does not increase, is an invalid timestamp and does not advance | `parse_stamps` lines 379 to 385; the adapter repeats the check | `recorded_bad_stamp_is_invalid` | not-run | sim |
+| The view does not allocate a second full archive | this plan | `recorded_view_is_a_borrow_of_one_frame` | not-run | sim |
+| The borrowed bytes are the archive order. They are not `material_rgb`, `class_rgb`, or a pinhole depth | `cast_frame` lines 95 to 117; `parse_color` and `parse_depth` | `recorded_bytes_are_not_a_cast` | not-run | sim |
+| The result is not `RCF1`, not `Freshness::Fresh`, and not `stamp_ms` 0 | `encode_frame` lines 156 to 178; `SYNTHETIC_STAMP_MS` | `recorded_result_is_not_rcf1` | not-run | sim |
+| Mount, field of view, mirror, device clock, person, and registration stay unknown | `camera_profiles` lines 80 to 98; `plan_follow` lines 476 to 488 | `recorded_metadata_stays_unknown` | not-run | sim |
+| The module does not call `sense`, `accept`, or `plan_follow` | `SensorView` lines 70 to 77; missing clocks and person listed above | compile dependency of the new module; `recorded_module_has_no_controller_call` | not-run | sim |
+
+### What this note does not do
+
+It does not decode a private file. It does not emit a frame. It does not replay a controller. Stage 4 stays open. Stage 5 stays open. Section 3.1 stays 45 `pass` and 11 `not-run`.
+
 ## Still-pair input ceilings (2026-11-08)
 
 This correction is on `cursor/camera-npz-bf93` at parent `cffe42a958ef1052ff4bb977b874e5627563af36`. The previous sole writer stopped with no repository edit because the pinned compiler was absent in that environment. This process is the sole writer for the edit below. No other writer is active. The independent review of `cffe42a` stays historical. This change needs a separate review. It does not merge.
