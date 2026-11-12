@@ -54,6 +54,8 @@ version = "0.1.0"
 dependencies = [
  "domain",
  "navigation",
+ "perception",
+ "task_5_1",
 ]
 
 [[package]]
@@ -76,6 +78,13 @@ dependencies = [
 
 [[package]]
 name = "task_3_2"
+version = "0.1.0"
+dependencies = [
+ "domain",
+]
+
+[[package]]
+name = "task_5_1"
 version = "0.1.0"
 dependencies = [
  "domain",

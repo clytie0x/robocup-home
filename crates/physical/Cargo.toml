@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 domain.workspace = true
 navigation.workspace = true
+perception.workspace = true
+task_5_1.workspace = true
 
 [[bin]]
 name = "replay"
@@ -40,3 +42,7 @@ path = "src/bin/still_pair.rs"
 [[bin]]
 name = "camera-archive"
 path = "src/bin/camera_archive.rs"
+
+[[bin]]
+name = "help-me-carry"
+path = "src/bin/help_me_carry.rs"
