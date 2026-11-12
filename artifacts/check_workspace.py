@@ -26,10 +26,11 @@ EXPECTED = {
     "manipulation": {"domain"},
     "navigation": {"domain"},
     "perception": {"domain"},
-    "physical": {"domain", "navigation"},
+    "physical": {"domain", "navigation", "perception", "task_5_1"},
     "sim_runtime": {"domain"},
     "task_3_1": {"domain", "hri", "manipulation", "navigation", "perception"},
     "task_3_2": {"domain"},
+    "task_5_1": {"domain"},
 }
 
 

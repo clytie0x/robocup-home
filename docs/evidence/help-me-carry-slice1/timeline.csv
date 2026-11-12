@@ -1,0 +1,49 @@
+# Help Me Carry 2025.1 slice 1.
+# Start is outside the arena half-plane x>=0. The car belongs to the operator script.
+# The follow call is not given that point.
+t_ms,kind,x_m,y_m,note
+0,ready-to-follow,-2.0000,0.0000,ready-to-follow
+0,robot,-2.2000,0.0000,step
+500,robot,-2.4000,0.0000,step
+1000,robot,-2.6000,0.0000,step
+1500,robot,-2.8000,0.0000,step
+2000,robot,-3.0000,0.0000,step
+2500,robot,-3.2000,0.0000,step
+3000,robot,-3.4000,0.0000,step
+3500,robot,-3.6000,0.0000,step
+4000,robot,-3.8000,0.0000,step
+4500,robot,-3.9320,-0.1490,step
+5000,robot,-4.1220,-0.2070,step
+5500,robot,-4.3160,-0.1640,step
+6000,robot,-4.4870,-0.0630,step
+6500,robot,-4.6470,0.0550,step
+7000,robot,-4.7990,0.1830,step
+7500,robot,-4.9500,0.3120,step
+8000,robot,-5.0990,0.4440,step
+8500,robot,-5.2480,0.5750,step
+9000,robot,-5.3960,0.7080,step
+9500,robot,-5.5460,0.8400,step
+10000,at-car,-5.5460,0.8400,operator script at car
+10000,perceive,-5.5460,0.8400,perceived bag id 2
+10000,abstract-pick,-5.5460,0.8400,abstract-pick bag id 2
+10000,robot,-5.3960,0.7080,return
+10500,robot,-5.2480,0.5750,return
+11000,robot,-5.0990,0.4440,return
+11500,robot,-4.9500,0.3120,return
+12000,robot,-4.7990,0.1830,return
+12500,robot,-4.6470,0.0550,return
+13000,robot,-4.4870,-0.0630,return
+13500,robot,-4.3160,-0.1640,return
+14000,robot,-4.1220,-0.2070,return
+14500,robot,-3.9320,-0.1490,return
+15000,robot,-3.8000,0.0000,return
+15500,robot,-3.6000,0.0000,return
+16000,robot,-3.4000,0.0000,return
+16500,robot,-3.2000,0.0000,return
+17000,robot,-3.0000,0.0000,return
+17500,robot,-2.8000,0.0000,return
+18000,robot,-2.6000,0.0000,return
+18500,robot,-2.4000,0.0000,return
+19000,robot,-2.2000,0.0000,return
+19500,robot,-2.0000,0.0000,return
+20000,place-on-floor,-2.0000,0.0000,bag on the floor

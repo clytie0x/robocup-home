@@ -10,8 +10,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "docs" / "tasks" / "3.1-carry-my-luggage.md"
+ACTIVE_SPEC = ROOT / "docs" / "tasks" / "5.1-help-me-carry.md"
 README = ROOT / "README.md"
 WORKLOG = ROOT / "WORKLOG.md"
+ACTIVE_HASH = "d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11"
+ACTIVE_MARK = "active rulebook is 2025.1"
 SOURCES = ROOT / "artifacts" / "sources"
 SUMS = SOURCES / "SHA256SUMS"
 TASK_EXCERPT = SOURCES / "professor-3.1.txt"
@@ -351,13 +354,49 @@ def thai_hits(root):
     return hits
 
 
-def check_readme_and_log():
+def check_active(text=None):
     problems = []
-    readme = README.read_text(encoding="utf-8")
-    if "5.1 Help Me Carry" in readme or "1115" in readme:
-        problems.append("README still points at the 2025.1 baseline")
+    if text is None:
+        if not ACTIVE_SPEC.is_file():
+            return ["active section 5.1 spec missing"]
+        text = ACTIVE_SPEC.read_text(encoding="utf-8")
+    if "5.1 Help Me Carry" not in text:
+        problems.append("active spec lost 5.1 Help Me Carry")
+    if ACTIVE_MARK not in text:
+        problems.append("active spec does not name rulebook 2025.1")
+    if "rulebook 2024.2" in text or "rulebook 2026" in text:
+        problems.append("active spec names a different rulebook")
+    if ACTIVE_HASH not in text:
+        problems.append("active spec lost the 2025.1 rulebook hash")
+    if "printed pages 39, 40, and 41" not in text:
+        problems.append("active spec lost printed pages 39-41")
+    if "1115" not in text:
+        problems.append("active spec lost printed total 1115")
+    if "2025-04-28" not in text:
+        problems.append("active spec lost revision 2025-04-28")
+    if "main-league" not in text:
+        problems.append("active spec lost the main-league label")
+    return problems
+
+
+def check_readme_and_log(readme=None):
+    problems = []
+    if readme is None:
+        readme = README.read_text(encoding="utf-8")
+    if ACTIVE_MARK not in readme or "5.1 Help Me Carry" not in readme:
+        problems.append("README does not name the active 5.1 Help Me Carry task")
+    if "printed pages 39 to 41" not in readme:
+        problems.append("README lost section 5.1 pages 39 to 41")
+    if ACTIVE_HASH not in readme:
+        problems.append("README lost the 2025.1 rulebook hash")
+    if "rulebook 2024.2" in readme or "rulebook 2026" in readme:
+        problems.append("README names a rulebook other than 2025.1")
     if "3.1 Carry My Luggage" not in readme:
         problems.append("README does not name section 3.1")
+    if EXPECTED_HASH not in readme:
+        problems.append("README lost the historical professor hash")
+    if "not the baseline of section 3.1" not in readme:
+        problems.append("README does not keep section 3.1 historical")
     log = WORKLOG.read_text(encoding="utf-8")
     current = log.split("## Current status (documentation bootstrap", 1)[0]
     if EXPECTED_HASH not in current:
@@ -385,13 +424,14 @@ def check_sums():
     return []
 
 
-def collect(spec=None, pdf=None):
+def collect(spec=None, pdf=None, readme=None, active=None):
     spec = SPEC.read_text(encoding="utf-8") if spec is None else spec
     problems = []
     problems.extend(check_rows(spec))
     problems.extend(check_sources(spec))
     problems.extend(check_sums())
-    problems.extend(check_readme_and_log())
+    problems.extend(check_active(active))
+    problems.extend(check_readme_and_log(readme))
     problems.extend(relative_links(ROOT))
     problems.extend(thai_hits(ROOT))
     if pdf is None:
@@ -437,6 +477,28 @@ def self_test():
     ordered = spec.replace("in an arbitrary order", "in a fixed order", 1)
     if not any("fixed-order" in item or "arbitrary order" in item for item in collect(ordered)):
         failures.append("fixed obstacle order should fail")
+    active = ACTIVE_SPEC.read_text(encoding="utf-8")
+    readme = README.read_text(encoding="utf-8")
+    swapped = (
+        ("2024.2", active.replace(ACTIVE_MARK, "active rulebook is 2024.2", 1), None),
+        ("2026.1", active.replace(ACTIVE_MARK, "active rulebook is 2026.1", 1), None),
+        ("hash", active.replace(ACTIVE_HASH, "0" * 64, 1), None),
+        (
+            "readme 2024.2",
+            None,
+            readme.replace(ACTIVE_MARK, "active rulebook is 2024.2", 1),
+        ),
+        (
+            "readme 2026.1",
+            None,
+            readme.replace(ACTIVE_MARK, "active rulebook is 2026.1", 1),
+        ),
+        ("readme hash", None, readme.replace(ACTIVE_HASH, "0" * 64, 1)),
+    )
+    for label, active_text, readme_text in swapped:
+        found = collect(spec, active=active_text, readme=readme_text)
+        if not found:
+            failures.append(f"{label} baseline should fail")
     rows = score_rows(page_body(TASK_EXCERPT))
     broken = list(rows)
     broken[-1] = (broken[-1][0], 999)

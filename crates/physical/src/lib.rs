@@ -1,7 +1,8 @@
 //! Posted captures and the unresolved physical spec for section 3.1.
 //!
-//! The crate does not drive hardware, does not award a score, and does not
-//! treat the simulated gripper as an installed arm.
+//! The crate does not drive hardware and does not treat the simulated gripper
+//! as an installed arm. The Help Me Carry scenario asks `task_5_1` for the
+//! printed sheet. It does not invent a point value and it does not grasp.
 
 mod arm;
 mod base;
@@ -11,6 +12,7 @@ mod camera_npz;
 mod chunk;
 mod command;
 mod frame;
+mod help_carry;
 mod inflate_zlib;
 mod json;
 mod kind;
@@ -44,6 +46,7 @@ pub use frame::{
     CameraFrame, FrameViews, cast_frame, class_ppm, decode_frame, demo_frames, depth_view,
     encode_frame, fault_csv, rgb_ppm,
 };
+pub use help_carry::{Run, Setup, run, score_text, success_setup, timeline_csv, trajectory_png};
 pub use kind::Kind;
 pub use lidar::{LidarParse, RawSample, encode_packet, parse_lidar, split_revolutions};
 pub use navpost::{

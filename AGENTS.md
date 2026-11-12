@@ -11,6 +11,10 @@ On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/r
 Where an older sentence conflicts with this section, this section wins.
 The older sentence stays in git history and is labelled superseded in [WORKLOG.md](WORKLOG.md).
 
+### Active task
+
+On 2026-11-12 at 18:03 Asia/Bangkok, the owner set the main-league rulebook 2025.1, section 5.1 Help Me Carry, printed pages 39 to 41, as the active task. The rulebook file hash is `d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11`. The professor PDF section 3.1 document stays as history. It is not the active task. The scenario script is fixed. It does not draw a random seed.
+
 ### Merge
 
 On 2026-11-06 at 13:50 Asia/Bangkok, Teerapat allowed Grok Bot and RoboCup Lab to merge this repository without a fresh confirmation for each merge.
@@ -34,7 +38,7 @@ A simulation result is not a hardware result.
 - Rust is the primary language.
 - Do not change stack, language, or style unless Teerapat gives an explicit instruction. That change needs the instruction, a rationale, an Issue, and an update to this file.
 - Modules stay separate: perception, navigation, manipulation, HRI, and task.
-- Workspace members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, `task_3_2`, `sim_runtime`, `physical`, and `harness`. `domain` is the one shared contract. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `task_3_2` depends on `domain`. `sim_runtime` depends on `domain`. `harness` is the integration crate and may depend on `sim_runtime`. `task_3_1` does not depend on `sim_runtime`. `task_3_2` does not depend on `sim_runtime`. No other crate depends on `sim_runtime`. `physical` depends on `domain` and `navigation` so one captured scan, or one synthetic static scene reduced to angle and range, can be posted into the existing navigation view. It does not parse that scan inside `navigation`, it does not choose a lidar front, and it does not pass scene boxes into the planner. No other crate depends on `physical`. The 2026-11-07 foundation instruction added `physical`. No sanctioned Issue tool was available, so that limit is recorded in [WORKLOG.md](WORKLOG.md).
+- Workspace members are `domain`, `perception`, `navigation`, `manipulation`, `hri`, `task_3_1`, `task_3_2`, `task_5_1`, `sim_runtime`, `physical`, and `harness`. `domain` is the one shared contract. The name `task_api` is that role. `task_3_1` depends on `domain` and the capability crates. `task_3_2` depends on `domain`. `sim_runtime` depends on `domain`. `harness` is the integration crate and may depend on `sim_runtime`. `task_3_1` does not depend on `sim_runtime`. `task_3_2` does not depend on `sim_runtime`. No other crate depends on `sim_runtime`. `task_5_1` depends on `domain` and records the public 2025.1 section 5.1 sheet. `physical` depends on `domain`, `navigation`, `perception`, and `task_5_1`. The scan path still posts one captured scan, or one synthetic static scene reduced to angle and range, into the existing navigation view. It does not parse that scan inside `navigation`, it does not choose a lidar front, and it does not pass scene boxes into the planner. No other crate depends on `physical`. The 2026-11-07 foundation instruction added `physical`. The 2026-11-12 instruction added `task_5_1` and the `physical` edges to `perception` and `task_5_1` for the Help Me Carry scenario. No sanctioned Issue tool was available, so that limit is recorded in [WORKLOG.md](WORKLOG.md).
 - Adapters keep the simulator out of task logic. Logic must not call a simulator directly.
 - OpenCV and large pretrained models may be direct dependencies.
 - Rewrite any other dependency that is old or unmaintained as Rust code this repository owns.
