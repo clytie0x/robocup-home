@@ -306,12 +306,16 @@ pub fn trajectory_png(run: &Run) -> Vec<u8> {
     };
     paint(&mut rgb, &run.operator_path, [30, 90, 180]);
     paint(&mut rgb, &run.robot_path, [20, 140, 60]);
-    dot(&mut rgb, project(run.start, min_x, max_x, min_y, max_y), [
-        0, 0, 0,
-    ]);
-    dot(&mut rgb, project(run.car, min_x, max_x, min_y, max_y), [
-        90, 90, 90,
-    ]);
+    dot(
+        &mut rgb,
+        project(run.start, min_x, max_x, min_y, max_y),
+        [0, 0, 0],
+    );
+    dot(
+        &mut rgb,
+        project(run.car, min_x, max_x, min_y, max_y),
+        [90, 90, 90],
+    );
     for bag in run.bags {
         let color = if run.chosen == Some(bag.0) {
             [200, 30, 30]
