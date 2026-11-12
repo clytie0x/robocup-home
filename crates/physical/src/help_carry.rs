@@ -16,7 +16,7 @@ use perception::{Candidate, select};
 use task_5_1::{Facts, Sheet, score};
 
 const ARENA_X_M: f64 = 0.0;
-const START_X_M: f64 = -2.0;
+const START_X_M: f64 = ARENA_X_M - 2.0;
 const START_Y_M: f64 = 0.0;
 const START_YAW_DEG: f64 = 180.0;
 const OPERATOR_X_M: f64 = -2.8;
@@ -403,9 +403,10 @@ fn take_step(
     robot_path: &mut Vec<(f64, f64)>,
     record_crumb: bool,
 ) -> BasePose {
-    let Some(next) = step_base(pose, goal) else {
+    let next = return_step(pose, goal);
+    if next == pose {
         return pose;
-    };
+    }
     if record_crumb && ((next.x_m - pose.x_m).abs() > 1e-9 || (next.y_m - pose.y_m).abs() > 1e-9) {
         crumbs.push((next.x_m, next.y_m));
     }
