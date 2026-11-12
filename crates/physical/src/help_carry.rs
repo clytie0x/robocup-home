@@ -267,6 +267,7 @@ pub fn timeline_csv(run: &Run) -> String {
 
 pub fn score_text(run: &Run) -> String {
     let mut out = String::from("Help Me Carry 2025.1 slice 1\n");
+    out.push_str("deterministic fixed script\n");
     out.push_str(&format!(
         "elapsed_ms {}\ntimed_out {}\nmeasured_subtotal {}\nprinted_total {}\n",
         run.elapsed_ms,

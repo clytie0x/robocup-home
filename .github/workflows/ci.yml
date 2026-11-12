@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -78,3 +79,25 @@ jobs:
 
       - name: Workspace boundaries
         run: python3 artifacts/check_workspace.py
+
+      - name: Help Me Carry scenario
+        run: |
+          mkdir -p "$RUNNER_TEMP/help-me-carry"
+          cargo run -p physical --bin help-me-carry --release --locked -- "$RUNNER_TEMP/help-me-carry"
+          echo '--- sha256 ---'
+          sha256sum \
+            "$RUNNER_TEMP/help-me-carry/timeline.csv" \
+            "$RUNNER_TEMP/help-me-carry/trajectory.png" \
+            "$RUNNER_TEMP/help-me-carry/score.txt"
+          echo '--- score ---'
+          cat "$RUNNER_TEMP/help-me-carry/score.txt"
+
+      - name: Upload Help Me Carry replay
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: help-me-carry-slice1
+          path: |
+            ${{ runner.temp }}/help-me-carry/timeline.csv
+            ${{ runner.temp }}/help-me-carry/trajectory.png
+            ${{ runner.temp }}/help-me-carry/score.txt
+          if-no-files-found: error

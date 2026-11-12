@@ -11,6 +11,10 @@ On 2026-11-06 at about 15:14 Asia/Bangkok, the owner instructed that `clytie0x/r
 Where an older sentence conflicts with this section, this section wins.
 The older sentence stays in git history and is labelled superseded in [WORKLOG.md](WORKLOG.md).
 
+### Active task
+
+On 2026-11-12 at 18:03 Asia/Bangkok, the owner set the main-league rulebook 2025.1, section 5.1 Help Me Carry, printed pages 39 to 41, as the active task. The rulebook file hash is `d23a76efaf436e6286076b34628a7451b3e8fd41e38b79e54b4db739acf9fe11`. The professor PDF section 3.1 document stays as history. It is not the active task. The scenario script is fixed. It does not draw a random seed.
+
 ### Merge
 
 On 2026-11-06 at 13:50 Asia/Bangkok, Teerapat allowed Grok Bot and RoboCup Lab to merge this repository without a fresh confirmation for each merge.
