@@ -89,6 +89,10 @@ jobs:
             "$RUNNER_TEMP/help-me-carry/timeline.csv" \
             "$RUNNER_TEMP/help-me-carry/trajectory.png" \
             "$RUNNER_TEMP/help-me-carry/score.txt"
+          (
+            cd "$RUNNER_TEMP/help-me-carry"
+            sha256sum -c "$GITHUB_WORKSPACE/docs/evidence/help-me-carry-slice1/SHA256SUMS"
+          )
           echo '--- score ---'
           cat "$RUNNER_TEMP/help-me-carry/score.txt"
 
